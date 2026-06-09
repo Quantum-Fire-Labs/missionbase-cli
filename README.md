@@ -121,13 +121,16 @@ missionbase-agent work
 missionbase-agent tasks
 missionbase-agent task feed <task-id> [--limit N]
 missionbase-agent task comments <task-id> [--limit N]
+missionbase-agent task participants list <task-id>
+missionbase-agent task participants add <task-id> --user <user-id-or-mention>
+missionbase-agent task participants add <task-id> --agent <agent-slug>
 missionbase-agent conversation show <feed-id> [--limit N]
 missionbase-agent members [--box ID]
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Agent check helper
 

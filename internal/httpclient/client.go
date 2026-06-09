@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,8 +24,16 @@ func New(cfg config.Config) Client {
 }
 
 func (c Client) Get(path string) ([]byte, error) {
+	return c.Do(http.MethodGet, path, nil)
+}
+
+func (c Client) Post(path string, body []byte) ([]byte, error) {
+	return c.Do(http.MethodPost, path, body)
+}
+
+func (c Client) Do(method, path string, body []byte) ([]byte, error) {
 	url := strings.TrimRight(c.cfg.BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -35,6 +44,9 @@ func (c Client) Get(path string) ([]byte, error) {
 		req.Header.Set("X-Missionbase-Agent-Slug", c.cfg.AgentSlug)
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("User-Agent", "missionbase-cli")
 
 	resp, err := c.client.Do(req)
@@ -43,12 +55,12 @@ func (c Client) Get(path string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("GET %s failed: HTTP %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("%s %s failed: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
-	return body, nil
+	return respBody, nil
 }
