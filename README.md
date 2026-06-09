@@ -10,15 +10,7 @@ The CLI is intentionally distributed as a single Go binary so it can be installe
 curl -fsSL https://raw.githubusercontent.com/Quantum-Fire-Labs/missionbase-cli/main/scripts/install.sh | bash
 ```
 
-The installer downloads the latest GitHub release binary for your OS/architecture and installs it to `~/.local/bin/missionbase`.
-
-For private repositories, provide a token that can read releases:
-
-```bash
-export GITHUB_TOKEN=ghp_...
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://raw.githubusercontent.com/Quantum-Fire-Labs/missionbase-cli/main/scripts/install.sh | bash
-```
+The installer downloads the latest public GitHub release binary for your OS/architecture and installs it to `~/.local/bin/missionbase`.
 
 ## Auth
 
@@ -46,8 +38,6 @@ missionbase auth set-token YOUR_TOKEN --base-url https://dash.missionbase.app
 ```bash
 missionbase update
 ```
-
-For private repositories, `missionbase update` also honors `GITHUB_TOKEN`.
 
 Useful variants:
 
