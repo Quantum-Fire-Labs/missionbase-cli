@@ -36,7 +36,7 @@ for bin in "${bins[@]}"; do
   fi
 
   tmp="$(mktemp)"
-  curl -fL "$url" -o "$tmp"
+  curl -fsSL "$url" -o "$tmp"
   chmod +x "$tmp"
   mv "$tmp" "$INSTALL_DIR/$bin"
   echo "Installed $bin to $INSTALL_DIR/$bin"

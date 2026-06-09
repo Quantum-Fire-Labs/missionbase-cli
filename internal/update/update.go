@@ -52,8 +52,12 @@ func Run(opts Options, args []string) error {
 
 	latest := strings.TrimPrefix(rel.TagName, "v")
 	current := strings.TrimPrefix(opts.CurrentVersion, "v")
+	binaryName := opts.BinaryName
+	if binaryName == "" {
+		binaryName = "missionbase"
+	}
 	if current == latest && !force {
-		fmt.Printf("Missionbase CLI is up to date (%s)\n", opts.CurrentVersion)
+		fmt.Printf("%s is up to date (%s)\n", binaryName, opts.CurrentVersion)
 		return nil
 	}
 
@@ -62,10 +66,6 @@ func Run(opts Options, args []string) error {
 		return nil
 	}
 
-	binaryName := opts.BinaryName
-	if binaryName == "" {
-		binaryName = "missionbase"
-	}
 	asset, err := findAsset(rel.Assets, binaryName)
 	if err != nil {
 		return err
