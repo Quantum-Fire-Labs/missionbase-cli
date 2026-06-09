@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
@@ -47,6 +49,8 @@ func run(args []string) error {
 		return apiGet("/api/v1/agent/work")
 	case "tasks":
 		return apiGet("/api/v1/agent/tasks")
+	case "task":
+		return task(args[1:])
 	case "members":
 		return members(args[1:])
 	case "get":
@@ -145,20 +149,28 @@ func members(args []string) error {
 		}
 	}
 
+	body, err := membersBody(path, filtered)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
+func membersBody(path string, filtered bool) ([]byte, error) {
 	body, err := apiGetBody(path)
 	if err == nil {
-		fmt.Println(string(body))
-		return nil
+		return body, nil
 	}
 	if filtered || !strings.Contains(err.Error(), "404") {
-		return err
+		return nil, err
 	}
 
 	// Backward-compatible fallback for Missionbase deployments that expose team
 	// members before the agent-specific members endpoint is available.
 	meBody, meErr := apiGetBody("/api/v1/agent/me")
 	if meErr != nil {
-		return err
+		return nil, err
 	}
 	var me struct {
 		Agent struct {
@@ -168,14 +180,124 @@ func members(args []string) error {
 		} `json:"agent"`
 	}
 	if jsonErr := json.Unmarshal(meBody, &me); jsonErr != nil || me.Agent.Team.ID == 0 {
-		return err
+		return nil, err
 	}
 	body, fallbackErr := apiGetBody(fmt.Sprintf("/api/v1/teams/%d/members", me.Agent.Team.ID))
 	if fallbackErr != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func task(args []string) error {
+	if len(args) < 3 || args[0] != "participants" {
+		return fmt.Errorf("usage: missionbase-agent task participants <add|list> <task-id> [--user ID|@mention | --agent slug]")
+	}
+	command := args[1]
+	taskID := args[2]
+	switch command {
+	case "list":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: missionbase-agent task participants list <task-id>")
+		}
+		return apiGet("/api/v1/tasks/" + url.PathEscape(taskID) + "/participants")
+	case "add":
+		return taskParticipantsAdd(taskID, args[3:])
+	default:
+		return fmt.Errorf("unknown task participants command %q", command)
+	}
+}
+
+func taskParticipantsAdd(taskID string, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: missionbase-agent task participants add <task-id> --user ID|@mention OR --agent slug")
+	}
+
+	payload := map[string]string{}
+	switch args[0] {
+	case "--user":
+		userID, err := resolveUserID(args[1])
+		if err != nil {
+			return err
+		}
+		payload["user_id"] = userID
+	case "--agent":
+		payload["agent_slug"] = args[1]
+	case "--help", "-h":
+		fmt.Println("usage: missionbase-agent task participants add <task-id> --user ID|@mention OR --agent slug")
+		return nil
+	default:
+		return fmt.Errorf("unknown task participants add option %q", args[0])
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
 		return err
 	}
-	fmt.Println(string(body))
-	return nil
+	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/participants", body)
+}
+
+func resolveUserID(value string) (string, error) {
+	if _, err := strconv.Atoi(value); err == nil {
+		return value, nil
+	}
+	mention := strings.TrimPrefix(value, "@")
+	if mention == value || mention == "" {
+		return "", fmt.Errorf("--user requires a numeric user id or @mention")
+	}
+	body, err := membersBody("/api/v1/agent/members", false)
+	if err != nil {
+		return "", err
+	}
+	var response struct {
+		Members []struct {
+			UserID  int    `json:"user_id"`
+			ID      int    `json:"id"`
+			Name    string `json:"name"`
+			Email   string `json:"email"`
+			Mention string `json:"mention"`
+			Handle  string `json:"handle"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", err
+	}
+	normalized := normalizeMention(mention)
+	var matches []string
+	for _, member := range response.Members {
+		id := member.UserID
+		if id == 0 {
+			id = member.ID
+		}
+		if id == 0 {
+			continue
+		}
+		candidates := []string{member.Mention, member.Handle, member.Name, strings.Split(member.Email, "@")[0]}
+		for _, candidate := range candidates {
+			if normalizeMention(strings.TrimPrefix(candidate, "@")) == normalized {
+				matches = append(matches, strconv.Itoa(id))
+				break
+			}
+		}
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no member found for %s", value)
+	}
+	if len(matches) > 1 {
+		return "", fmt.Errorf("multiple members match %s; use a numeric user id", value)
+	}
+	return matches[0], nil
+}
+
+func normalizeMention(value string) string {
+	value = strings.ToLower(value)
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func useAgent(args []string) error {
@@ -199,6 +321,15 @@ func useAgent(args []string) error {
 	return nil
 }
 
+func apiPost(path string, requestBody []byte) error {
+	body, err := apiPostBody(path, requestBody)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiGet(path string) error {
 	body, err := apiGetBody(path)
 	if err != nil {
@@ -206,6 +337,18 @@ func apiGet(path string) error {
 	}
 	fmt.Println(string(body))
 	return nil
+}
+
+func apiPostBody(path string, requestBody []byte) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.AgentSlug == "" {
+		return nil, fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
+	}
+	client := httpclient.New(cfg)
+	return client.Post(path, requestBody)
 }
 
 func apiGetBody(path string) ([]byte, error) {
@@ -236,6 +379,11 @@ Commands:
   me                                  Show the current agent
   work                                Show assigned tasks and unread conversations
   tasks                               Show assigned tasks
+  task participants list <task-id>    List task participants
+  task participants add <task-id> --user ID|@mention
+                                      Add a user participant to a task
+  task participants add <task-id> --agent slug
+                                      Add an agent participant to a task
   members [--box ID]                  List group members and mention handles
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
