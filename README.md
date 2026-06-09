@@ -53,6 +53,7 @@ missionbase-agent use test
 missionbase-agent auth status
 missionbase-agent me
 missionbase-agent work
+missionbase-agent members
 ```
 
 Global agent CLI credentials are stored at:
@@ -118,11 +119,12 @@ missionbase-agent use <agent-slug> [--base-url URL]
 missionbase-agent me
 missionbase-agent work
 missionbase-agent tasks
+missionbase-agent members [--box ID]
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-`get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Release flow
 
