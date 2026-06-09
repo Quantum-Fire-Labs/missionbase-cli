@@ -47,6 +47,10 @@ func run(args []string) error {
 		return apiGet("/api/v1/agent/me")
 	case "work":
 		return apiGet("/api/v1/agent/work")
+	case "listen":
+		return listen(args[1:])
+	case "dm":
+		return directMessage(args[1:])
 	case "tasks":
 		return apiGet("/api/v1/agent/tasks")
 	case "task":
@@ -131,6 +135,125 @@ func auth(args []string) error {
 	}
 
 	return nil
+}
+
+func listen(args []string) error {
+	timeout := "30"
+	offset := "0"
+	once := false
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--timeout":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--timeout requires a value")
+			}
+			timeout = args[i+1]
+			i++
+		case "--offset":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--offset requires a value")
+			}
+			offset = args[i+1]
+			i++
+		case "--once":
+			once = true
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent listen [--timeout SECONDS] [--offset ID] [--once]")
+			return nil
+		default:
+			return fmt.Errorf("unknown listen option %q", args[i])
+		}
+	}
+
+	for {
+		path := "/api/v1/agent/updates?timeout=" + url.QueryEscape(timeout) + "&offset=" + url.QueryEscape(offset)
+		body, err := apiGetBody(path)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(body))
+
+		var response struct {
+			NextOffset int `json:"next_offset"`
+		}
+		if err := json.Unmarshal(body, &response); err != nil {
+			return err
+		}
+		if response.NextOffset > 0 {
+			offset = strconv.Itoa(response.NextOffset)
+		}
+		if once {
+			return nil
+		}
+	}
+}
+
+func directMessage(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent dm <list|show|send>")
+	}
+
+	switch args[0] {
+	case "list":
+		path := "/api/v1/agent/direct_messages"
+		path, err := appendLimit(path, args[1:])
+		if err != nil {
+			return err
+		}
+		return apiGet(path)
+	case "show":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: missionbase-agent dm show <message-id>")
+		}
+		return apiGet("/api/v1/agent/direct_messages/" + url.PathEscape(args[1]))
+	case "send":
+		return directMessageSend(args[1:])
+	default:
+		return fmt.Errorf("unknown dm command %q", args[0])
+	}
+}
+
+func directMessageSend(args []string) error {
+	payload := map[string]string{}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--agent", "--to-agent":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["recipient_agent_slug"] = args[i+1]
+			i++
+		case "--body", "--message":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["body"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent dm send --agent <agent-slug> --body MESSAGE")
+			return nil
+		default:
+			if payload["body"] == "" {
+				payload["body"] = strings.Join(args[i:], " ")
+				i = len(args)
+			} else {
+				return fmt.Errorf("unknown dm send option %q", args[i])
+			}
+		}
+	}
+	if strings.TrimSpace(payload["recipient_agent_slug"]) == "" {
+		return fmt.Errorf("--agent is required")
+	}
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost("/api/v1/agent/direct_messages", body)
 }
 
 func conversation(args []string) error {
@@ -593,7 +716,12 @@ Commands:
                                       Save a team API token
   use <agent-slug> [--base-url URL]   Set the agent for this directory
   me                                  Show the current agent
-  work                                Show assigned tasks and unread conversations
+  work                                Show assigned tasks, unread conversations, and DMs
+  listen [--timeout N] [--offset ID] [--once]
+                                      Long-poll for agent updates
+  dm list [--limit N]                 List agent direct messages
+  dm show <message-id>                Show an agent direct message
+  dm send --agent <slug> --body TEXT  Send a direct message to another agent
   tasks                               Show assigned tasks
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
                                       Create a task and print the created task JSON
