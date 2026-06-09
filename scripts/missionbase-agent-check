@@ -67,12 +67,32 @@ agent_slug = agent.get("slug")
 meta = work.get("meta") or {}
 tasks = work.get("tasks") or []
 conversations = work.get("unread_conversations") or work.get("conversations") or []
-total = int(meta.get("total") or (len(tasks) + len(conversations)))
-task_count = int(meta.get("tasks") or len(tasks))
-unread_count = int(meta.get("unread_conversations") or len(conversations))
-actionable = bool(meta.get("actionable", total > 0)) and total > 0
 
 assigned_task_ids = {task.get("id") for task in tasks if task.get("id") is not None}
+
+
+def actor_is_current_agent(actor):
+    if not isinstance(actor, dict) or actor.get("type") != "Agent":
+        return False
+    if agent_id is not None and actor.get("id") == agent_id:
+        return True
+    return bool(agent_slug and actor.get("slug") == agent_slug)
+
+
+def conversation_latest_entry_by_current_agent(conversation):
+    if not isinstance(conversation, dict):
+        return False
+    latest_entry = conversation.get("latest_entry")
+    if not isinstance(latest_entry, dict):
+        return False
+    return actor_is_current_agent(latest_entry.get("actor"))
+
+
+conversations = [conversation for conversation in conversations if not conversation_latest_entry_by_current_agent(conversation)]
+task_count = len(tasks)
+unread_count = len(conversations)
+total = task_count + unread_count
+actionable = bool(meta.get("actionable", total > 0)) and total > 0
 
 def task_assigned_to_current_agent(task):
     if not isinstance(task, dict):
@@ -106,8 +126,8 @@ selection = {
     "tasks": task_count,
     "unread_conversations": unread_count,
     "item_type": "none",
-    "session_id": "",
-    "name": "",
+    "session_id": "none",
+    "name": "No actionable work",
     "selected_work": {"tasks": [], "unread_conversations": [], "meta": {"tasks": 0, "unread_conversations": 0, "total": 0, "actionable": False}},
 }
 
