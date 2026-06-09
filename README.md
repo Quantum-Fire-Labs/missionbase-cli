@@ -126,6 +126,14 @@ missionbase-agent update
 
 `missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
+## Agent check helper
+
+`scripts/missionbase-agent-check` is the local fleet check script used by timers on agent hosts. It runs `missionbase-agent work`, exits when there is no actionable work, and otherwise selects exactly one actionable item for the Pi run.
+
+Selected direct tasks use Pi session id `missionbase-task-<task_id>`. Selected unread conversations use `missionbase-task-<task_id>` only when the conversation payload includes a task assigned to the current agent; otherwise they use `missionbase-conversation-<conversation_id>`. The script passes both `--session-id` and a descriptive `--name` to Pi.
+
+For clean conversation scoping, the Missionbase work payload should continue to include each unread conversation's stable conversation/feed id and, for task conversations, the task id plus assignees.
+
 ## Release flow
 
 Tag a release and push it:
