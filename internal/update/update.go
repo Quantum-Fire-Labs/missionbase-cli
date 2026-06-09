@@ -104,7 +104,15 @@ func Run(opts Options, args []string) error {
 func latestRelease(repo string) (release, error) {
 	url := "https://api.github.com/repos/" + repo + "/releases/latest"
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return release{}, err
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return release{}, err
 	}
@@ -138,7 +146,14 @@ func findAsset(assets []asset) (asset, error) {
 
 func download(url string) ([]byte, error) {
 	client := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -18,8 +18,13 @@ if [[ "$os" == "mingw"* || "$os" == "msys"* || "$os" == "cygwin"* ]]; then
   asset="missionbase-windows-${arch}.exe"
 fi
 
+curl_headers=()
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  curl_headers=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+fi
+
 api="https://api.github.com/repos/${REPO}/releases/latest"
-url="$(curl -fsSL "$api" | grep -oE '"browser_download_url": "[^"]+' | cut -d'"' -f4 | grep "/${asset}$" | head -n1)"
+url="$(curl -fsSL "${curl_headers[@]}" "$api" | grep -oE '"browser_download_url": "[^"]+' | cut -d'"' -f4 | grep "/${asset}$" | head -n1)"
 if [[ -z "$url" ]]; then
   echo "Could not find release asset: $asset" >&2
   exit 1
@@ -27,7 +32,7 @@ fi
 
 mkdir -p "$INSTALL_DIR"
 tmp="$(mktemp)"
-curl -fL "$url" -o "$tmp"
+curl -fL "${curl_headers[@]}" "$url" -o "$tmp"
 chmod +x "$tmp"
 mv "$tmp" "$BIN"
 
