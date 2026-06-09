@@ -1,5 +1,5 @@
 dist/
-missionbase
+/missionbase
 *.old
 *.new
 .DS_Store
