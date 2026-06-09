@@ -119,6 +119,8 @@ missionbase-agent use <agent-slug> [--base-url URL]
 missionbase-agent me
 missionbase-agent work
 missionbase-agent tasks
+missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>]
+missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>]
 missionbase-agent task feed <task-id> [--limit N]
 missionbase-agent task comments <task-id> [--limit N]
 missionbase-agent task participants list <task-id>

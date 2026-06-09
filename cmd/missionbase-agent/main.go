@@ -222,12 +222,18 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 }
 
 func task(args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention] OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
+	case "create":
+		return taskCreate(args[1:])
 	case "feed", "comments":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: missionbase-agent task %s <task-id> [--limit N]", args[0])
+		}
+
 		path := "/api/v1/tasks/" + url.PathEscape(args[1]) + "/comments"
 		path, err := appendLimit(path, args[2:])
 		if err != nil {
@@ -254,6 +260,113 @@ func task(args []string) error {
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
 	}
+}
+
+func taskCreate(args []string) error {
+	payload := map[string]string{}
+	var participantUsers []string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--description":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description requires a value")
+			}
+			payload["description"] = args[i+1]
+			i++
+		case "--box":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--box requires a value")
+			}
+			payload["box_id"] = args[i+1]
+			i++
+		case "--assign-agent":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--assign-agent requires a value")
+			}
+			payload["assign_to_agent_slug"] = args[i+1]
+			i++
+		case "--assign-user":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--assign-user requires a value")
+			}
+			userID, err := resolveUserID(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["assign_to_user_id"] = userID
+			i++
+		case "--participant-user":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--participant-user requires a value")
+			}
+			userID, err := resolveUserID(args[i+1])
+			if err != nil {
+				return err
+			}
+			participantUsers = append(participantUsers, userID)
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention]")
+			return nil
+		default:
+			return fmt.Errorf("unknown task create option %q", args[i])
+		}
+	}
+
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	if strings.TrimSpace(payload["box_id"]) == "" {
+		return fmt.Errorf("--box is required")
+	}
+	if payload["assign_to_agent_slug"] == "" && payload["assign_to_user_id"] == "" {
+		return fmt.Errorf("one of --assign-agent or --assign-user is required")
+	}
+	if payload["assign_to_agent_slug"] != "" && payload["assign_to_user_id"] != "" {
+		return fmt.Errorf("use only one of --assign-agent or --assign-user")
+	}
+
+	requestBody, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	responseBody, err := apiPostBody("/api/v1/tasks", requestBody)
+	if err != nil {
+		return err
+	}
+
+	if len(participantUsers) > 0 {
+		var response struct {
+			Task struct {
+				ID int `json:"id"`
+			} `json:"task"`
+		}
+		if err := json.Unmarshal(responseBody, &response); err != nil {
+			return err
+		}
+		if response.Task.ID == 0 {
+			return fmt.Errorf("created task response did not include task.id")
+		}
+		for _, userID := range participantUsers {
+			participantBody, err := json.Marshal(map[string]string{"user_id": userID})
+			if err != nil {
+				return err
+			}
+			if _, err := apiPostBody("/api/v1/tasks/"+strconv.Itoa(response.Task.ID)+"/participants", participantBody); err != nil {
+				return err
+			}
+		}
+	}
+
+	fmt.Println(string(responseBody))
+	return nil
 }
 
 func taskParticipantsAdd(taskID string, args []string) error {
@@ -427,6 +540,8 @@ Commands:
   me                                  Show the current agent
   work                                Show assigned tasks and unread conversations
   tasks                               Show assigned tasks
+  task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
+                                      Create a task and print the created task JSON
   task feed <task-id> [--limit N]     Show a task feed and comments
   task comments <task-id> [--limit N] Show a task feed and comments
   task participants list <task-id>    List task participants
