@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
@@ -45,6 +47,8 @@ func run(args []string) error {
 		return apiGet("/api/v1/agent/work")
 	case "tasks":
 		return apiGet("/api/v1/agent/tasks")
+	case "members":
+		return members(args[1:])
 	case "get":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent get /api/path")
@@ -121,6 +125,59 @@ func auth(args []string) error {
 	return nil
 }
 
+func members(args []string) error {
+	path := "/api/v1/agent/members"
+	filtered := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--box", "--group":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			path += "?box_id=" + args[i+1]
+			filtered = true
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent members [--box ID]")
+			return nil
+		default:
+			return fmt.Errorf("unknown members option %q", args[i])
+		}
+	}
+
+	body, err := apiGetBody(path)
+	if err == nil {
+		fmt.Println(string(body))
+		return nil
+	}
+	if filtered || !strings.Contains(err.Error(), "404") {
+		return err
+	}
+
+	// Backward-compatible fallback for Missionbase deployments that expose team
+	// members before the agent-specific members endpoint is available.
+	meBody, meErr := apiGetBody("/api/v1/agent/me")
+	if meErr != nil {
+		return err
+	}
+	var me struct {
+		Agent struct {
+			Team struct {
+				ID int `json:"id"`
+			} `json:"team"`
+		} `json:"agent"`
+	}
+	if jsonErr := json.Unmarshal(meBody, &me); jsonErr != nil || me.Agent.Team.ID == 0 {
+		return err
+	}
+	body, fallbackErr := apiGetBody(fmt.Sprintf("/api/v1/teams/%d/members", me.Agent.Team.ID))
+	if fallbackErr != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func useAgent(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: missionbase-agent use <agent-slug> [--base-url URL]")
@@ -143,20 +200,24 @@ func useAgent(args []string) error {
 }
 
 func apiGet(path string) error {
-	cfg, err := config.LoadAgent()
-	if err != nil {
-		return err
-	}
-	if cfg.AgentSlug == "" {
-		return fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
-	}
-	client := httpclient.New(cfg)
-	body, err := client.Get(path)
+	body, err := apiGetBody(path)
 	if err != nil {
 		return err
 	}
 	fmt.Println(string(body))
 	return nil
+}
+
+func apiGetBody(path string) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.AgentSlug == "" {
+		return nil, fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
+	}
+	client := httpclient.New(cfg)
+	return client.Get(path)
 }
 
 func printHelp() {
@@ -175,6 +236,7 @@ Commands:
   me                                  Show the current agent
   work                                Show assigned tasks and unread conversations
   tasks                               Show assigned tasks
+  members [--box ID]                  List group members and mention handles
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
