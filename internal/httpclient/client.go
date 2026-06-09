@@ -31,6 +31,9 @@ func (c Client) Get(path string) ([]byte, error) {
 	if c.cfg.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
 	}
+	if c.cfg.AgentSlug != "" {
+		req.Header.Set("X-Missionbase-Agent-Slug", c.cfg.AgentSlug)
+	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "missionbase-cli")
 
