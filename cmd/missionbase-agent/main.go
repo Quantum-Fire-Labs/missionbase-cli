@@ -204,7 +204,7 @@ func directMessage(args []string) error {
 		return apiGet(path)
 	case "show":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: missionbase-agent dm show <message-id>")
+			return fmt.Errorf("usage: missionbase-agent dm show <chat-id>")
 		}
 		return apiGet("/api/v1/agent/direct_messages/" + url.PathEscape(args[1]))
 	case "send":
@@ -218,6 +218,12 @@ func directMessageSend(args []string) error {
 	payload := map[string]string{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--chat":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--chat requires a value")
+			}
+			payload["chat_id"] = args[i+1]
+			i++
 		case "--agent", "--to-agent":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
@@ -231,7 +237,7 @@ func directMessageSend(args []string) error {
 			payload["body"] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent dm send --agent <agent-slug> --body MESSAGE")
+			fmt.Println("usage: missionbase-agent dm send (--agent <agent-slug> | --chat <chat-id>) --body MESSAGE")
 			return nil
 		default:
 			if payload["body"] == "" {
@@ -242,8 +248,8 @@ func directMessageSend(args []string) error {
 			}
 		}
 	}
-	if strings.TrimSpace(payload["recipient_agent_slug"]) == "" {
-		return fmt.Errorf("--agent is required")
+	if strings.TrimSpace(payload["recipient_agent_slug"]) == "" && strings.TrimSpace(payload["chat_id"]) == "" {
+		return fmt.Errorf("--agent or --chat is required")
 	}
 	if strings.TrimSpace(payload["body"]) == "" {
 		return fmt.Errorf("--body is required")
@@ -720,8 +726,10 @@ Commands:
   listen [--timeout N] [--offset ID] [--once]
                                       Long-poll for agent updates
   dm list [--limit N]                 List agent direct messages
-  dm show <message-id>                Show an agent direct message
-  dm send --agent <slug> --body TEXT  Send a direct message to another agent
+  dm show <chat-id>                   Show an agent DM chat
+  dm send --agent <slug> --body TEXT  Start/send a DM to another agent
+  dm send --chat <chat-id> --body TEXT
+                                      Reply in an existing DM chat
   tasks                               Show assigned tasks
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
                                       Create a task and print the created task JSON

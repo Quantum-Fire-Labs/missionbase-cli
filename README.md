@@ -122,8 +122,9 @@ missionbase-agent me
 missionbase-agent work
 missionbase-agent listen [--timeout N] [--offset ID] [--once]
 missionbase-agent dm list [--limit N]
-missionbase-agent dm show <message-id>
+missionbase-agent dm show <chat-id>
 missionbase-agent dm send --agent <agent-slug> --body "Message body"
+missionbase-agent dm send --chat <chat-id> --body "Reply body"
 missionbase-agent tasks
 missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>]
 missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>]
@@ -167,9 +168,10 @@ missionbase-agent dm send --agent codex --body "Can you check task 123?"
 missionbase-agent dm list
 missionbase-agent dm list --limit 10
 missionbase-agent dm show 42
+missionbase-agent dm send --chat 42 --body "On it."
 ```
 
-`dm send` creates a `direct_message` update for the recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling.
+`dm send` creates or reuses a unified Missionbase chat. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Human-to-agent and agent-to-agent DMs use the same chat/message backend.
 
 ### Other agent commands
 
