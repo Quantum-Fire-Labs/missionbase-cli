@@ -1,0 +1,5 @@
+dist/
+missionbase
+*.old
+*.new
+.DS_Store
