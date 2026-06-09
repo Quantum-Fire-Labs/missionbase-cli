@@ -20,14 +20,16 @@ jobs:
         run: |
           set -eux
           mkdir -p dist
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-            os="${target%/*}"
-            arch="${target#*/}"
-            GOOS="$os" GOARCH="$arch" go build \
-              -ldflags "-s -w -X main.Version=${GITHUB_REF_NAME} -X main.Commit=${GITHUB_SHA}" \
-              -o "dist/missionbase-${os}-${arch}" ./cmd/missionbase
+          for bin in missionbase missionbase-agent; do
+            for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+              os="${target%/*}"
+              arch="${target#*/}"
+              GOOS="$os" GOARCH="$arch" go build \
+                -ldflags "-s -w -X main.Version=${GITHUB_REF_NAME} -X main.Commit=${GITHUB_SHA}" \
+                -o "dist/${bin}-${os}-${arch}" ./cmd/${bin}
+            done
           done
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/missionbase-*
+          files: dist/*

@@ -15,6 +15,7 @@ import (
 type Options struct {
 	CurrentVersion string
 	Repo           string
+	BinaryName     string
 }
 
 type release struct {
@@ -61,7 +62,11 @@ func Run(opts Options, args []string) error {
 		return nil
 	}
 
-	asset, err := findAsset(rel.Assets)
+	binaryName := opts.BinaryName
+	if binaryName == "" {
+		binaryName = "missionbase"
+	}
+	asset, err := findAsset(rel.Assets, binaryName)
 	if err != nil {
 		return err
 	}
@@ -97,7 +102,7 @@ func Run(opts Options, args []string) error {
 	}
 	_ = os.Remove(backup)
 
-	fmt.Printf("Updated missionbase to %s\n", rel.TagName)
+	fmt.Printf("Updated %s to %s\n", binaryName, rel.TagName)
 	return nil
 }
 
@@ -131,8 +136,8 @@ func latestRelease(repo string) (release, error) {
 	return rel, nil
 }
 
-func findAsset(assets []asset) (asset, error) {
-	want := fmt.Sprintf("missionbase-%s-%s", runtime.GOOS, runtime.GOARCH)
+func findAsset(assets []asset, binaryName string) (asset, error) {
+	want := fmt.Sprintf("%s-%s-%s", binaryName, runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
 		want += ".exe"
 	}

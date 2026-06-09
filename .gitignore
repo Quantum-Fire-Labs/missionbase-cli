@@ -1,5 +1,6 @@
 dist/
 /missionbase
+/missionbase-agent
 *.old
 *.new
 .DS_Store

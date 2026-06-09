@@ -35,19 +35,10 @@ func run(args []string) error {
 	case "version", "--version", "-v":
 		fmt.Printf("Missionbase CLI %s\nCommit: %s\n", Version, Commit)
 	case "update":
-		return update.Run(update.Options{CurrentVersion: Version, Repo: Repo}, args[1:])
+		return update.Run(update.Options{CurrentVersion: Version, Repo: Repo, BinaryName: "missionbase"}, args[1:])
 	case "auth":
 		return auth(args[1:])
-	case "agent":
-		return agent(args[1:])
 	case "me":
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		if cfg.AgentSlug != "" {
-			return apiGet("/api/v1/agent/me")
-		}
 		return apiGetFirst([]string{"/api/v1/users/me", "/api/v1/agent/me"})
 	case "get":
 		if len(args) < 2 {
@@ -63,13 +54,13 @@ func run(args []string) error {
 
 func auth(args []string) error {
 	if len(args) == 0 {
-		fmt.Println("usage: missionbase auth <status|set-token|set-agent|clear-agent>")
+		fmt.Println("usage: missionbase auth <status|set-token>")
 		return nil
 	}
 
 	switch args[0] {
 	case "status":
-		cfg, err := config.Load()
+		cfg, err := config.LoadUser()
 		if err != nil {
 			return err
 		}
@@ -77,16 +68,12 @@ func auth(args []string) error {
 			fmt.Println("Not authenticated")
 			return nil
 		}
-		fmt.Printf("Authenticated\nBase URL: %s\n", cfg.BaseURL)
-		if cfg.AgentSlug != "" {
-			fmt.Printf("Agent slug: %s\n", cfg.AgentSlug)
-		}
-		fmt.Printf("Credentials: %s\n", config.CredentialsPath())
+		fmt.Printf("Authenticated\nBase URL: %s\nCredentials: %s\n", cfg.BaseURL, config.CredentialsPath("missionbase"))
 	case "set-token":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase auth set-token <token> [--base-url URL]")
 		}
-		cfg, err := config.Load()
+		cfg, err := config.LoadUser()
 		if err != nil {
 			return err
 		}
@@ -97,33 +84,10 @@ func auth(args []string) error {
 				i++
 			}
 		}
-		if err := config.Save(cfg); err != nil {
+		if err := config.SaveUser(cfg); err != nil {
 			return err
 		}
-		fmt.Printf("Saved credentials to %s\n", config.CredentialsPath())
-	case "set-agent":
-		if len(args) < 2 {
-			return fmt.Errorf("usage: missionbase auth set-agent <agent-slug>")
-		}
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		cfg.AgentSlug = args[1]
-		if err := config.Save(cfg); err != nil {
-			return err
-		}
-		fmt.Printf("Saved agent slug %q to %s\n", cfg.AgentSlug, config.CredentialsPath())
-	case "clear-agent":
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
-		cfg.AgentSlug = ""
-		if err := config.Save(cfg); err != nil {
-			return err
-		}
-		fmt.Printf("Cleared agent slug in %s\n", config.CredentialsPath())
+		fmt.Printf("Saved credentials to %s\n", config.CredentialsPath("missionbase"))
 	default:
 		return fmt.Errorf("unknown auth command %q", args[0])
 	}
@@ -131,26 +95,8 @@ func auth(args []string) error {
 	return nil
 }
 
-func agent(args []string) error {
-	if len(args) == 0 {
-		fmt.Println("usage: missionbase agent <me|work|tasks>")
-		return nil
-	}
-
-	switch args[0] {
-	case "me":
-		return apiGet("/api/v1/agent/me")
-	case "work":
-		return apiGet("/api/v1/agent/work")
-	case "tasks":
-		return apiGet("/api/v1/agent/tasks")
-	default:
-		return fmt.Errorf("unknown agent command %q", args[0])
-	}
-}
-
 func apiGet(path string) error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadUser()
 	if err != nil {
 		return err
 	}
@@ -181,22 +127,20 @@ func apiGetFirst(paths []string) error {
 func printHelp() {
 	fmt.Println(`Missionbase CLI
 
+User-acting Missionbase command-line client.
+
 Usage:
   missionbase <command> [args]
 
 Commands:
   auth status                         Show auth status
   auth set-token <token> [--base-url URL]
-                                      Save an API token
-  auth set-agent <agent-slug>         Act as an agent for team API keys
-  auth clear-agent                    Stop acting as an agent
-  agent me                            Show the current agent
-  agent work                          Show assigned tasks and unread conversations
-  agent tasks                         Show assigned tasks
-  me                                  Show the current user/agent
+                                      Save a personal/user API token
+  me                                  Show the current user
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
 
+For agent acting, use missionbase-agent.
 Default base URL: https://dash.missionbase.app`)
 }
