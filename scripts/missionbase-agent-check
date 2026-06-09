@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: missionbase-agent-check [--dry-run]
+
+Checks missionbase-agent work. If work is actionable, selects one actionable item
+and invokes pi with a stable Missionbase-scoped session id.
+
+The script itself performs a single check; timers or manual callers can run it repeatedly.
+
+Run as the Linux agent user from the directory where the agent should operate, e.g.:
+  sudo -u agent-missionbase-dev bash -lc 'cd ~/missionbase && missionbase-agent-check --dry-run'
+  sudo -u agent-missionbase-dev bash -lc 'cd ~/missionbase && missionbase-agent-check'
+EOF
+}
+
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run|--check-only)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+STATE_DIR="${MISSIONBASE_AGENT_STATE_DIR:-$HOME/.missionbase-agent}"
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+
+LOCK_FILE="$STATE_DIR/run.lock"
+PROMPT_FILE="$STATE_DIR/last-prompt.md"
+LOG_FILE="$STATE_DIR/run.log"
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "missionbase-agent-check: another run is already active; exiting"
+  exit 0
+fi
+
+WORK_JSON="$(missionbase-agent work)"
+AGENT_JSON="$(missionbase-agent me)"
+
+SELECTION_JSON="$(WORK_JSON="$WORK_JSON" AGENT_JSON="$AGENT_JSON" python3 - <<'PY'
+import json
+import os
+import re
+
+work = json.loads(os.environ["WORK_JSON"])
+agent_payload = json.loads(os.environ["AGENT_JSON"])
+agent = agent_payload.get("agent") or agent_payload
+agent_id = agent.get("id")
+agent_slug = agent.get("slug")
+
+meta = work.get("meta") or {}
+tasks = work.get("tasks") or []
+conversations = work.get("unread_conversations") or work.get("conversations") or []
+total = int(meta.get("total") or (len(tasks) + len(conversations)))
+task_count = int(meta.get("tasks") or len(tasks))
+unread_count = int(meta.get("unread_conversations") or len(conversations))
+actionable = bool(meta.get("actionable", total > 0)) and total > 0
+
+assigned_task_ids = {task.get("id") for task in tasks if task.get("id") is not None}
+
+def task_assigned_to_current_agent(task):
+    if not isinstance(task, dict):
+        return False
+    if task.get("id") in assigned_task_ids:
+        return True
+    for assignee in task.get("assignees") or []:
+        if not isinstance(assignee, dict):
+            continue
+        if assignee.get("type") == "Agent":
+            if agent_id is not None and assignee.get("id") == agent_id:
+                return True
+            if agent_slug and assignee.get("slug") == agent_slug:
+                return True
+    return False
+
+def clean_name(value):
+    value = re.sub(r"\s+", " ", str(value or "")).strip()
+    return value[:97] + "..." if len(value) > 100 else value
+
+def conversation_id(conversation):
+    for key in ("id", "conversation_id", "feed_id", "participant_id"):
+        value = conversation.get(key)
+        if value is not None:
+            return value
+    return None
+
+selection = {
+    "actionable": actionable,
+    "total": total,
+    "tasks": task_count,
+    "unread_conversations": unread_count,
+    "item_type": "none",
+    "session_id": "",
+    "name": "",
+    "selected_work": {"tasks": [], "unread_conversations": [], "meta": {"tasks": 0, "unread_conversations": 0, "total": 0, "actionable": False}},
+}
+
+if actionable:
+    if tasks:
+        task = tasks[0]
+        task_id = task.get("id")
+        selection.update({
+            "item_type": "task",
+            "session_id": f"missionbase-task-{task_id}",
+            "name": clean_name(f"Missionbase task #{task_id}: {task.get('title') or 'assigned task'}"),
+            "selected_work": {"tasks": [task], "unread_conversations": [], "meta": {"tasks": 1, "unread_conversations": 0, "total": 1, "actionable": True}},
+        })
+    elif conversations:
+        conversation = conversations[0]
+        task = conversation.get("task") if isinstance(conversation.get("task"), dict) else None
+        task_id = task.get("id") if task else (conversation.get("feedable_id") if conversation.get("feedable_type") == "Task" else None)
+        conv_id = conversation_id(conversation)
+        if task_id is not None and task_assigned_to_current_agent(task or {"id": task_id}):
+            session_id = f"missionbase-task-{task_id}"
+            name = clean_name(f"Missionbase task #{task_id} conversation: {conversation.get('title') or (task or {}).get('title') or 'unread conversation'}")
+        else:
+            session_id = f"missionbase-conversation-{conv_id}"
+            name = clean_name(f"Missionbase conversation #{conv_id}: {conversation.get('title') or 'unread conversation'}")
+        selection.update({
+            "item_type": "conversation",
+            "session_id": session_id,
+            "name": name,
+            "selected_work": {"tasks": [], "unread_conversations": [conversation], "meta": {"tasks": 0, "unread_conversations": 1, "total": 1, "actionable": True}},
+        })
+
+print(json.dumps(selection, separators=(",", ":")))
+PY
+)"
+
+read -r ACTIONABLE TOTAL TASKS UNREAD ITEM_TYPE SESSION_ID SESSION_NAME < <(printf '%s' "$SELECTION_JSON" | python3 -c 'import json, sys
+selection = json.load(sys.stdin)
+print(str(selection["actionable"]).lower(), selection["total"], selection["tasks"], selection["unread_conversations"], selection["item_type"], selection["session_id"], json.dumps(selection["name"]))')
+SESSION_NAME="$(python3 -c 'import json, sys; print(json.loads(sys.argv[1]))' "$SESSION_NAME")"
+
+if [[ "$ACTIONABLE" != "true" ]]; then
+  echo "missionbase-agent-check: no actionable work (total=$TOTAL tasks=$TASKS unread_conversations=$UNREAD)"
+  exit 0
+fi
+
+if [[ -z "$SESSION_ID" || "$SESSION_ID" == "missionbase-conversation-None" ]]; then
+  echo "missionbase-agent-check: selected actionable $ITEM_TYPE but could not derive a stable session id" >&2
+  exit 1
+fi
+
+echo "missionbase-agent-check: actionable work found (total=$TOTAL tasks=$TASKS unread_conversations=$UNREAD); selected $ITEM_TYPE session_id=$SESSION_ID name=$SESSION_NAME"
+
+if [[ "$DRY_RUN" == "1" ]]; then
+  echo "missionbase-agent-check: dry run; not invoking pi"
+  exit 0
+fi
+
+cat > "$PROMPT_FILE" <<'EOF'
+You are being invoked because Missionbase reports actionable work for this agent.
+
+Follow your global and project instructions.
+
+Use `missionbase-agent work` to inspect assigned tasks and unread conversations. Handle only the selected actionable work item for this run. If the work is ambiguous, blocked, risky, or missing context, comment in Missionbase and @mention @DanielLemky as instructed.
+
+When completing development work, create a branch, commit the changes, push the branch, and comment on the Missionbase task with a concise report including the branch name, changes made, and commit id.
+
+Selected work payload for this Pi session:
+
+```json
+EOF
+printf '%s' "$SELECTION_JSON" | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["selected_work"], indent=2))' >> "$PROMPT_FILE"
+printf '```\n' >> "$PROMPT_FILE"
+chmod 600 "$PROMPT_FILE"
+
+{
+  echo "--- $(date -Is) invoking pi in $(pwd) session_id=$SESSION_ID name=$SESSION_NAME ---"
+  pi -a -p --session-id "$SESSION_ID" --name "$SESSION_NAME" "@$PROMPT_FILE"
+  echo "--- $(date -Is) pi completed session_id=$SESSION_ID ---"
+} 2>&1 | tee -a "$LOG_FILE"
