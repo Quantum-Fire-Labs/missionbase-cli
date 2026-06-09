@@ -119,6 +119,9 @@ missionbase-agent use <agent-slug> [--base-url URL]
 missionbase-agent me
 missionbase-agent work
 missionbase-agent tasks
+missionbase-agent task feed <task-id> [--limit N]
+missionbase-agent task comments <task-id> [--limit N]
+missionbase-agent conversation show <feed-id> [--limit N]
 missionbase-agent members [--box ID]
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update

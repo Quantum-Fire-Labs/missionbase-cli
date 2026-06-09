@@ -47,6 +47,10 @@ func run(args []string) error {
 		return apiGet("/api/v1/agent/work")
 	case "tasks":
 		return apiGet("/api/v1/agent/tasks")
+	case "task":
+		return task(args[1:])
+	case "conversation":
+		return conversation(args[1:])
 	case "members":
 		return members(args[1:])
 	case "get":
@@ -123,6 +127,52 @@ func auth(args []string) error {
 	}
 
 	return nil
+}
+
+func task(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent task <feed|comments> <task-id> [--limit N]")
+	}
+	command := args[0]
+	if command != "feed" && command != "comments" {
+		return fmt.Errorf("unknown task command %q", command)
+	}
+	path := "/api/v1/tasks/" + args[1] + "/comments"
+	path, err := appendLimit(path, args[2:])
+	if err != nil {
+		return err
+	}
+	return apiGet(path)
+}
+
+func conversation(args []string) error {
+	if len(args) < 2 || args[0] != "show" {
+		return fmt.Errorf("usage: missionbase-agent conversation show <feed-id> [--limit N]")
+	}
+	path := "/api/v1/conversations/" + args[1]
+	path, err := appendLimit(path, args[2:])
+	if err != nil {
+		return err
+	}
+	return apiGet(path)
+}
+
+func appendLimit(path string, args []string) (string, error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--limit":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("--limit requires a value")
+			}
+			path += "?limit=" + args[i+1]
+			i++
+		case "--help", "-h":
+			return "", fmt.Errorf("usage includes optional [--limit N]")
+		default:
+			return "", fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	return path, nil
 }
 
 func members(args []string) error {
@@ -236,6 +286,10 @@ Commands:
   me                                  Show the current agent
   work                                Show assigned tasks and unread conversations
   tasks                               Show assigned tasks
+  task feed <task-id> [--limit N]     Show a task feed and comments
+  task comments <task-id> [--limit N] Show a task feed and comments
+  conversation show <feed-id> [--limit N]
+                                      Show a conversation/feed
   members [--box ID]                  List group members and mention handles
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
