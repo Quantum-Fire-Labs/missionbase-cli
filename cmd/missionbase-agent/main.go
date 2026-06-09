@@ -55,6 +55,8 @@ func run(args []string) error {
 		return conversation(args[1:])
 	case "members":
 		return members(args[1:])
+	case "boxes":
+		return boxes(args[1:])
 	case "get":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent get /api/path")
@@ -139,6 +141,59 @@ func conversation(args []string) error {
 	path, err := appendLimit(path, args[2:])
 	if err != nil {
 		return err
+	}
+	return apiGet(path)
+}
+
+func boxes(args []string) error {
+	if len(args) == 0 {
+		fmt.Println("usage: missionbase-agent boxes <tasks>")
+		return nil
+	}
+
+	switch args[0] {
+	case "tasks":
+		return boxTasks(args[1:])
+	default:
+		return fmt.Errorf("unknown boxes command %q", args[0])
+	}
+}
+
+func boxTasks(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS] [--page N] [--per-page N]")
+	}
+
+	boxID := args[0]
+	values := url.Values{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--status":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--status requires a value")
+			}
+			values.Set("status", args[i+1])
+			i++
+		case "--page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--page requires a value")
+			}
+			values.Set("page", args[i+1])
+			i++
+		case "--per-page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--per-page requires a value")
+			}
+			values.Set("per_page", args[i+1])
+			i++
+		default:
+			return fmt.Errorf("unknown boxes tasks option %q", args[i])
+		}
+	}
+
+	path := "/api/v1/boxes/" + url.PathEscape(boxID) + "/tasks"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
 	}
 	return apiGet(path)
 }
@@ -552,6 +607,8 @@ Commands:
   conversation show <feed-id> [--limit N]
                                       Show a conversation/feed
   members [--box ID]                  List group members and mention handles
+  boxes tasks <box-id>                Show tasks in an accessible box
+      [--status STATUS] [--page N] [--per-page N]
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
