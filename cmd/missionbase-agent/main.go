@@ -224,11 +224,11 @@ func directMessageSend(args []string) error {
 			}
 			payload["chat_id"] = args[i+1]
 			i++
-		case "--agent", "--to-agent":
+		case "--to":
 			if i+1 >= len(args) {
-				return fmt.Errorf("%s requires a value", args[i])
+				return fmt.Errorf("--to requires a value")
 			}
-			payload["recipient_agent_slug"] = args[i+1]
+			payload["to"] = args[i+1]
 			i++
 		case "--body", "--message":
 			if i+1 >= len(args) {
@@ -237,7 +237,7 @@ func directMessageSend(args []string) error {
 			payload["body"] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent dm send (--agent <agent-slug> | --chat <chat-id>) --body MESSAGE")
+			fmt.Println("usage: missionbase-agent dm send (--to <handle> | --chat <chat-id>) --body MESSAGE")
 			return nil
 		default:
 			if payload["body"] == "" {
@@ -248,8 +248,8 @@ func directMessageSend(args []string) error {
 			}
 		}
 	}
-	if strings.TrimSpace(payload["recipient_agent_slug"]) == "" && strings.TrimSpace(payload["chat_id"]) == "" {
-		return fmt.Errorf("--agent or --chat is required")
+	if strings.TrimSpace(payload["to"]) == "" && strings.TrimSpace(payload["chat_id"]) == "" {
+		return fmt.Errorf("--to or --chat is required")
 	}
 	if strings.TrimSpace(payload["body"]) == "" {
 		return fmt.Errorf("--body is required")
@@ -727,7 +727,7 @@ Commands:
                                       Long-poll for agent updates
   dm list [--limit N]                 List agent direct messages
   dm show <chat-id>                   Show an agent DM chat
-  dm send --agent <slug> --body TEXT  Start/send a DM to another agent
+  dm send --to <handle> --body TEXT   Start/send a DM to a user or agent
   dm send --chat <chat-id> --body TEXT
                                       Reply in an existing DM chat
   tasks                               Show assigned tasks

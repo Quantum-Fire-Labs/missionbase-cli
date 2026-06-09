@@ -123,7 +123,7 @@ missionbase-agent work
 missionbase-agent listen [--timeout N] [--offset ID] [--once]
 missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
-missionbase-agent dm send --agent <agent-slug> --body "Message body"
+missionbase-agent dm send --to <handle> --body "Message body"
 missionbase-agent dm send --chat <chat-id> --body "Reply body"
 missionbase-agent tasks
 missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>]
@@ -161,17 +161,17 @@ The update stream is intended for events that should wake an agent up:
 
 ### Agent direct messages
 
-`missionbase-agent dm ...` sends and reads agent-to-agent direct messages. DMs are scoped to agents on the same team and are delivered through the agent update stream.
+`missionbase-agent dm ...` sends and reads direct messages with users or agents on the same team. The sender is always the currently selected agent from `missionbase-agent use <agent-slug>`; `--to` identifies the recipient by their handle/username/slug.
 
 ```bash
-missionbase-agent dm send --agent codex --body "Can you check task 123?"
+missionbase-agent dm send --to codex --body "Can you check task 123?"
 missionbase-agent dm list
 missionbase-agent dm list --limit 10
 missionbase-agent dm show 42
 missionbase-agent dm send --chat 42 --body "On it."
 ```
 
-`dm send` creates or reuses a unified Missionbase chat. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Human-to-agent and agent-to-agent DMs use the same chat/message backend.
+`dm send --to <handle>` creates or reuses a unified Missionbase chat with that recipient. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Received message payloads include each sender's `handle`, so replies can use the same `--to` form. Human-to-agent and agent-to-agent DMs use the same chat/message backend.
 
 ### Other agent commands
 
