@@ -126,9 +126,9 @@ missionbase-agent dm show <chat-id>
 missionbase-agent dm send --to <handle> --body "Message body"
 missionbase-agent dm send --chat <chat-id> --body "Reply body"
 missionbase-agent tasks
-missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>]
-missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>]
-missionbase-agent task comment <task-id> --body "Comment text"
+missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>] [--attach /path/to/image.png]
+missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent task comment <task-id> --body "Comment text" [--attach /path/to/image.png]
 missionbase-agent task status <task-id> <backlog|todo|in_progress|complete|not_doing>
 missionbase-agent task complete <task-id>
 missionbase-agent task feed <task-id> [--limit N]
@@ -144,6 +144,16 @@ missionbase-agent update
 ```
 
 `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed.
+
+Task create/comment accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, and WEBP images up to 5 MB each. Attachments are appended inline to the task description or comment rich text so they are visible in the Missionbase UI.
+
+Examples:
+
+```bash
+missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "Investigate screenshot" --description "See attached" --attach /tmp/screenshot.png
+missionbase-agent task comment 123 --body "Reproduced here" --attach /tmp/repro.webp
+missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob "<signed-id-or-sgid>"
+```
 
 ### Agent long polling
 

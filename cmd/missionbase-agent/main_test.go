@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,6 +75,91 @@ func TestTaskCommentRejectsBlankBody(t *testing.T) {
 	if err := run([]string{"task", "comment", "123", "--body", "   "}); err == nil {
 		t.Fatal("expected blank comment body error")
 	}
+}
+
+func TestTaskCommentPostsMultipartAttachment(t *testing.T) {
+	attachment := writePNG(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "multipart/form-data;") {
+			t.Fatalf("content-type = %q, want multipart/form-data", got)
+		}
+		if err := r.ParseMultipartForm(6 * 1024 * 1024); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if got := r.FormValue("comment"); got != "See screenshot" {
+			t.Fatalf("comment = %q, want See screenshot", got)
+		}
+		files := r.MultipartForm.File["attachments[]"]
+		if len(files) != 1 {
+			t.Fatalf("attachments count = %d, want 1", len(files))
+		}
+		if files[0].Filename != filepath.Base(attachment) {
+			t.Fatalf("filename = %q", files[0].Filename)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"comment":{"id":323}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "comment", "123", "--body", "See screenshot", "--attach", attachment}); err != nil {
+		t.Fatalf("run task comment with attachment: %v", err)
+	}
+}
+
+func TestTaskCreatePostsMultipartAttachmentAndBlob(t *testing.T) {
+	attachment := writePNG(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/tasks" {
+			t.Fatalf("path = %s, want /api/v1/tasks", r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(6 * 1024 * 1024); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if got := r.FormValue("title"); got != "With attachment" {
+			t.Fatalf("title = %q", got)
+		}
+		if got := r.MultipartForm.Value["attachment_blobs[]"]; len(got) != 1 || got[0] != "signed123" {
+			t.Fatalf("attachment_blobs = %#v", got)
+		}
+		if len(r.MultipartForm.File["attachments[]"]) != 1 {
+			t.Fatalf("attachments count = %d, want 1", len(r.MultipartForm.File["attachments[]"]))
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"task":{"id":987}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "create", "--title", "With attachment", "--box", "2", "--assign-agent", "missionbase-dev", "--attach", attachment, "--attach-blob", "signed123"}); err != nil {
+		t.Fatalf("run task create with attachment: %v", err)
+	}
+}
+
+func TestAttachmentRejectsUnsupportedType(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(path, []byte("plain text"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"task", "comment", "123", "--attach", path}); err == nil || !strings.Contains(err.Error(), "unsupported attachment type") {
+		t.Fatalf("err = %v, want unsupported attachment type", err)
+	}
+}
+
+func writePNG(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "screenshot.png")
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0, 'I', 'E', 'N', 'D'}
+	if err := os.WriteFile(path, png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, file)
+	_ = file.Close()
+	return path
 }
 
 func setAgentEnv(t *testing.T, baseURL string) {

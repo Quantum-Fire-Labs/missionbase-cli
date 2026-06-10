@@ -31,11 +31,23 @@ func (c Client) Post(path string, body []byte) ([]byte, error) {
 	return c.Do(http.MethodPost, path, body)
 }
 
+func (c Client) PostWithContentType(path string, body []byte, contentType string) ([]byte, error) {
+	return c.do(http.MethodPost, path, body, contentType)
+}
+
 func (c Client) Patch(path string, body []byte) ([]byte, error) {
 	return c.Do(http.MethodPatch, path, body)
 }
 
 func (c Client) Do(method, path string, body []byte) ([]byte, error) {
+	contentType := ""
+	if body != nil {
+		contentType = "application/json"
+	}
+	return c.do(method, path, body, contentType)
+}
+
+func (c Client) do(method, path string, body []byte, contentType string) ([]byte, error) {
 	url := strings.TrimRight(c.cfg.BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
 	req, err := http.NewRequest(method, url, bytes.NewReader(body))
 	if err != nil {
@@ -48,8 +60,8 @@ func (c Client) Do(method, path string, body []byte) ([]byte, error) {
 		req.Header.Set("X-Missionbase-Agent-Slug", c.cfg.AgentSlug)
 	}
 	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	req.Header.Set("User-Agent", "missionbase-cli")
 

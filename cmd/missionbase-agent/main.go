@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -407,7 +413,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention] OR missionbase-agent task comment <task-id> --body TEXT OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -454,10 +460,11 @@ func task(args []string) error {
 
 func taskComment(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent task comment <task-id> --body TEXT")
+		return fmt.Errorf("usage: missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
 	taskID := args[0]
 	payload := map[string]string{}
+	var attaches, blobs []string
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -467,16 +474,31 @@ func taskComment(args []string) error {
 			}
 			payload["comment"] = args[i+1]
 			i++
+		case "--attach":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach requires a file path")
+			}
+			attaches = append(attaches, args[i+1])
+			i++
+		case "--attach-blob":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach-blob requires a signed_id or sgid")
+			}
+			blobs = append(blobs, args[i+1])
+			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task comment <task-id> --body TEXT")
+			fmt.Println("usage: missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task comment option %q", args[i])
 		}
 	}
 
-	if strings.TrimSpace(payload["comment"]) == "" {
-		return fmt.Errorf("--body is required")
+	if strings.TrimSpace(payload["comment"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
+		return fmt.Errorf("--body or at least one attachment is required")
+	}
+	if len(attaches) > 0 || len(blobs) > 0 {
+		return apiPostMultipart("/api/v1/tasks/"+url.PathEscape(taskID)+"/comments", payload, attaches, blobs)
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -523,6 +545,7 @@ func taskComplete(args []string) error {
 func taskCreate(args []string) error {
 	payload := map[string]string{}
 	var participantUsers []string
+	var attaches, blobs []string
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -570,8 +593,20 @@ func taskCreate(args []string) error {
 			}
 			participantUsers = append(participantUsers, userID)
 			i++
+		case "--attach":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach requires a file path")
+			}
+			attaches = append(attaches, args[i+1])
+			i++
+		case "--attach-blob":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach-blob requires a signed_id or sgid")
+			}
+			blobs = append(blobs, args[i+1])
+			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention]")
+			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -591,11 +626,18 @@ func taskCreate(args []string) error {
 		return fmt.Errorf("use only one of --assign-agent or --assign-user")
 	}
 
-	requestBody, err := json.Marshal(payload)
-	if err != nil {
-		return err
+	var responseBody []byte
+	var err error
+	if len(attaches) > 0 || len(blobs) > 0 {
+		responseBody, err = apiPostMultipartBody("/api/v1/tasks", payload, attaches, blobs)
+	} else {
+		var requestBody []byte
+		requestBody, err = json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		responseBody, err = apiPostBody("/api/v1/tasks", requestBody)
 	}
-	responseBody, err := apiPostBody("/api/v1/tasks", requestBody)
 	if err != nil {
 		return err
 	}
@@ -749,6 +791,94 @@ func apiPost(path string, requestBody []byte) error {
 	return nil
 }
 
+func apiPostMultipart(path string, fields map[string]string, attaches []string, blobs []string) error {
+	body, err := apiPostMultipartBody(path, fields, attaches, blobs)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
+func apiPostMultipartBody(path string, fields map[string]string, attaches []string, blobs []string) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return nil, err
+		}
+	}
+	for _, blob := range blobs {
+		if strings.TrimSpace(blob) == "" {
+			return nil, fmt.Errorf("--attach-blob requires a non-empty signed_id or sgid")
+		}
+		if err := writer.WriteField("attachment_blobs[]", blob); err != nil {
+			return nil, err
+		}
+	}
+	for _, path := range attaches {
+		if err := addMultipartAttachment(writer, path); err != nil {
+			return nil, err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return apiPostBodyWithContentType(path, buf.Bytes(), writer.FormDataContentType())
+}
+
+func addMultipartAttachment(writer *multipart.Writer, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open attachment %q: %w", path, err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat attachment %q: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("attachment %q is a directory", path)
+	}
+	if info.Size() > 5*1024*1024 {
+		return fmt.Errorf("attachment %q is too large (max 5 MB)", path)
+	}
+	peek := make([]byte, 512)
+	n, err := file.Read(peek)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("read attachment %q: %w", path, err)
+	}
+	contentType := http.DetectContentType(peek[:n])
+	if !allowedAttachmentContentType(contentType) {
+		return fmt.Errorf("unsupported attachment type %q for %q (allowed: PNG, JPEG, GIF, WEBP)", contentType, path)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="attachments[]"; filename="%s"`, escapeQuotes(filepath.Base(path))))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, file)
+	return err
+}
+
+func allowedAttachmentContentType(contentType string) bool {
+	switch contentType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+		return true
+	default:
+		return false
+	}
+}
+
+func escapeQuotes(value string) string {
+	return strings.ReplaceAll(value, `"`, `\\"`)
+}
+
 func apiPatch(path string, requestBody []byte) error {
 	body, err := apiPatchBody(path, requestBody)
 	if err != nil {
@@ -768,6 +898,10 @@ func apiGet(path string) error {
 }
 
 func apiPostBody(path string, requestBody []byte) ([]byte, error) {
+	return apiPostBodyWithContentType(path, requestBody, "application/json")
+}
+
+func apiPostBodyWithContentType(path string, requestBody []byte, contentType string) ([]byte, error) {
 	cfg, err := config.LoadAgent()
 	if err != nil {
 		return nil, err
@@ -776,7 +910,7 @@ func apiPostBody(path string, requestBody []byte) ([]byte, error) {
 		return nil, fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
 	}
 	client := httpclient.New(cfg)
-	return client.Post(path, requestBody)
+	return client.PostWithContentType(path, requestBody, contentType)
 }
 
 func apiPatchBody(path string, requestBody []byte) ([]byte, error) {
@@ -827,8 +961,11 @@ Commands:
                                       Reply in an existing DM chat
   tasks                               Show assigned tasks
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
+      [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
-  task comment <task-id> --body TEXT  Post a comment to a task conversation/feed
+  task comment <task-id> --body TEXT [--attach PATH]
+      [--attach-blob SIGNED_ID_OR_SGID]
+                                      Post a comment to a task conversation/feed
   task status <task-id> <status>      Set status: backlog, todo, in_progress, complete, not_doing
   task complete <task-id>             Mark a task complete
   task feed <task-id> [--limit N]     Show a task feed and comments
