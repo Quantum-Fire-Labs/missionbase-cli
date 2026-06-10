@@ -126,6 +126,7 @@ missionbase-agent dm show <chat-id>
 missionbase-agent dm send --to <handle> --body "Message body"
 missionbase-agent dm send --chat <chat-id> --body "Reply body"
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--description "Handles fleet tasks"]
+missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
 missionbase-agent tasks
 missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>] [--attach /path/to/image.png]
@@ -173,13 +174,16 @@ missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob 
 
 `missionbase-agent agent boxes add ...` adds an agent to one or more boxes and prints JSON with the agent and membership status (`created` or `existing`) for each box. It requires `agents:update` and `boxes:update` permissions.
 
+`missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and box membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks (`backlog`, `todo`, or `in_progress`), so hand off or close that work first.
+
 ```bash
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --description "Handles fleet tasks"
 missionbase-agent agent boxes add fleet-worker --box 2
 missionbase-agent agent boxes add 42 --box 2 --box 7
+missionbase-agent agent archive fleet-worker --yes
 ```
 
-These management commands use the authenticated team token and do not require a selected agent slug, so they can be used during initial fleet bootstrap.
+These management commands use the authenticated team token and do not require a selected agent slug, so they can be used during initial fleet bootstrap and cleanup.
 
 ### Agent long polling
 

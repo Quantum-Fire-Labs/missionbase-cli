@@ -272,12 +272,14 @@ func directMessageSend(args []string) error {
 
 func agent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent <create|boxes>")
+		return fmt.Errorf("usage: missionbase-agent agent <create|archive|delete|boxes>")
 	}
 
 	switch args[0] {
 	case "create":
 		return agentCreate(args[1:])
+	case "archive", "delete", "deactivate":
+		return agentArchive(args[1:])
 	case "boxes":
 		return agentBoxes(args[1:])
 	default:
@@ -327,6 +329,33 @@ func agentCreate(args []string) error {
 		return err
 	}
 	return apiPostAllowNoAgent("/api/v1/agents", body)
+}
+
+func agentArchive(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent agent archive <agent-id-or-slug> --yes")
+	}
+	agentID := args[0]
+	confirmed := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--yes", "-y":
+			confirmed = true
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent agent archive <agent-id-or-slug> --yes")
+			return nil
+		default:
+			return fmt.Errorf("unknown agent archive option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(agentID) == "" {
+		return fmt.Errorf("agent id or slug is required")
+	}
+	if !confirmed {
+		return fmt.Errorf("--yes is required to archive an agent; archival deactivates the agent, revokes agent-owned API keys, and preserves historical attribution")
+	}
+
+	return apiDeleteAllowNoAgent("/api/v1/agents/" + url.PathEscape(agentID))
 }
 
 func agentBoxes(args []string) error {
@@ -1094,6 +1123,15 @@ func apiDelete(path string) error {
 	return nil
 }
 
+func apiDeleteAllowNoAgent(path string) error {
+	body, err := apiDeleteBodyAllowNoAgent(path)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiGet(path string) error {
 	body, err := apiGetBody(path)
 	if err != nil {
@@ -1152,6 +1190,15 @@ func apiDeleteBody(path string) ([]byte, error) {
 	return client.Delete(path)
 }
 
+func apiDeleteBodyAllowNoAgent(path string) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	client := httpclient.New(cfg)
+	return client.Delete(path)
+}
+
 func apiGetBody(path string) ([]byte, error) {
 	cfg, err := config.LoadAgent()
 	if err != nil {
@@ -1188,6 +1235,8 @@ Commands:
                                       Reply in an existing DM chat
   agent create --name NAME --slug SLUG [--description TEXT]
                                       Create an agent on the authenticated team
+  agent archive <agent-id-or-slug> --yes
+                                      Archive/deactivate an agent safely
   agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
                                       Add an agent to one or more boxes
   tasks                               Show assigned tasks
