@@ -11,6 +11,79 @@ import (
 	"testing"
 )
 
+func TestAgentCreatePostsAgentPayloadWithoutSelectedAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents" {
+			t.Fatalf("path = %s, want /api/v1/agents", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["name"] != "Fleet Worker" || payload["slug"] != "fleet-worker" || payload["description"] != "Bootstrapper" {
+			t.Fatalf("payload = %#v", payload)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"agent":{"id":42,"slug":"fleet-worker"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "create", "--name", "Fleet Worker", "--slug", "fleet-worker", "--description", "Bootstrapper"}); err != nil {
+		t.Fatalf("run agent create: %v", err)
+	}
+}
+
+func TestAgentCreateRequiresNameAndSlug(t *testing.T) {
+	if err := run([]string{"agent", "create", "--name", "Only Name"}); err == nil || !strings.Contains(err.Error(), "--slug is required") {
+		t.Fatalf("err = %v, want slug required", err)
+	}
+	if err := run([]string{"agent", "create", "--slug", "only-slug"}); err == nil || !strings.Contains(err.Error(), "--name is required") {
+		t.Fatalf("err = %v, want name required", err)
+	}
+}
+
+func TestAgentBoxesAddPostsBoxIDs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents/fleet-worker/boxes" {
+			t.Fatalf("path = %s, want /api/v1/agents/fleet-worker/boxes", r.URL.Path)
+		}
+		var payload map[string][]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if got := payload["box_ids"]; len(got) != 2 || got[0] != "2" || got[1] != "3" {
+			t.Fatalf("box_ids = %#v", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"agent":{"id":42,"slug":"fleet-worker"},"memberships":[{"status":"created"}]}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "boxes", "add", "fleet-worker", "--box", "2", "--box", "3"}); err != nil {
+		t.Fatalf("run agent boxes add: %v", err)
+	}
+}
+
+func TestAgentBoxesAddRequiresBox(t *testing.T) {
+	if err := run([]string{"agent", "boxes", "add", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "at least one --box") {
+		t.Fatalf("err = %v, want box required", err)
+	}
+}
+
 func TestTaskCommentPostsComment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -164,9 +237,15 @@ func writePNG(t *testing.T) string {
 
 func setAgentEnv(t *testing.T, baseURL string) {
 	t.Helper()
+	setAgentEnvNoSlug(t, baseURL)
+	t.Setenv("MISSIONBASE_AGENT_SLUG", "missionbase-dev")
+}
+
+func setAgentEnvNoSlug(t *testing.T, baseURL string) {
+	t.Helper()
 	t.Setenv("MISSIONBASE_BASE_URL", baseURL)
 	t.Setenv("MISSIONBASE_TOKEN", "test-token")
-	t.Setenv("MISSIONBASE_AGENT_SLUG", "missionbase-dev")
+	t.Setenv("MISSIONBASE_AGENT_SLUG", "")
 	t.Setenv("MISSIONBASE_AGENT_CREDENTIALS", filepath.Join(t.TempDir(), "credentials"))
 	configPath := filepath.Join(t.TempDir(), "agent-config.json")
 	if err := os.WriteFile(configPath, []byte(`{}`), 0o600); err != nil {

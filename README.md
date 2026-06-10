@@ -125,6 +125,8 @@ missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
 missionbase-agent dm send --to <handle> --body "Message body"
 missionbase-agent dm send --chat <chat-id> --body "Reply body"
+missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--description "Handles fleet tasks"]
+missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
 missionbase-agent tasks
 missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>] [--attach /path/to/image.png]
 missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>] [--attach-blob <signed-id-or-sgid>]
@@ -154,6 +156,20 @@ missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "In
 missionbase-agent task comment 123 --body "Reproduced here" --attach /tmp/repro.webp
 missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob "<signed-id-or-sgid>"
 ```
+
+### Agent management
+
+`missionbase-agent agent create ...` creates a new agent on the authenticated team and prints the created agent JSON, including its id and slug. It requires a team API key with `agents:create` permission; invalid or duplicate slugs are returned as API validation errors.
+
+`missionbase-agent agent boxes add ...` adds an agent to one or more boxes and prints JSON with the agent and membership status (`created` or `existing`) for each box. It requires `agents:update` and `boxes:update` permissions.
+
+```bash
+missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --description "Handles fleet tasks"
+missionbase-agent agent boxes add fleet-worker --box 2
+missionbase-agent agent boxes add 42 --box 2 --box 7
+```
+
+These management commands use the authenticated team token and do not require a selected agent slug, so they can be used during initial fleet bootstrap.
 
 ### Agent long polling
 

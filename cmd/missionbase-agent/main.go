@@ -57,6 +57,8 @@ func run(args []string) error {
 		return listen(args[1:])
 	case "dm":
 		return directMessage(args[1:])
+	case "agent":
+		return agent(args[1:])
 	case "tasks":
 		return apiGet("/api/v1/agent/tasks")
 	case "task":
@@ -266,6 +268,106 @@ func directMessageSend(args []string) error {
 		return err
 	}
 	return apiPost("/api/v1/agent/direct_messages", body)
+}
+
+func agent(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent agent <create|boxes>")
+	}
+
+	switch args[0] {
+	case "create":
+		return agentCreate(args[1:])
+	case "boxes":
+		return agentBoxes(args[1:])
+	default:
+		return fmt.Errorf("unknown agent command %q", args[0])
+	}
+}
+
+func agentCreate(args []string) error {
+	payload := map[string]string{}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--name requires a value")
+			}
+			payload["name"] = args[i+1]
+			i++
+		case "--slug":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--slug requires a value")
+			}
+			payload["slug"] = args[i+1]
+			i++
+		case "--description":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description requires a value")
+			}
+			payload["description"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent agent create --name NAME --slug SLUG [--description TEXT]")
+			return nil
+		default:
+			return fmt.Errorf("unknown agent create option %q", args[i])
+		}
+	}
+
+	if strings.TrimSpace(payload["name"]) == "" {
+		return fmt.Errorf("--name is required")
+	}
+	if strings.TrimSpace(payload["slug"]) == "" {
+		return fmt.Errorf("--slug is required")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPostAllowNoAgent("/api/v1/agents", body)
+}
+
+func agentBoxes(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]")
+	}
+	if args[0] != "add" {
+		return fmt.Errorf("unknown agent boxes command %q", args[0])
+	}
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]")
+	}
+	agentID := args[1]
+	var boxIDs []string
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--box", "--box-id":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			boxIDs = append(boxIDs, args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]")
+			return nil
+		default:
+			return fmt.Errorf("unknown agent boxes add option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(agentID) == "" {
+		return fmt.Errorf("agent id or slug is required")
+	}
+	if len(boxIDs) == 0 {
+		return fmt.Errorf("at least one --box is required")
+	}
+
+	body, err := json.Marshal(map[string][]string{"box_ids": boxIDs})
+	if err != nil {
+		return err
+	}
+	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/boxes", body)
 }
 
 func conversation(args []string) error {
@@ -791,6 +893,15 @@ func apiPost(path string, requestBody []byte) error {
 	return nil
 }
 
+func apiPostAllowNoAgent(path string, requestBody []byte) error {
+	body, err := apiPostBodyAllowNoAgent(path, requestBody)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiPostMultipart(path string, fields map[string]string, attaches []string, blobs []string) error {
 	body, err := apiPostMultipartBody(path, fields, attaches, blobs)
 	if err != nil {
@@ -901,6 +1012,15 @@ func apiPostBody(path string, requestBody []byte) ([]byte, error) {
 	return apiPostBodyWithContentType(path, requestBody, "application/json")
 }
 
+func apiPostBodyAllowNoAgent(path string, requestBody []byte) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	client := httpclient.New(cfg)
+	return client.Post(path, requestBody)
+}
+
 func apiPostBodyWithContentType(path string, requestBody []byte, contentType string) ([]byte, error) {
 	cfg, err := config.LoadAgent()
 	if err != nil {
@@ -959,6 +1079,10 @@ Commands:
   dm send --to <handle> --body TEXT   Start/send a DM to a user or agent
   dm send --chat <chat-id> --body TEXT
                                       Reply in an existing DM chat
+  agent create --name NAME --slug SLUG [--description TEXT]
+                                      Create an agent on the authenticated team
+  agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
+                                      Add an agent to one or more boxes
   tasks                               Show assigned tasks
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
       [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
