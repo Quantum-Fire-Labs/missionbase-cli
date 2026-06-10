@@ -515,7 +515,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -523,6 +523,10 @@ func task(args []string) error {
 		return taskCreate(args[1:])
 	case "comment", "create-comment", "reply":
 		return taskComment(args[1:])
+	case "assign":
+		return taskAssign(args[1:])
+	case "unassign":
+		return taskUnassign(args[1:])
 	case "status":
 		return taskStatus(args[1:])
 	case "complete":
@@ -558,6 +562,88 @@ func task(args []string) error {
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
 	}
+}
+
+func taskAssign(args []string) error {
+	if len(args) != 3 {
+		return fmt.Errorf("usage: missionbase-agent task assign <task-id> --user ID|@mention OR --agent slug")
+	}
+
+	taskID := args[0]
+	payload := map[string]string{}
+	switch args[1] {
+	case "--user":
+		userID, err := resolveUserID(args[2])
+		if err != nil {
+			return err
+		}
+		payload["user_id"] = userID
+	case "--agent":
+		if strings.TrimSpace(args[2]) == "" {
+			return fmt.Errorf("--agent requires a non-empty slug")
+		}
+		payload["agent_slug"] = args[2]
+	case "--help", "-h":
+		fmt.Println("usage: missionbase-agent task assign <task-id> --user ID|@mention OR --agent slug")
+		return nil
+	default:
+		return fmt.Errorf("unknown task assign option %q", args[1])
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/assignments", body)
+}
+
+func taskUnassign(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self)")
+	}
+
+	taskID := args[0]
+	switch args[1] {
+	case "--user":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: missionbase-agent task unassign <task-id> --user ID|@mention")
+		}
+		userID, err := resolveUserID(args[2])
+		if err != nil {
+			return err
+		}
+		return apiDelete("/api/v1/tasks/" + url.PathEscape(taskID) + "/assignments/" + url.PathEscape(userID))
+	case "--agent":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: missionbase-agent task unassign <task-id> --agent slug")
+		}
+		if strings.TrimSpace(args[2]) == "" {
+			return fmt.Errorf("--agent requires a non-empty slug")
+		}
+		return taskUnassignAgent(taskID, args[2])
+	case "--self":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: missionbase-agent task unassign <task-id> --self")
+		}
+		cfg, err := config.LoadAgent()
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(cfg.AgentSlug) == "" {
+			return fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
+		}
+		return taskUnassignAgent(taskID, cfg.AgentSlug)
+	case "--help", "-h":
+		fmt.Println("usage: missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self)")
+		return nil
+	default:
+		return fmt.Errorf("unknown task unassign option %q", args[1])
+	}
+}
+
+func taskUnassignAgent(taskID, slug string) error {
+	path := "/api/v1/tasks/" + url.PathEscape(taskID) + "/assignments/agent?assignee_type=Agent&agent_slug=" + url.QueryEscape(slug)
+	return apiDelete(path)
 }
 
 func taskComment(args []string) error {
@@ -999,6 +1085,15 @@ func apiPatch(path string, requestBody []byte) error {
 	return nil
 }
 
+func apiDelete(path string) error {
+	body, err := apiDeleteBody(path)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiGet(path string) error {
 	body, err := apiGetBody(path)
 	if err != nil {
@@ -1045,6 +1140,18 @@ func apiPatchBody(path string, requestBody []byte) ([]byte, error) {
 	return client.Patch(path, requestBody)
 }
 
+func apiDeleteBody(path string) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.AgentSlug == "" {
+		return nil, fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
+	}
+	client := httpclient.New(cfg)
+	return client.Delete(path)
+}
+
 func apiGetBody(path string) ([]byte, error) {
 	cfg, err := config.LoadAgent()
 	if err != nil {
@@ -1087,6 +1194,14 @@ Commands:
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
       [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
+  task assign <task-id> --user ID|@mention
+                                      Assign an existing task to a user
+  task assign <task-id> --agent slug  Assign an existing task to an agent
+  task unassign <task-id> --user ID|@mention
+                                      Remove a user assignment from a task
+  task unassign <task-id> --agent slug
+                                      Remove an agent assignment from a task
+  task unassign <task-id> --self      Remove the current agent from a task
   task comment <task-id> --body TEXT [--attach PATH]
       [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a comment to a task conversation/feed

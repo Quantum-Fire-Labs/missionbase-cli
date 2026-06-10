@@ -170,7 +170,9 @@ You are being invoked because Missionbase reports actionable work for this agent
 
 Follow your global and project instructions.
 
-Use `missionbase-agent work` to inspect assigned tasks and unread conversations. Handle only the selected actionable work item for this run. If the work is ambiguous, blocked, risky, or missing context, comment in Missionbase and @mention @DanielLemky as instructed.
+Use `missionbase-agent work` to inspect assigned tasks and unread conversations. Handle only the selected actionable work item for this run. If the work is ambiguous, risky, or missing context, comment in Missionbase and @mention @DanielLemky as instructed.
+
+If the selected task is blocked waiting on Daniel or another human, leave one clear blocker comment, assign the task to that human (for Daniel, `missionbase-agent task assign <task-id> --user @DanielLemky`), remove this agent from the task with `missionbase-agent task unassign <task-id> --self`, and then stop this run so the next work loop can move to other queued work. Use an existing non-complete status such as `todo` when a waiting/blocked status is needed and no dedicated blocked status exists.
 
 When completing development work, create a branch, commit the changes, push the branch, and comment on the Missionbase task with a concise report including the branch name, changes made, and commit id.
 

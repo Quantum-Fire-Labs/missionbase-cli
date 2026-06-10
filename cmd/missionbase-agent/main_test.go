@@ -84,6 +84,108 @@ func TestAgentBoxesAddRequiresBox(t *testing.T) {
 	}
 }
 
+func TestTaskAssignPostsUserAssignment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tasks/123/assignments" {
+			t.Fatalf("path = %s, want /api/v1/tasks/123/assignments", r.URL.Path)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["user_id"] != "42" {
+			t.Fatalf("user_id = %q, want 42", payload["user_id"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"assignment":{"task_id":123}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "assign", "123", "--user", "42"}); err != nil {
+		t.Fatalf("run task assign user: %v", err)
+	}
+}
+
+func TestTaskAssignPostsAgentAssignment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["agent_slug"] != "alden" {
+			t.Fatalf("agent_slug = %q, want alden", payload["agent_slug"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"assignment":{"task_id":123}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "assign", "123", "--agent", "alden"}); err != nil {
+		t.Fatalf("run task assign agent: %v", err)
+	}
+}
+
+func TestTaskUnassignDeletesUserAssignment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s, want DELETE", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tasks/123/assignments/42" {
+			t.Fatalf("path = %s, want /api/v1/tasks/123/assignments/42", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"message":"Assignment removed successfully"}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "unassign", "123", "--user", "42"}); err != nil {
+		t.Fatalf("run task unassign user: %v", err)
+	}
+}
+
+func TestTaskUnassignSelfDeletesCurrentAgentAssignment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s, want DELETE", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tasks/123/assignments/agent" {
+			t.Fatalf("path = %s, want /api/v1/tasks/123/assignments/agent", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("agent_slug"); got != "missionbase-dev" {
+			t.Fatalf("agent_slug query = %q, want missionbase-dev", got)
+		}
+		if got := r.URL.Query().Get("assignee_type"); got != "Agent" {
+			t.Fatalf("assignee_type query = %q, want Agent", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"message":"Assignment removed successfully"}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "unassign", "123", "--self"}); err != nil {
+		t.Fatalf("run task unassign self: %v", err)
+	}
+}
+
+func TestTaskAssignAndUnassignValidateOptions(t *testing.T) {
+	if err := run([]string{"task", "assign", "123", "--bogus", "42"}); err == nil || !strings.Contains(err.Error(), "unknown task assign option") {
+		t.Fatalf("err = %v, want unknown assign option", err)
+	}
+	if err := run([]string{"task", "unassign", "123", "--self", "extra"}); err == nil || !strings.Contains(err.Error(), "usage:") {
+		t.Fatalf("err = %v, want self usage error", err)
+	}
+}
+
 func TestTaskCommentPostsComment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
