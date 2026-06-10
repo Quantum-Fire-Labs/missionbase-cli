@@ -407,12 +407,16 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention] OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
 	case "create":
 		return taskCreate(args[1:])
+	case "status":
+		return taskStatus(args[1:])
+	case "complete":
+		return taskComplete(args[1:])
 	case "feed", "comments":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent task %s <task-id> [--limit N]", args[0])
@@ -444,6 +448,41 @@ func task(args []string) error {
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
 	}
+}
+
+func taskStatus(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: missionbase-agent task status <task-id> <backlog|todo|in_progress|complete|not_doing>")
+	}
+
+	taskID := args[0]
+	status := args[1]
+	validStatuses := map[string]bool{
+		"backlog":     true,
+		"todo":        true,
+		"in_progress": true,
+		"complete":    true,
+		"not_doing":   true,
+	}
+	if !validStatuses[status] {
+		return fmt.Errorf("status must be one of: backlog, todo, in_progress, complete, not_doing")
+	}
+	if status == "complete" {
+		return taskComplete([]string{taskID})
+	}
+
+	body, err := json.Marshal(map[string]string{"status": status})
+	if err != nil {
+		return err
+	}
+	return apiPatch("/api/v1/tasks/"+url.PathEscape(taskID), body)
+}
+
+func taskComplete(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: missionbase-agent task complete <task-id>")
+	}
+	return apiPatch("/api/v1/tasks/"+url.PathEscape(args[0])+"/complete", nil)
 }
 
 func taskCreate(args []string) error {
@@ -675,6 +714,15 @@ func apiPost(path string, requestBody []byte) error {
 	return nil
 }
 
+func apiPatch(path string, requestBody []byte) error {
+	body, err := apiPatchBody(path, requestBody)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiGet(path string) error {
 	body, err := apiGetBody(path)
 	if err != nil {
@@ -694,6 +742,18 @@ func apiPostBody(path string, requestBody []byte) ([]byte, error) {
 	}
 	client := httpclient.New(cfg)
 	return client.Post(path, requestBody)
+}
+
+func apiPatchBody(path string, requestBody []byte) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.AgentSlug == "" {
+		return nil, fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
+	}
+	client := httpclient.New(cfg)
+	return client.Patch(path, requestBody)
 }
 
 func apiGetBody(path string) ([]byte, error) {
@@ -733,6 +793,8 @@ Commands:
   tasks                               Show assigned tasks
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
                                       Create a task and print the created task JSON
+  task status <task-id> <status>      Set status: backlog, todo, in_progress, complete, not_doing
+  task complete <task-id>             Mark a task complete
   task feed <task-id> [--limit N]     Show a task feed and comments
   task comments <task-id> [--limit N] Show a task feed and comments
   task participants list <task-id>    List task participants

@@ -31,6 +31,10 @@ func (c Client) Post(path string, body []byte) ([]byte, error) {
 	return c.Do(http.MethodPost, path, body)
 }
 
+func (c Client) Patch(path string, body []byte) ([]byte, error) {
+	return c.Do(http.MethodPatch, path, body)
+}
+
 func (c Client) Do(method, path string, body []byte) ([]byte, error) {
 	url := strings.TrimRight(c.cfg.BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
 	req, err := http.NewRequest(method, url, bytes.NewReader(body))

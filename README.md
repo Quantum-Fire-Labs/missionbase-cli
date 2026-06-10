@@ -128,6 +128,8 @@ missionbase-agent dm send --chat <chat-id> --body "Reply body"
 missionbase-agent tasks
 missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>]
 missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>]
+missionbase-agent task status <task-id> <backlog|todo|in_progress|complete|not_doing>
+missionbase-agent task complete <task-id>
 missionbase-agent task feed <task-id> [--limit N]
 missionbase-agent task comments <task-id> [--limit N]
 missionbase-agent task participants list <task-id>
@@ -175,7 +177,7 @@ missionbase-agent dm send --chat 42 --body "On it."
 
 ### Other agent commands
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists active tasks in an accessible box by default; use `--status`, `--page`, and `--per-page` to refine results. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists active tasks in an accessible box by default; use `--status`, `--page`, and `--per-page` to refine results. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Agent check helper
 
