@@ -128,6 +128,7 @@ missionbase-agent dm send --chat <chat-id> --body "Reply body"
 missionbase-agent tasks
 missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>]
 missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>]
+missionbase-agent task comment <task-id> --body "Comment text"
 missionbase-agent task status <task-id> <backlog|todo|in_progress|complete|not_doing>
 missionbase-agent task complete <task-id>
 missionbase-agent task feed <task-id> [--limit N]
@@ -141,6 +142,8 @@ missionbase-agent boxes tasks <box-id> [--status STATUS] [--page N] [--per-page 
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
+
+`missionbase-agent task comment ...` posts a comment/reply to the task conversation feed.
 
 ### Agent long polling
 

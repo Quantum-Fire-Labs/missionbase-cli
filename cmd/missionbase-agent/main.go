@@ -407,12 +407,14 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--participant-user ID|@mention] OR missionbase-agent task comment <task-id> --body TEXT OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
 	case "create":
 		return taskCreate(args[1:])
+	case "comment", "create-comment", "reply":
+		return taskComment(args[1:])
 	case "status":
 		return taskStatus(args[1:])
 	case "complete":
@@ -448,6 +450,39 @@ func task(args []string) error {
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
 	}
+}
+
+func taskComment(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent task comment <task-id> --body TEXT")
+	}
+	taskID := args[0]
+	payload := map[string]string{}
+
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--body", "--comment", "--message", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["comment"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent task comment <task-id> --body TEXT")
+			return nil
+		default:
+			return fmt.Errorf("unknown task comment option %q", args[i])
+		}
+	}
+
+	if strings.TrimSpace(payload["comment"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/comments", body)
 }
 
 func taskStatus(args []string) error {
@@ -793,6 +828,7 @@ Commands:
   tasks                               Show assigned tasks
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
                                       Create a task and print the created task JSON
+  task comment <task-id> --body TEXT  Post a comment to a task conversation/feed
   task status <task-id> <status>      Set status: backlog, todo, in_progress, complete, not_doing
   task complete <task-id>             Mark a task complete
   task feed <task-id> [--limit N]     Show a task feed and comments
