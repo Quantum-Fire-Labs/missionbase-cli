@@ -1204,7 +1204,7 @@ Commands:
   task unassign <task-id> --self      Remove the current agent from a task
   task comment <task-id> --body TEXT [--attach PATH]
       [--attach-blob SIGNED_ID_OR_SGID]
-                                      Post a comment to a task conversation/feed
+                                      Post a Markdown-capable comment to a task conversation/feed
   task status <task-id> <status>      Set status: backlog, todo, in_progress, complete, not_doing
   task complete <task-id>             Mark a task complete
   task feed <task-id> [--limit N]     Show a task feed and comments
@@ -1222,6 +1222,11 @@ Commands:
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
+
+Markdown:
+  DM bodies and task comment bodies are Markdown-capable by default. Missionbase
+  renders headings, emphasis, links, lists, blockquotes, and fenced code blocks
+  as sanitized rich text while preserving ordinary plain-text messages.
 
 Directory config:
   missionbase-agent searches the current directory and parents for

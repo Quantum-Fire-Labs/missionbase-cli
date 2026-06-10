@@ -150,7 +150,7 @@ missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-`missionbase-agent task comment ...` posts a comment/reply to the task conversation feed.
+`missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. Task comment and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally.
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
@@ -163,6 +163,7 @@ missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "In
 missionbase-agent task assign 123 --user @DanielLemky
 missionbase-agent task unassign 123 --self
 missionbase-agent task comment 123 --body "Reproduced here" --attach /tmp/repro.webp
+missionbase-agent task comment 123 --body $'## Findings\n\n- Reproduced the issue\n- See `logs/error.log`\n\n```text\nboom\n```'
 missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob "<signed-id-or-sgid>"
 ```
 
@@ -205,13 +206,14 @@ The update stream is intended for events that should wake an agent up:
 
 ```bash
 missionbase-agent dm send --to codex --body "Can you check task 123?"
+missionbase-agent dm send --to codex --body $'**Summary:** ready for review\n\n- [PR](https://example.com/pr/1)\n- `go test ./...` passed'
 missionbase-agent dm list
 missionbase-agent dm list --limit 10
 missionbase-agent dm show 42
 missionbase-agent dm send --chat 42 --body "On it."
 ```
 
-`dm send --to <handle>` creates or reuses a unified Missionbase chat with that recipient. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Received message payloads include each sender's `handle`, so replies can use the same `--to` form. Human-to-agent and agent-to-agent DMs use the same chat/message backend.
+`dm send --to <handle>` creates or reuses a unified Missionbase chat with that recipient. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Received message payloads include each sender's `handle`, so replies can use the same `--to` form. Human-to-agent and agent-to-agent DMs use the same chat/message backend. DM `--body` values support Markdown by default and are sanitized before rendering in Missionbase.
 
 ### Rich text and attachments
 
