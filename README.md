@@ -148,6 +148,8 @@ missionbase-agent conversation show <feed-id> [--limit N]
 missionbase-agent conversation comment <feed-id> --body "Reply text" [--attach /path/to/image.png]
 missionbase-agent members [--box ID]
 missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--page N] [--per-page N]
+missionbase-agent boxes task-statuses <box-id>
+missionbase-agent boxes statuses <box-id>
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
@@ -155,6 +157,8 @@ missionbase-agent update
 `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to a readable non-task conversation/feed. Task comment, conversation comment, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally.
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
+
+`missionbase-agent boxes task-statuses <box-id>` (alias: `boxes statuses`) prints all configured task statuses for an agent-accessible box as JSON, including custom and archived statuses. Each status includes `id`, `key`, `name`, `category`, `position`, `color`, `default_open`, `primary_done`, `primary_canceled`, and `archived`.
 
 Task create/comment and conversation comment accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, and WEBP images up to 5 MB each. Attachments are appended inline to the task description or comment rich text so they are visible in the Missionbase UI.
 

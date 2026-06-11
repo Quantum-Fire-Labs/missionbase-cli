@@ -114,6 +114,50 @@ func TestAgentBoxesAddRequiresBox(t *testing.T) {
 	}
 }
 
+func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/boxes/2/task_statuses" {
+			t.Fatalf("path = %s, want /api/v1/boxes/2/task_statuses", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"task_statuses":[{"id":1,"key":"todo","name":"To Do","category":"open","position":2,"color":"amber","default_open":true,"primary_done":false,"primary_canceled":false,"archived":false}]}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"boxes", "task-statuses", "2"}); err != nil {
+		t.Fatalf("run boxes task-statuses: %v", err)
+	}
+}
+
+func TestBoxesStatusesAliasGetsBoxTaskStatuses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/boxes/box-2/task_statuses" {
+			t.Fatalf("path = %s, want /api/v1/boxes/box-2/task_statuses", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"task_statuses":[]}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"boxes", "statuses", "box-2"}); err != nil {
+		t.Fatalf("run boxes statuses: %v", err)
+	}
+}
+
+func TestBoxesTaskStatusesRequiresBoxID(t *testing.T) {
+	if err := run([]string{"boxes", "task-statuses"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes task-statuses <box-id>") {
+		t.Fatalf("err = %v, want usage error", err)
+	}
+}
+
 func TestTaskAssignPostsUserAssignment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

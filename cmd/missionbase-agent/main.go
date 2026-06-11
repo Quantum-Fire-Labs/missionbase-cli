@@ -474,16 +474,34 @@ func conversationComment(args []string) error {
 
 func boxes(args []string) error {
 	if len(args) == 0 {
-		fmt.Println("usage: missionbase-agent boxes <tasks>")
+		fmt.Println("usage: missionbase-agent boxes <tasks|statuses|task-statuses>")
 		return nil
 	}
 
 	switch args[0] {
 	case "tasks":
 		return boxTasks(args[1:])
+	case "statuses", "task-statuses":
+		return boxTaskStatuses(args[1:])
 	default:
 		return fmt.Errorf("unknown boxes command %q", args[0])
 	}
+}
+
+func boxTaskStatuses(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes task-statuses <box-id>")
+		return nil
+	}
+	if len(args) != 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes task-statuses <box-id>")
+	}
+
+	boxID := args[0]
+	if strings.TrimSpace(boxID) == "" {
+		return fmt.Errorf("box id is required")
+	}
+	return apiGet("/api/v1/boxes/" + url.PathEscape(boxID) + "/task_statuses")
 }
 
 func boxTasks(args []string) error {
@@ -1338,6 +1356,10 @@ Commands:
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
       [--page N] [--per-page N]
+  boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
+                                      Fields: id, key, name, category, position, color,
+                                      default_open, primary_done, primary_canceled, archived
+  boxes statuses <box-id>             Alias for boxes task-statuses
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
