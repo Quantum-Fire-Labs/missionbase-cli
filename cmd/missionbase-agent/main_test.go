@@ -216,6 +216,73 @@ func TestTaskAssignAndUnassignValidateOptions(t *testing.T) {
 	}
 }
 
+func TestConversationCommentPostsComment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/conversations/456/comments" {
+			t.Fatalf("path = %s, want /api/v1/conversations/456/comments", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["comment"] != "General conversation reply" {
+			t.Fatalf("comment payload = %q, want General conversation reply", payload["comment"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"comment":{"id":654,"feed_id":456,"body":"General conversation reply"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"conversation", "comment", "456", "--body", "General conversation reply"}); err != nil {
+		t.Fatalf("run conversation comment: %v", err)
+	}
+}
+
+func TestConversationCommentRejectsBlankBody(t *testing.T) {
+	if err := run([]string{"conversation", "comment", "456", "--body", "   "}); err == nil || !strings.Contains(err.Error(), "--body or at least one attachment") {
+		t.Fatalf("err = %v, want blank body error", err)
+	}
+}
+
+func TestConversationCommentPostsMultipartAttachment(t *testing.T) {
+	attachment := writePNG(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/conversations/feed-456/comments" {
+			t.Fatalf("path = %s, want /api/v1/conversations/feed-456/comments", r.URL.Path)
+		}
+		if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "multipart/form-data;") {
+			t.Fatalf("content-type = %q, want multipart/form-data", got)
+		}
+		if err := r.ParseMultipartForm(6 * 1024 * 1024); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if got := r.FormValue("comment"); got != "See attached" {
+			t.Fatalf("comment = %q, want See attached", got)
+		}
+		if len(r.MultipartForm.File["attachments[]"]) != 1 {
+			t.Fatalf("attachments count = %d, want 1", len(r.MultipartForm.File["attachments[]"]))
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"comment":{"id":655}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"conversation", "reply", "feed-456", "--body", "See attached", "--attach", attachment}); err != nil {
+		t.Fatalf("run conversation reply with attachment: %v", err)
+	}
+}
+
 func TestTaskCommentPostsComment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

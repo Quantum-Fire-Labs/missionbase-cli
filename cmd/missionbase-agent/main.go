@@ -400,15 +400,76 @@ func agentBoxes(args []string) error {
 }
 
 func conversation(args []string) error {
-	if len(args) < 2 || args[0] != "show" {
-		return fmt.Errorf("usage: missionbase-agent conversation show <feed-id> [--limit N]")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent conversation <show|comment> ...")
 	}
-	path := "/api/v1/conversations/" + args[1]
-	path, err := appendLimit(path, args[2:])
+
+	switch args[0] {
+	case "show":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: missionbase-agent conversation show <feed-id> [--limit N]")
+		}
+		path := "/api/v1/conversations/" + url.PathEscape(args[1])
+		path, err := appendLimit(path, args[2:])
+		if err != nil {
+			return err
+		}
+		return apiGet(path)
+	case "comment", "create-comment", "reply":
+		return conversationComment(args[1:])
+	default:
+		return fmt.Errorf("unknown conversation command %q", args[0])
+	}
+}
+
+func conversationComment(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+	}
+	feedID := args[0]
+	payload := map[string]string{}
+	var attaches, blobs []string
+
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--body", "--comment", "--message", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["comment"] = args[i+1]
+			i++
+		case "--attach":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach requires a file path")
+			}
+			attaches = append(attaches, args[i+1])
+			i++
+		case "--attach-blob":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach-blob requires a signed_id or sgid")
+			}
+			blobs = append(blobs, args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			return nil
+		default:
+			return fmt.Errorf("unknown conversation comment option %q", args[i])
+		}
+	}
+
+	if strings.TrimSpace(payload["comment"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
+		return fmt.Errorf("--body or at least one attachment is required")
+	}
+	path := "/api/v1/conversations/" + url.PathEscape(feedID) + "/comments"
+	if len(attaches) > 0 || len(blobs) > 0 {
+		return apiPostMultipart(path, payload, attaches, blobs)
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	return apiGet(path)
+	return apiPost(path, body)
 }
 
 func boxes(args []string) error {
@@ -1270,6 +1331,9 @@ Commands:
                                       Add an agent participant to a task
   conversation show <feed-id> [--limit N]
                                       Show a conversation/feed
+  conversation comment <feed-id> --body TEXT [--attach PATH]
+      [--attach-blob SIGNED_ID_OR_SGID]
+                                      Post a Markdown-capable reply to a conversation/feed
   members [--box ID]                  List group members and mention handles
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
@@ -1279,7 +1343,7 @@ Commands:
   version                             Show CLI version
 
 Markdown:
-  DM bodies and task comment bodies are Markdown-capable by default. Missionbase
+  DM bodies, task comment bodies, and conversation comment bodies are Markdown-capable by default. Missionbase
   renders headings, emphasis, links, lists, blockquotes, and fenced code blocks
   as sanitized rich text while preserving ordinary plain-text messages.
 
