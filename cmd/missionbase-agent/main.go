@@ -726,20 +726,13 @@ func taskComment(args []string) error {
 
 func taskStatus(args []string) error {
 	if len(args) != 2 {
-		return fmt.Errorf("usage: missionbase-agent task status <task-id> <backlog|todo|in_progress|complete|not_doing>")
+		return fmt.Errorf("usage: missionbase-agent task status <task-id> <status>")
 	}
 
 	taskID := args[0]
 	status := args[1]
-	validStatuses := map[string]bool{
-		"backlog":     true,
-		"todo":        true,
-		"in_progress": true,
-		"complete":    true,
-		"not_doing":   true,
-	}
-	if !validStatuses[status] {
-		return fmt.Errorf("status must be one of: backlog, todo, in_progress, complete, not_doing")
+	if strings.TrimSpace(status) == "" {
+		return fmt.Errorf("status is required")
 	}
 	if status == "complete" {
 		return taskComplete([]string{taskID})
@@ -1254,7 +1247,7 @@ Commands:
   task comment <task-id> --body TEXT [--attach PATH]
       [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable comment to a task conversation/feed
-  task status <task-id> <status>      Set status: backlog, todo, in_progress, complete, not_doing
+  task status <task-id> <status>      Set status (server validates box-specific statuses)
   task complete <task-id>             Mark a task complete
   task feed <task-id> [--limit N]     Show a task feed and comments
   task comments <task-id> [--limit N] Show a task feed and comments

@@ -137,7 +137,7 @@ missionbase-agent task unassign <task-id> --user <user-id-or-mention>
 missionbase-agent task unassign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --self
 missionbase-agent task comment <task-id> --body "Comment text" [--attach /path/to/image.png]
-missionbase-agent task status <task-id> <backlog|todo|in_progress|complete|not_doing>
+missionbase-agent task status <task-id> <status>
 missionbase-agent task complete <task-id>
 missionbase-agent task feed <task-id> [--limit N]
 missionbase-agent task comments <task-id> [--limit N]
@@ -174,7 +174,7 @@ missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob 
 
 `missionbase-agent agent boxes add ...` adds an agent to one or more boxes and prints JSON with the agent and membership status (`created` or `existing`) for each box. It requires `agents:update` and `boxes:update` permissions.
 
-`missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and box membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks (`backlog`, `todo`, or `in_progress`), so hand off or close that work first.
+`missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and box membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks according to each box's configured task-status categories, so hand off or close that work first.
 
 ```bash
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --description "Handles fleet tasks"
@@ -232,7 +232,7 @@ Use `missionbase-agent tasks`, `missionbase-agent work`, `missionbase-agent task
 
 ### Other agent commands
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists active tasks in an accessible box by default; use `--status`, `--page`, and `--per-page` to refine results. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists active tasks in an accessible box by default; use `--status`, `--page`, and `--per-page` to refine results. Box/task API responses include `task_statuses`/`task_status_id` so clients can discover allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Agent check helper
 
