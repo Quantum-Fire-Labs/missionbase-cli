@@ -1477,7 +1477,7 @@ Commands:
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
       [--page N] [--per-page N]
-  boxes discussions <box-id>          List standalone box discussions/posts (not task conversations)
+  boxes discussions <box-id>          List standalone box discussions (not task conversations)
       [--page N] [--per-page N]
   boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
                                       Fields: id, key, name, category, position, color,
