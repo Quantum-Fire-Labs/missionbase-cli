@@ -427,7 +427,7 @@ func boxes(args []string) error {
 
 func boxTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS|--status-category open|done|canceled|--task-status-ids IDS] [--page N] [--per-page N]")
 	}
 
 	boxID := args[0]
@@ -439,6 +439,18 @@ func boxTasks(args []string) error {
 				return fmt.Errorf("--status requires a value")
 			}
 			values.Set("status", args[i+1])
+			i++
+		case "--status-category":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--status-category requires a value")
+			}
+			values.Set("status_category", args[i+1])
+			i++
+		case "--task-status-ids":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--task-status-ids requires a value")
+			}
+			values.Set("task_status_ids", args[i+1])
 			i++
 		case "--page":
 			if i+1 >= len(args) {
@@ -1259,8 +1271,9 @@ Commands:
   conversation show <feed-id> [--limit N]
                                       Show a conversation/feed
   members [--box ID]                  List group members and mention handles
-  boxes tasks <box-id>                Show tasks in an accessible box
-      [--status STATUS] [--page N] [--per-page N]
+  boxes tasks <box-id>                Show open-category tasks in an accessible box by default
+      [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
+      [--page N] [--per-page N]
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
