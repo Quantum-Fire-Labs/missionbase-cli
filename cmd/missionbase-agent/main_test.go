@@ -291,6 +291,42 @@ func TestTaskAssignAndUnassignValidateOptions(t *testing.T) {
 	}
 }
 
+func TestNormalizeAgentAuthoredBodyConvertsEscapedNewlinesOutsideCode(t *testing.T) {
+	body := `Here's the summary:\n\n- first\n- use ` + "`printf 'a\\nb'`" + `\n- shell 'a\nb'\n- JSON {"text":"a\nb"}`
+	want := "Here's the summary:\n\n- first\n- use `printf 'a\\nb'`\n- shell 'a\\nb'\n- JSON {\"text\":\"a\\nb\"}"
+	if got := normalizeAgentAuthoredBody(body); got != want {
+		t.Fatalf("normalized body = %q, want %q", got, want)
+	}
+}
+
+func TestDirectMessageSendNormalizesEscapedNewlines(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agent/direct_messages" {
+			t.Fatalf("path = %s, want /api/v1/agent/direct_messages", r.URL.Path)
+		}
+
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["body"] != "Line one\nLine two" {
+			t.Fatalf("body payload = %q, want normalized newline", payload["body"])
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"message":{"id":321}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"dm", "send", "--to", "missionbase-lead", "--body", `Line one\nLine two`}); err != nil {
+		t.Fatalf("run dm send: %v", err)
+	}
+}
+
 func TestConversationCommentPostsComment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -386,6 +422,27 @@ func TestTaskCommentPostsComment(t *testing.T) {
 
 	setAgentEnv(t, server.URL)
 	if err := run([]string{"task", "comment", "123", "--body", "Done and documented"}); err != nil {
+		t.Fatalf("run task comment: %v", err)
+	}
+}
+
+func TestTaskCommentNormalizesEscapedNewlines(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["comment"] != "Done\n\n- documented" {
+			t.Fatalf("comment payload = %q, want normalized newlines", payload["comment"])
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"comment":{"id":324}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "comment", "123", "--body", `Done\n\n- documented`}); err != nil {
 		t.Fatalf("run task comment: %v", err)
 	}
 }
