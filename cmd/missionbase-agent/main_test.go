@@ -136,6 +136,37 @@ func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
 	}
 }
 
+func TestBoxesDiscussionsGetsStandaloneDiscussions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/boxes/2/discussions" {
+			t.Fatalf("path = %s, want /api/v1/boxes/2/discussions", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "10" {
+			t.Fatalf("per_page = %q, want 10", got)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"discussions":[{"id":7,"title":"Standalone","feed_id":77}],"meta":{"total":1}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"boxes", "discussions", "2", "--per-page", "10"}); err != nil {
+		t.Fatalf("run boxes discussions: %v", err)
+	}
+}
+
+func TestBoxesDiscussionsRequiresBoxID(t *testing.T) {
+	if err := run([]string{"boxes", "discussions"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes discussions <box-id>") {
+		t.Fatalf("err = %v, want usage error", err)
+	}
+}
+
 func TestBoxesStatusesAliasGetsBoxTaskStatuses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/boxes/box-2/task_statuses" {

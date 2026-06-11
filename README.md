@@ -148,13 +148,14 @@ missionbase-agent conversation show <feed-id> [--limit N]
 missionbase-agent conversation comment <feed-id> --body "Reply text" [--attach /path/to/image.png]
 missionbase-agent members [--box ID]
 missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--page N] [--per-page N]
+missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
 missionbase-agent boxes task-statuses <box-id>
 missionbase-agent boxes statuses <box-id>
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-`missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to a readable non-task conversation/feed. Task comment, conversation comment, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally.
+`missionbase-agent boxes discussions ...` lists standalone box discussions/posts only; it does not include task conversations. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds. Task comment, conversation comment, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally.
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
@@ -169,7 +170,8 @@ missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "In
 missionbase-agent task assign 123 --user @DanielLemky
 missionbase-agent task unassign 123 --self
 missionbase-agent task comment 123 --body "Reproduced here" --attach /tmp/repro.webp
-missionbase-agent conversation comment 456 --body "Replying to the discussion" --attach /tmp/context.png
+missionbase-agent boxes discussions 2
+missionbase-agent conversation comment 456 --body "Replying to the feed conversation" --attach /tmp/context.png
 missionbase-agent task comment 123 --body $'## Findings\n\n- Reproduced the issue\n- See `logs/error.log`\n\n```text\nboom\n```'
 missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob "<signed-id-or-sgid>"
 ```

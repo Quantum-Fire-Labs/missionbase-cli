@@ -474,18 +474,56 @@ func conversationComment(args []string) error {
 
 func boxes(args []string) error {
 	if len(args) == 0 {
-		fmt.Println("usage: missionbase-agent boxes <tasks|statuses|task-statuses>")
+		fmt.Println("usage: missionbase-agent boxes <tasks|discussions|statuses|task-statuses>")
 		return nil
 	}
 
 	switch args[0] {
 	case "tasks":
 		return boxTasks(args[1:])
+	case "discussions":
+		return boxDiscussions(args[1:])
 	case "statuses", "task-statuses":
 		return boxTaskStatuses(args[1:])
 	default:
 		return fmt.Errorf("unknown boxes command %q", args[0])
 	}
+}
+
+func boxDiscussions(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]")
+	}
+
+	boxID := args[0]
+	values := url.Values{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--page requires a value")
+			}
+			values.Set("page", args[i+1])
+			i++
+		case "--per-page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--per-page requires a value")
+			}
+			values.Set("per_page", args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes discussions option %q", args[i])
+		}
+	}
+
+	path := "/api/v1/boxes/" + url.PathEscape(boxID) + "/discussions"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	return apiGet(path)
 }
 
 func boxTaskStatuses(args []string) error {
@@ -1355,6 +1393,8 @@ Commands:
   members [--box ID]                  List group members and mention handles
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
+      [--page N] [--per-page N]
+  boxes discussions <box-id>          List standalone box discussions/posts (not task conversations)
       [--page N] [--per-page N]
   boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
                                       Fields: id, key, name, category, position, color,
