@@ -23,6 +23,8 @@ var (
 	Version = "dev"
 	Commit  = "unknown"
 	Repo    = "Quantum-Fire-Labs/missionbase-cli"
+
+	agentStdin io.Reader = os.Stdin
 )
 
 func main() {
@@ -244,8 +246,24 @@ func directMessageSend(args []string) error {
 			}
 			payload["body"] = args[i+1]
 			i++
+		case "--body-file", "--message-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["body"] = body
+			i++
+		case "--body-stdin", "--message-stdin":
+			body, err := readBodyStdin()
+			if err != nil {
+				return err
+			}
+			payload["body"] = body
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent dm send (--to <handle> | --chat <chat-id>) --body MESSAGE")
+			fmt.Println("usage: missionbase-agent dm send (--to <handle> | --chat <chat-id>) (--body MESSAGE | --body-file PATH | --body-stdin)")
 			return nil
 		default:
 			if payload["body"] == "" {
@@ -269,6 +287,25 @@ func directMessageSend(args []string) error {
 		return err
 	}
 	return apiPost("/api/v1/agent/direct_messages", body)
+}
+
+func readBodyFile(path string) (string, error) {
+	if path == "-" {
+		return readBodyStdin()
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read body file %q: %w", path, err)
+	}
+	return string(body), nil
+}
+
+func readBodyStdin() (string, error) {
+	body, err := io.ReadAll(agentStdin)
+	if err != nil {
+		return "", fmt.Errorf("read body from stdin: %w", err)
+	}
+	return string(body), nil
 }
 
 func normalizeAgentAuthoredBody(body string) string {
@@ -505,7 +542,7 @@ func conversation(args []string) error {
 
 func conversationComment(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase-agent conversation comment <feed-id> (--body TEXT | --body-file PATH | --body-stdin) [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
 	feedID := args[0]
 	payload := map[string]string{}
@@ -519,6 +556,22 @@ func conversationComment(args []string) error {
 			}
 			payload["comment"] = args[i+1]
 			i++
+		case "--body-file", "--comment-file", "--message-file", "--text-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["comment"] = body
+			i++
+		case "--body-stdin", "--comment-stdin", "--message-stdin", "--text-stdin":
+			body, err := readBodyStdin()
+			if err != nil {
+				return err
+			}
+			payload["comment"] = body
 		case "--attach":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--attach requires a file path")
@@ -532,7 +585,7 @@ func conversationComment(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent conversation comment <feed-id> (--body TEXT | --body-file PATH | --body-stdin) [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown conversation comment option %q", args[i])
@@ -574,7 +627,7 @@ func boxes(args []string) error {
 
 func boxDiscussions(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
+		return fmt.Errorf("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE (--body TEXT | --body-file PATH | --body-stdin)")
 	}
 	if args[0] == "create" {
 		return boxDiscussionsCreate(args[1:])
@@ -597,7 +650,7 @@ func boxDiscussions(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
+			fmt.Println("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE (--body TEXT | --body-file PATH | --body-stdin)")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes discussions option %q", args[i])
@@ -613,7 +666,7 @@ func boxDiscussions(args []string) error {
 
 func boxDiscussionsCreate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
+		return fmt.Errorf("usage: missionbase-agent boxes discussions create <box-id> --title TITLE (--body TEXT | --body-file PATH | --body-stdin)")
 	}
 
 	boxID := strings.TrimSpace(args[0])
@@ -636,8 +689,24 @@ func boxDiscussionsCreate(args []string) error {
 			}
 			payload["body"] = args[i+1]
 			i++
+		case "--body-file", "--content-file", "--message-file", "--text-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["body"] = body
+			i++
+		case "--body-stdin", "--content-stdin", "--message-stdin", "--text-stdin":
+			body, err := readBodyStdin()
+			if err != nil {
+				return err
+			}
+			payload["body"] = body
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
+			fmt.Println("usage: missionbase-agent boxes discussions create <box-id> --title TITLE (--body TEXT | --body-file PATH | --body-stdin)")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes discussions create option %q", args[i])
@@ -806,7 +875,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description TEXT] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> (--body TEXT | --body-file PATH | --body-stdin) [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -939,7 +1008,7 @@ func taskUnassignAgent(taskID, slug string) error {
 
 func taskComment(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase-agent task comment <task-id> (--body TEXT | --body-file PATH | --body-stdin) [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
 	taskID := args[0]
 	payload := map[string]string{}
@@ -953,6 +1022,22 @@ func taskComment(args []string) error {
 			}
 			payload["comment"] = args[i+1]
 			i++
+		case "--body-file", "--comment-file", "--message-file", "--text-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["comment"] = body
+			i++
+		case "--body-stdin", "--comment-stdin", "--message-stdin", "--text-stdin":
+			body, err := readBodyStdin()
+			if err != nil {
+				return err
+			}
+			payload["comment"] = body
 		case "--attach":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--attach requires a file path")
@@ -966,7 +1051,7 @@ func taskComment(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent task comment <task-id> (--body TEXT | --body-file PATH | --body-stdin) [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task comment option %q", args[i])
@@ -1486,8 +1571,9 @@ Commands:
                                       Long-poll for agent updates
   dm list [--limit N]                 List agent direct messages
   dm show <chat-id>                   Show an agent DM chat
-  dm send --to <handle> --body TEXT   Start/send a DM to a user or agent
-  dm send --chat <chat-id> --body TEXT
+  dm send --to <handle> (--body TEXT | --body-file PATH | --body-stdin)
+                                      Start/send a DM to a user or agent
+  dm send --chat <chat-id> (--body TEXT | --body-file PATH | --body-stdin)
                                       Reply in an existing DM chat
   agent create --name NAME --slug SLUG [--description TEXT]
                                       Create an agent on the authenticated team
@@ -1507,8 +1593,8 @@ Commands:
   task unassign <task-id> --agent slug
                                       Remove an agent assignment from a task
   task unassign <task-id> --self      Remove the current agent from a task
-  task comment <task-id> --body TEXT [--attach PATH]
-      [--attach-blob SIGNED_ID_OR_SGID]
+  task comment <task-id> (--body TEXT | --body-file PATH | --body-stdin)
+      [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable comment to a task conversation/feed
   task status <task-id> <status>      Set status (server validates box-specific statuses)
   task complete <task-id>             Mark a task complete
@@ -1521,8 +1607,8 @@ Commands:
                                       Add an agent participant to a task
   conversation show <feed-id> [--limit N]
                                       Show a conversation/feed
-  conversation comment <feed-id> --body TEXT [--attach PATH]
-      [--attach-blob SIGNED_ID_OR_SGID]
+  conversation comment <feed-id> (--body TEXT | --body-file PATH | --body-stdin)
+      [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable reply to a conversation/feed
   members [--box ID]                  List group members and mention handles
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
@@ -1531,7 +1617,7 @@ Commands:
   boxes discussions <box-id>          List standalone box discussions (not task conversations)
       [--page N] [--per-page N]
   boxes discussions create <box-id>   Create a standalone Markdown-capable box discussion
-      --title TITLE --body TEXT
+      --title TITLE (--body TEXT | --body-file PATH | --body-stdin)
   boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived
@@ -1541,10 +1627,13 @@ Commands:
   version                             Show CLI version
 
 Markdown:
-  DM bodies, task comment bodies, and conversation comment bodies are Markdown-capable by default. Missionbase
-  renders headings, emphasis, links, lists, blockquotes, and fenced code blocks
-  as sanitized rich text while preserving ordinary plain-text messages. Accidental escaped newline sequences
+  DM bodies, task comment bodies, conversation comment bodies, and box discussion bodies are Markdown-capable
+  by default. Missionbase renders headings, emphasis, links, lists, blockquotes, and fenced code blocks as
+  sanitized rich text while preserving ordinary plain-text messages. Accidental escaped newline sequences
   (\\n, \\r, \\r\\n) are normalized to real line breaks outside quoted/backticked code contexts.
+
+  For long/rich Markdown, prefer --body-file PATH or --body-stdin to avoid shell quoting and command
+  substitution pitfalls. Use --body-file - as an alias for stdin.
 
 Directory config:
   missionbase-agent searches the current directory and parents for

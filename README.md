@@ -123,8 +123,8 @@ missionbase-agent work
 missionbase-agent listen [--timeout N] [--offset ID] [--once]
 missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
-missionbase-agent dm send --to <handle> --body "Message body"
-missionbase-agent dm send --chat <chat-id> --body "Reply body"
+missionbase-agent dm send --to <handle> (--body "Message body" | --body-file /tmp/body.md | --body-stdin)
+missionbase-agent dm send --chat <chat-id> (--body "Reply body" | --body-file /tmp/body.md | --body-stdin)
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--description "Handles fleet tasks"]
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
@@ -136,7 +136,7 @@ missionbase-agent task assign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --user <user-id-or-mention>
 missionbase-agent task unassign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --self
-missionbase-agent task comment <task-id> --body "Comment text" [--attach /path/to/image.png]
+missionbase-agent task comment <task-id> (--body "Comment text" | --body-file /tmp/body.md | --body-stdin) [--attach /path/to/image.png]
 missionbase-agent task status <task-id> <status>
 missionbase-agent task complete <task-id>
 missionbase-agent task feed <task-id> [--limit N]
@@ -145,18 +145,41 @@ missionbase-agent task participants list <task-id>
 missionbase-agent task participants add <task-id> --user <user-id-or-mention>
 missionbase-agent task participants add <task-id> --agent <agent-slug>
 missionbase-agent conversation show <feed-id> [--limit N]
-missionbase-agent conversation comment <feed-id> --body "Reply text" [--attach /path/to/image.png]
+missionbase-agent conversation comment <feed-id> (--body "Reply text" | --body-file /tmp/body.md | --body-stdin) [--attach /path/to/image.png]
 missionbase-agent members [--box ID]
 missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--page N] [--per-page N]
 missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
-missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT
+missionbase-agent boxes discussions create <box-id> --title TITLE (--body TEXT | --body-file /tmp/body.md | --body-stdin)
 missionbase-agent boxes task-statuses <box-id>
 missionbase-agent boxes statuses <box-id>
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post, prints the created discussion JSON, and accepts Markdown-capable `--body` text. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds. Task comment, conversation comment, box discussion create, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts. Prefer passing actual multi-line text with shell ANSI-C quoting (for example, `--body $'Line 1\nLine 2'`) when possible; quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
+`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
+
+Task comment, conversation comment, box discussion create, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
+
+For long or rich Markdown, prefer `--body-file PATH`, `--body-file -`, or `--body-stdin` over shell-quoted `--body` values. This avoids fragile shell quoting and command substitution, especially for backticks, quotes, lists, and fenced code blocks. The recommended agent workflow is:
+
+```bash
+cat > /tmp/missionbase-comment.md <<'EOF'
+## Summary
+
+- Preserved inline code like `context: "modal"`.
+- Preserved fenced code blocks.
+
+~~~text
+literal `backticks` and "quotes"
+~~~
+EOF
+
+missionbase-agent task comment 123 --body-file /tmp/missionbase-comment.md
+# or:
+missionbase-agent task comment 123 --body-stdin < /tmp/missionbase-comment.md
+```
+
+Short `--body "..."` values are still supported; pass actual multi-line text with shell ANSI-C quoting (for example, `--body $'Line 1\nLine 2'`) when needed. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
@@ -172,9 +195,9 @@ missionbase-agent task assign 123 --user @DanielLemky
 missionbase-agent task unassign 123 --self
 missionbase-agent task comment 123 --body "Reproduced here" --attach /tmp/repro.webp
 missionbase-agent boxes discussions 2
-missionbase-agent boxes discussions create 2 --title "Release workflow planning" --body $'## Proposal\n\n- Discuss Ready to Deploy handoff\n- Decide release ownership'
+missionbase-agent boxes discussions create 2 --title "Release workflow planning" --body-file /tmp/proposal.md
 missionbase-agent conversation comment 456 --body "Replying to the feed conversation" --attach /tmp/context.png
-missionbase-agent task comment 123 --body $'## Findings\n\n- Reproduced the issue\n- See `logs/error.log`\n\n```text\nboom\n```'
+missionbase-agent task comment 123 --body-file /tmp/findings.md
 missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob "<signed-id-or-sgid>"
 ```
 

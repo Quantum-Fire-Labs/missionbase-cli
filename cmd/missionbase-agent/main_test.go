@@ -488,6 +488,59 @@ func TestTaskCommentNormalizesEscapedNewlines(t *testing.T) {
 	}
 }
 
+func TestTaskCommentReadsMarkdownBodyFile(t *testing.T) {
+	want := "## Findings\n\n- Preserved `context: \"modal\"`\n\n```text\nquoted \"value\" and `ticks`\n```\n"
+	bodyFile := filepath.Join(t.TempDir(), "comment.md")
+	if err := os.WriteFile(bodyFile, []byte(want), 0o600); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["comment"] != want {
+			t.Fatalf("comment payload = %q, want %q", payload["comment"], want)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"comment":{"id":325}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "comment", "123", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task comment with body file: %v", err)
+	}
+}
+
+func TestConversationCommentReadsMarkdownBodyFromStdin(t *testing.T) {
+	want := "## Reply\n\n- Preserved `context: \"modal\"` from stdin\n"
+	oldStdin := agentStdin
+	agentStdin = strings.NewReader(want)
+	t.Cleanup(func() { agentStdin = oldStdin })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["comment"] != want {
+			t.Fatalf("comment payload = %q, want %q", payload["comment"], want)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"comment":{"id":326}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"conversation", "comment", "456", "--body-stdin"}); err != nil {
+		t.Fatalf("run conversation comment with body stdin: %v", err)
+	}
+}
+
 func TestTaskCommentSupportsAliasAndMessageFlag(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
