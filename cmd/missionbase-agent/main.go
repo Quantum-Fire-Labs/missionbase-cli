@@ -573,8 +573,11 @@ func boxes(args []string) error {
 }
 
 func boxDiscussions(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
+	}
+	if args[0] == "create" {
+		return boxDiscussionsCreate(args[1:])
 	}
 
 	boxID := args[0]
@@ -594,7 +597,7 @@ func boxDiscussions(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]")
+			fmt.Println("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes discussions option %q", args[i])
@@ -606,6 +609,54 @@ func boxDiscussions(args []string) error {
 		path += "?" + encoded
 	}
 	return apiGet(path)
+}
+
+func boxDiscussionsCreate(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
+	}
+
+	boxID := strings.TrimSpace(args[0])
+	if boxID == "" {
+		return fmt.Errorf("box id is required")
+	}
+
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--content", "--message", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["body"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes discussions create <box-id> --title TITLE --body TEXT")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes discussions create option %q", args[i])
+		}
+	}
+
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	payload["body"] = normalizeAgentAuthoredBody(payload["body"])
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost("/api/v1/boxes/"+url.PathEscape(boxID)+"/discussions", body)
 }
 
 func boxTaskStatuses(args []string) error {
@@ -1479,6 +1530,8 @@ Commands:
       [--page N] [--per-page N]
   boxes discussions <box-id>          List standalone box discussions (not task conversations)
       [--page N] [--per-page N]
+  boxes discussions create <box-id>   Create a standalone Markdown-capable box discussion
+      --title TITLE --body TEXT
   boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived
