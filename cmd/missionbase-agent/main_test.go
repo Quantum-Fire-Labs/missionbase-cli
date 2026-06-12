@@ -167,6 +167,47 @@ func TestBoxesDiscussionsRequiresBoxID(t *testing.T) {
 	}
 }
 
+func TestBoxesDiscussionsCreatePostsDiscussion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/boxes/2/discussions" {
+			t.Fatalf("path = %s, want /api/v1/boxes/2/discussions", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if got := payload["title"]; got != "Planning" {
+			t.Fatalf("title = %q, want Planning", got)
+		}
+		if got := payload["body"]; got != "Line 1\nLine 2" {
+			t.Fatalf("body = %q, want real multiline body", got)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"discussion":{"id":8,"title":"Planning","feed_id":88,"box_id":2}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"boxes", "discussions", "create", "2", "--title", "Planning", "--body", `Line 1\nLine 2`}); err != nil {
+		t.Fatalf("run boxes discussions create: %v", err)
+	}
+}
+
+func TestBoxesDiscussionsCreateRequiresTitleAndBody(t *testing.T) {
+	if err := run([]string{"boxes", "discussions", "create", "2", "--body", "Body"}); err == nil || !strings.Contains(err.Error(), "--title is required") {
+		t.Fatalf("err = %v, want title required", err)
+	}
+	if err := run([]string{"boxes", "discussions", "create", "2", "--title", "Title"}); err == nil || !strings.Contains(err.Error(), "--body is required") {
+		t.Fatalf("err = %v, want body required", err)
+	}
+}
+
 func TestBoxesStatusesAliasGetsBoxTaskStatuses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/boxes/box-2/task_statuses" {
