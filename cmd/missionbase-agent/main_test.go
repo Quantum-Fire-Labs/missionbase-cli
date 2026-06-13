@@ -684,6 +684,33 @@ func TestTaskCreatePostsMultipartAttachmentAndBlob(t *testing.T) {
 	}
 }
 
+func TestTaskCreatePostsHEICMultipartAttachment(t *testing.T) {
+	attachment := writeHEIC(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(6 * 1024 * 1024); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		files := r.MultipartForm.File["attachments[]"]
+		if len(files) != 1 {
+			t.Fatalf("attachments count = %d, want 1", len(files))
+		}
+		if got := files[0].Header.Get("Content-Type"); got != "image/heic" {
+			t.Fatalf("attachment content type = %q, want image/heic", got)
+		}
+		if files[0].Filename != filepath.Base(attachment) {
+			t.Fatalf("filename = %q", files[0].Filename)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"task":{"id":988}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "create", "--title", "With HEIC attachment", "--box", "2", "--assign-agent", "missionbase-dev", "--attach", attachment}); err != nil {
+		t.Fatalf("run task create with HEIC attachment: %v", err)
+	}
+}
+
 func TestAttachmentRejectsUnsupportedType(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "note.txt")
 	if err := os.WriteFile(path, []byte("plain text"), 0o600); err != nil {
@@ -707,6 +734,16 @@ func writePNG(t *testing.T) string {
 	}
 	_, _ = io.Copy(io.Discard, file)
 	_ = file.Close()
+	return path
+}
+
+func writeHEIC(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "iphone-screenshot.heic")
+	heic := []byte{0, 0, 0, 24, 'f', 't', 'y', 'p', 'h', 'e', 'i', 'c', 0, 0, 0, 0, 'm', 'i', 'f', '1'}
+	if err := os.WriteFile(path, heic, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return path
 }
 
