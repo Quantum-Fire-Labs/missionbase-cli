@@ -185,7 +185,7 @@ Short `--body "..."` values are still supported; pass actual multi-line text wit
 
 `missionbase-agent boxes task-statuses <box-id>` (alias: `boxes statuses`) prints all configured task statuses for an agent-accessible box as JSON, including custom and archived statuses. Each status includes `id`, `key`, `name`, `category`, `position`, `color`, `default_open`, `primary_done`, `primary_canceled`, and `archived`.
 
-Task create/comment and conversation comment accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, and WEBP images up to 5 MB each. Attachments are appended inline to the task description or comment rich text so they are visible in the Missionbase UI.
+Task create/comment and conversation comment accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, WEBP, HEIC, and HEIF images up to 5 MB each. Attachments are appended inline to the task description or comment rich text so they are visible in the Missionbase UI.
 
 Examples:
 

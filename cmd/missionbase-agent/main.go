@@ -1439,9 +1439,9 @@ func addMultipartAttachment(writer *multipart.Writer, path string) error {
 	if err != nil && err != io.EOF {
 		return fmt.Errorf("read attachment %q: %w", path, err)
 	}
-	contentType := http.DetectContentType(peek[:n])
+	contentType := detectAttachmentContentType(peek[:n])
 	if !allowedAttachmentContentType(contentType) {
-		return fmt.Errorf("unsupported attachment type %q for %q (allowed: PNG, JPEG, GIF, WEBP)", contentType, path)
+		return fmt.Errorf("unsupported attachment type %q for %q (allowed: PNG, JPEG, GIF, WEBP, HEIC/HEIF)", contentType, path)
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return err
@@ -1457,9 +1457,31 @@ func addMultipartAttachment(writer *multipart.Writer, path string) error {
 	return err
 }
 
+func detectAttachmentContentType(peek []byte) string {
+	if contentType := detectHEIFContentType(peek); contentType != "" {
+		return contentType
+	}
+	return http.DetectContentType(peek)
+}
+
+func detectHEIFContentType(peek []byte) string {
+	if len(peek) < 12 || !bytes.Equal(peek[4:8], []byte("ftyp")) {
+		return ""
+	}
+	brand := string(peek[8:12])
+	switch brand {
+	case "heic", "heix", "hevc", "hevx":
+		return "image/heic"
+	case "mif1", "msf1":
+		return "image/heif"
+	default:
+		return ""
+	}
+}
+
 func allowedAttachmentContentType(contentType string) bool {
 	switch contentType {
-	case "image/png", "image/jpeg", "image/gif", "image/webp":
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/heic", "image/heif":
 		return true
 	default:
 		return false
