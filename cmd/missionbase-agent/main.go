@@ -342,11 +342,26 @@ func normalizeAgentAuthoredBody(body string) string {
 	inSingleQuote := false
 	inDoubleQuote := false
 	inBacktick := false
+	inFence := false
 	escapedInQuote := false
 
 	for i := 0; i < len(body); i++ {
 		ch := body[i]
 		inProtectedContext := inSingleQuote || inDoubleQuote || inBacktick
+
+		if ch == '`' && !inSingleQuote && !inDoubleQuote {
+			runLength := 1
+			for i+runLength < len(body) && body[i+runLength] == '`' {
+				runLength++
+			}
+			if runLength >= 3 {
+				inFence = !inFence
+				out.WriteString(body[i : i+runLength])
+				i += runLength - 1
+				escapedInQuote = false
+				continue
+			}
+		}
 
 		if ch == '\\' && !inProtectedContext && (i == 0 || body[i-1] != '\\') && i+1 < len(body) {
 			switch body[i+1] {
@@ -364,15 +379,15 @@ func normalizeAgentAuthoredBody(body string) string {
 			}
 		}
 
-		if ch == '`' && !inSingleQuote && !inDoubleQuote {
+		if ch == '`' && !inSingleQuote && !inDoubleQuote && !inFence {
 			inBacktick = !inBacktick
-		} else if ch == '\'' && !inDoubleQuote && !inBacktick && !escapedInQuote {
+		} else if ch == '\'' && !inDoubleQuote && !inBacktick && !inFence && !escapedInQuote {
 			if inSingleQuote && isSingleQuoteClosingBoundary(body, i) {
 				inSingleQuote = false
 			} else if !inSingleQuote && isSingleQuoteOpeningBoundary(body, i) {
 				inSingleQuote = true
 			}
-		} else if ch == '"' && !inSingleQuote && !inBacktick && !escapedInQuote {
+		} else if ch == '"' && !inSingleQuote && !inBacktick && !inFence && !escapedInQuote {
 			inDoubleQuote = !inDoubleQuote
 		}
 
