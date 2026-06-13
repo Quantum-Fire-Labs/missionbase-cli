@@ -11,6 +11,56 @@ import (
 	"testing"
 )
 
+func TestWorkNextGetsNextTaskEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agent/work" {
+			t.Fatalf("path = %s, want /api/v1/agent/work", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("next"); got != "true" {
+			t.Fatalf("next query = %q, want true", got)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tasks":[{"id":2420}],"unread_conversations":[],"unread_direct_messages":[],"meta":{"tasks":1,"unread_conversations":0,"unread_direct_messages":0,"total":1,"actionable":true}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"work", "--next"}); err != nil {
+		t.Fatalf("run work --next: %v", err)
+	}
+}
+
+func TestWorkNextTaskAliasGetsNextTaskEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/agent/work" {
+			t.Fatalf("path = %s, want /api/v1/agent/work", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("next"); got != "true" {
+			t.Fatalf("next query = %q, want true", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"tasks":[],"unread_conversations":[],"unread_direct_messages":[],"meta":{"tasks":0,"unread_conversations":0,"unread_direct_messages":0,"total":0,"actionable":false}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"work", "--next-task"}); err != nil {
+		t.Fatalf("run work --next-task: %v", err)
+	}
+}
+
+func TestWorkRejectsUnknownOption(t *testing.T) {
+	if err := run([]string{"work", "--all"}); err == nil || !strings.Contains(err.Error(), "unknown work option") {
+		t.Fatalf("err = %v, want unknown work option", err)
+	}
+}
+
 func TestAgentCreatePostsAgentPayloadWithoutSelectedAgent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

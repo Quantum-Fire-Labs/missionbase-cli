@@ -52,7 +52,7 @@ missionbase-agent auth set-token YOUR_TEAM_TOKEN
 missionbase-agent use test
 missionbase-agent auth status
 missionbase-agent me
-missionbase-agent work
+missionbase-agent work [--next|--next-task]
 missionbase-agent listen --once
 missionbase-agent dm list
 missionbase-agent members
@@ -119,7 +119,7 @@ missionbase-agent auth status
 missionbase-agent auth set-token <team-token> [--base-url URL] [--agent slug]
 missionbase-agent use <agent-slug> [--base-url URL]
 missionbase-agent me
-missionbase-agent work
+missionbase-agent work [--next|--next-task]
 missionbase-agent listen [--timeout N] [--offset ID] [--once]
 missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
@@ -269,7 +269,7 @@ Use `missionbase-agent tasks`, `missionbase-agent work`, `missionbase-agent task
 
 ## Agent check helper
 
-`scripts/missionbase-agent-check` is the local fleet check script used by timers on agent hosts. It currently runs `missionbase-agent work`, exits when there is no actionable work, and otherwise selects exactly one actionable item for the Pi run. Newer agent hosts can use `missionbase-agent listen --once` before invoking this check to reduce periodic polling latency.
+`scripts/missionbase-agent-check` is the local fleet check script used by timers on agent hosts. It currently runs `missionbase-agent work`, exits when there is no actionable work, and otherwise selects exactly one actionable item for the Pi run. `missionbase-agent work --next`/`--next-task` asks the server for only the next assigned open task, selected by box id and task box position ordering with stable tie-breakers, and omits unread conversations/direct messages. Newer agent hosts can use `missionbase-agent listen --once` before invoking this check to reduce periodic polling latency.
 
 Selected direct tasks use Pi session id `missionbase-task-<task_id>`. Selected unread conversations use `missionbase-task-<task_id>` only when the conversation payload includes a task assigned to the current agent; otherwise they use `missionbase-conversation-<conversation_id>`. The script passes both `--session-id` and a descriptive `--name` to Pi.
 

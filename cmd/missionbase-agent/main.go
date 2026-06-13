@@ -54,7 +54,7 @@ func run(args []string) error {
 	case "me":
 		return apiGet("/api/v1/agent/me")
 	case "work":
-		return apiGet("/api/v1/agent/work")
+		return work(args[1:])
 	case "listen":
 		return listen(args[1:])
 	case "dm":
@@ -81,6 +81,30 @@ func run(args []string) error {
 	}
 
 	return nil
+}
+
+func work(args []string) error {
+	if len(args) == 0 {
+		return apiGet("/api/v1/agent/work")
+	}
+
+	next := false
+	for _, arg := range args {
+		switch arg {
+		case "--next", "--next-task":
+			next = true
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent work [--next|--next-task]")
+			return nil
+		default:
+			return fmt.Errorf("unknown work option %q", arg)
+		}
+	}
+
+	if next {
+		return apiGet("/api/v1/agent/work?next=true")
+	}
+	return apiGet("/api/v1/agent/work")
 }
 
 func auth(args []string) error {
@@ -1566,7 +1590,8 @@ Commands:
                                       Save a team API token
   use <agent-slug> [--base-url URL]   Set the agent for this directory
   me                                  Show the current agent
-  work                                Show assigned tasks, unread conversations, and DMs
+  work [--next|--next-task]           Show assigned tasks, unread conversations, and DMs
+                                      With --next, return only the next assigned task
   listen [--timeout N] [--offset ID] [--once]
                                       Long-poll for agent updates
   dm list [--limit N]                 List agent direct messages
