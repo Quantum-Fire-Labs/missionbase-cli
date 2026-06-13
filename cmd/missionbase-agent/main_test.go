@@ -390,6 +390,14 @@ func TestNormalizeAgentAuthoredBodyConvertsEscapedNewlinesOutsideCode(t *testing
 	}
 }
 
+func TestNormalizeAgentAuthoredBodyConvertsEscapedNewlinesInFencedCode(t *testing.T) {
+	body := "Summary:\\n\\n```text\\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ user@host\\n```\\n\\nNext `printf 'a\\\\nb'`."
+	want := "Summary:\n\n```text\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ user@host\n```\n\nNext `printf 'a\\\\nb'`."
+	if got := normalizeAgentAuthoredBody(body); got != want {
+		t.Fatalf("normalized body = %q, want %q", got, want)
+	}
+}
+
 func TestDirectMessageSendNormalizesEscapedNewlines(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -534,6 +542,30 @@ func TestTaskCommentNormalizesEscapedNewlines(t *testing.T) {
 
 	setAgentEnv(t, server.URL)
 	if err := run([]string{"task", "comment", "123", "--body", `Done\n\n- documented`}); err != nil {
+		t.Fatalf("run task comment: %v", err)
+	}
+}
+
+func TestTaskCommentPreservesMarkdownInlineAndFencedCode(t *testing.T) {
+	body := "Findings:\\n\\n- Run `git pull --ff-only`, `xcodebuild`, `xcrun simctl`, and `./scripts/ios_build`.\\n- User is `iosagent`.\\n\\n```text\\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ user@host\\n```"
+	want := "Findings:\n\n- Run `git pull --ff-only`, `xcodebuild`, `xcrun simctl`, and `./scripts/ios_build`.\n- User is `iosagent`.\n\n```text\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ user@host\n```"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["comment"] != want {
+			t.Fatalf("comment payload = %q, want %q", payload["comment"], want)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"comment":{"id":327}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "comment", "123", "--body", body}); err != nil {
 		t.Fatalf("run task comment: %v", err)
 	}
 }
