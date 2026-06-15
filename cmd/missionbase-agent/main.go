@@ -59,6 +59,8 @@ func run(args []string) error {
 		return directMessage(args[1:])
 	case "agent":
 		return agent(args[1:])
+	case "document", "documents", "doc", "docs":
+		return document(args[1:])
 	case "tasks":
 		return apiGet("/api/v1/agent/tasks")
 	case "task":
@@ -609,6 +611,131 @@ func conversationComment(args []string) error {
 		return err
 	}
 	return apiPost(path, body)
+}
+
+func document(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+	}
+
+	switch args[0] {
+	case "create":
+		return documentCreate(args[1:])
+	case "edit", "update":
+		return documentEdit(args[1:])
+	case "--help", "-h":
+		fmt.Println("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		return nil
+	default:
+		return fmt.Errorf("unknown document command %q", args[0])
+	}
+}
+
+func documentCreate(args []string) error {
+	payload := map[string]string{}
+	boxID := ""
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--box", "--box-id":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			boxID = args[i+1]
+			i++
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--content", "--message", "--text", "--body-stdin", "--content-stdin", "--message-stdin", "--text-stdin":
+			return fmt.Errorf("%s is not supported; use --body-file PATH", args[i])
+		case "--body-file", "--content-file", "--message-file", "--text-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["body"] = body
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH")
+			return nil
+		default:
+			return fmt.Errorf("unknown document create option %q", args[i])
+		}
+	}
+
+	if strings.TrimSpace(boxID) == "" {
+		return fmt.Errorf("--box is required")
+	}
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	payload["body"] = normalizeAgentAuthoredBody(payload["body"])
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost("/api/v1/boxes/"+url.PathEscape(boxID)+"/documents", body)
+}
+
+func documentEdit(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+	}
+
+	documentID := strings.TrimSpace(args[0])
+	if documentID == "" {
+		return fmt.Errorf("document id is required")
+	}
+
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--content", "--message", "--text", "--body-stdin", "--content-stdin", "--message-stdin", "--text-stdin":
+			return fmt.Errorf("%s is not supported; use --body-file PATH", args[i])
+		case "--body-file", "--content-file", "--message-file", "--text-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["body"] = body
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+			return nil
+		default:
+			return fmt.Errorf("unknown document edit option %q", args[i])
+		}
+	}
+
+	payload["body"] = normalizeAgentAuthoredBody(payload["body"])
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPatch("/api/v1/documents/"+url.PathEscape(documentID), body)
 }
 
 func boxes(args []string) error {
@@ -1596,6 +1723,10 @@ Commands:
                                       Archive/deactivate an agent safely
   agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
                                       Add an agent to one or more boxes
+  document create --box BOX_ID --title TITLE --body-file PATH
+                                      Create a box document from a Markdown/plain-text file
+  document edit <document-id> [--title TITLE] --body-file PATH
+                                      Edit a document by creating a new version from a file
   tasks                               Show assigned tasks
   task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
       [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
@@ -1642,7 +1773,7 @@ Commands:
   version                             Show CLI version
 
 Markdown:
-  DM bodies, task comment bodies, conversation comment bodies, and box discussion bodies are Markdown-capable
+  DM bodies, task comment bodies, conversation comment bodies, box discussion bodies, and document bodies are Markdown-capable
   by default. Missionbase renders headings, emphasis, links, lists, blockquotes, and fenced code blocks as
   sanitized rich text while preserving ordinary plain-text messages. Accidental escaped newline sequences
   (\\n, \\r, \\r\\n) are normalized to real line breaks outside quoted/backticked code contexts.
