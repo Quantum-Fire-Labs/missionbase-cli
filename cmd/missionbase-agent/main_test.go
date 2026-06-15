@@ -785,6 +785,82 @@ func TestTaskCreatePostsHEICMultipartAttachment(t *testing.T) {
 	}
 }
 
+func TestDocumentCreatePostsFileBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/boxes/2/documents" {
+			t.Fatalf("path = %s, want /api/v1/boxes/2/documents", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["title"] != "Runbook" {
+			t.Fatalf("title = %q, want Runbook", payload["title"])
+		}
+		if payload["body"] != "# Heading\n\nLine 2" {
+			t.Fatalf("body = %q", payload["body"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","version_count":1}}`))
+	}))
+	defer server.Close()
+
+	bodyFile := writeTextFile(t, "document.md", "# Heading\n\nLine 2")
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run document create: %v", err)
+	}
+}
+
+func TestDocumentEditPatchesFileBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		if r.URL.Path != "/api/v1/documents/77" {
+			t.Fatalf("path = %s, want /api/v1/documents/77", r.URL.Path)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["title"] != "Updated" || payload["body"] != "Updated body" {
+			t.Fatalf("payload = %#v", payload)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Updated","version_count":2}}`))
+	}))
+	defer server.Close()
+
+	bodyFile := writeTextFile(t, "document.md", "Updated body")
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"document", "edit", "77", "--title", "Updated", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run document edit: %v", err)
+	}
+}
+
+func TestDocumentCommandsRequireFileBody(t *testing.T) {
+	bodyFile := writeTextFile(t, "document.md", "Body")
+	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body", "Body"}); err == nil || !strings.Contains(err.Error(), "use --body-file PATH") {
+		t.Fatalf("err = %v, want body-file error", err)
+	}
+	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook"}); err == nil || !strings.Contains(err.Error(), "--body is required") {
+		t.Fatalf("err = %v, want body required", err)
+	}
+	if err := run([]string{"document", "create", "--title", "Runbook", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--box is required") {
+		t.Fatalf("err = %v, want box required", err)
+	}
+	if err := run([]string{"document", "edit", "77", "--body-file", "-"}); err == nil || !strings.Contains(err.Error(), "stdin body input is not supported") {
+		t.Fatalf("err = %v, want stdin unsupported", err)
+	}
+}
+
 func TestAttachmentRejectsUnsupportedType(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "note.txt")
 	if err := os.WriteFile(path, []byte("plain text"), 0o600); err != nil {
