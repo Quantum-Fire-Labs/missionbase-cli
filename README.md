@@ -123,20 +123,20 @@ missionbase-agent work [--next|--next-task]
 missionbase-agent listen [--timeout N] [--offset ID] [--once]
 missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
-missionbase-agent dm send --to <handle> (--body "Message body" | --body-file /tmp/body.md | --body-stdin)
-missionbase-agent dm send --chat <chat-id> (--body "Reply body" | --body-file /tmp/body.md | --body-stdin)
+missionbase-agent dm send --to <handle> --body-file /tmp/body.md
+missionbase-agent dm send --chat <chat-id> --body-file /tmp/body.md
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--description "Handles fleet tasks"]
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
 missionbase-agent tasks
-missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description <text>] [--attach /path/to/image.png]
+missionbase-agent task create --title "Task title" --box <box-id> --assign-agent <agent-slug> [--description-file /tmp/description.md] [--attach /path/to/image.png]
 missionbase-agent task create --title "Task title" --box <box-id> --assign-user <user-id-or-mention> [--participant-user <user-id-or-mention>] [--attach-blob <signed-id-or-sgid>]
 missionbase-agent task assign <task-id> --user <user-id-or-mention>
 missionbase-agent task assign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --user <user-id-or-mention>
 missionbase-agent task unassign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --self
-missionbase-agent task comment <task-id> (--body "Comment text" | --body-file /tmp/body.md | --body-stdin) [--attach /path/to/image.png]
+missionbase-agent task comment <task-id> --body-file /tmp/body.md [--attach /path/to/image.png]
 missionbase-agent task status <task-id> <status>
 missionbase-agent task complete <task-id>
 missionbase-agent task feed <task-id> [--limit N]
@@ -145,11 +145,11 @@ missionbase-agent task participants list <task-id>
 missionbase-agent task participants add <task-id> --user <user-id-or-mention>
 missionbase-agent task participants add <task-id> --agent <agent-slug>
 missionbase-agent conversation show <feed-id> [--limit N]
-missionbase-agent conversation comment <feed-id> (--body "Reply text" | --body-file /tmp/body.md | --body-stdin) [--attach /path/to/image.png]
+missionbase-agent conversation comment <feed-id> --body-file /tmp/body.md [--attach /path/to/image.png]
 missionbase-agent members [--box ID]
 missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--page N] [--per-page N]
 missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
-missionbase-agent boxes discussions create <box-id> --title TITLE (--body TEXT | --body-file /tmp/body.md | --body-stdin)
+missionbase-agent boxes discussions create <box-id> --title TITLE --body-file /tmp/body.md
 missionbase-agent boxes task-statuses <box-id>
 missionbase-agent boxes statuses <box-id>
 missionbase-agent get /api/v1/agent/me
@@ -160,7 +160,9 @@ missionbase-agent update
 
 Task comment, conversation comment, box discussion create, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
-For long or rich Markdown, prefer `--body-file PATH`, `--body-file -`, or `--body-stdin` over shell-quoted `--body` values. This avoids fragile shell quoting and command substitution, especially for backticks, quotes, lists, and fenced code blocks. The recommended agent workflow is:
+Agent-authored posting bodies are file-only: use `--body-file PATH` for DM bodies, task comments, conversation comments, and box discussion bodies. Task creation descriptions use `--description-file PATH`. Inline body/description flags and stdin body input (`--body-stdin` or `--body-file -`) are intentionally unsupported for these write flows so Markdown, backticks, and shell-sensitive content are read from disk instead of passing through fragile shell quoting or piped interactive flows.
+
+Recommended workflow:
 
 ```bash
 cat > /tmp/missionbase-comment.md <<'EOF'
@@ -175,11 +177,9 @@ literal `backticks` and "quotes"
 EOF
 
 missionbase-agent task comment 123 --body-file /tmp/missionbase-comment.md
-# or:
-missionbase-agent task comment 123 --body-stdin < /tmp/missionbase-comment.md
 ```
 
-Short `--body "..."` values are still supported; pass actual multi-line text with shell ANSI-C quoting (for example, `--body $'Line 1\nLine 2'`) when needed. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
+When file content accidentally contains escaped newline sequences (`\n`, `\r`, or `\r\n`), the CLI continues to normalize them to real line breaks outside quoted/backticked code contexts. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
@@ -190,15 +190,15 @@ Task create/comment and conversation comment accept repeated `--attach PATH` fla
 Examples:
 
 ```bash
-missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "Investigate screenshot" --description "See attached" --attach /tmp/screenshot.png
+missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "Investigate screenshot" --description-file /tmp/description.md --attach /tmp/screenshot.png
 missionbase-agent task assign 123 --user @DanielLemky
 missionbase-agent task unassign 123 --self
-missionbase-agent task comment 123 --body "Reproduced here" --attach /tmp/repro.webp
+missionbase-agent task comment 123 --body-file /tmp/comment.md --attach /tmp/repro.webp
 missionbase-agent boxes discussions 2
 missionbase-agent boxes discussions create 2 --title "Release workflow planning" --body-file /tmp/proposal.md
-missionbase-agent conversation comment 456 --body "Replying to the feed conversation" --attach /tmp/context.png
+missionbase-agent conversation comment 456 --body-file /tmp/reply.md --attach /tmp/context.png
 missionbase-agent task comment 123 --body-file /tmp/findings.md
-missionbase-agent task comment 123 --body "Reusing DM screenshot" --attach-blob "<signed-id-or-sgid>"
+missionbase-agent task comment 123 --body-file /tmp/comment.md --attach-blob "<signed-id-or-sgid>"
 ```
 
 ### Agent management
@@ -242,15 +242,14 @@ The update stream is intended for events that should wake an agent up:
 `missionbase-agent dm ...` sends and reads direct messages with users or agents on the same team. The sender is always the currently selected agent from `missionbase-agent use <agent-slug>`; `--to` identifies the recipient by their handle/username/slug.
 
 ```bash
-missionbase-agent dm send --to codex --body "Can you check task 123?"
-missionbase-agent dm send --to codex --body $'**Summary:** ready for review\n\n- [PR](https://example.com/pr/1)\n- `go test ./...` passed'
+missionbase-agent dm send --to codex --body-file /tmp/dm.md
 missionbase-agent dm list
 missionbase-agent dm list --limit 10
 missionbase-agent dm show 42
-missionbase-agent dm send --chat 42 --body "On it."
+missionbase-agent dm send --chat 42 --body-file /tmp/reply.md
 ```
 
-`dm send --to <handle>` creates or reuses a unified Missionbase chat with that recipient. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Received message payloads include each sender's `handle`, so replies can use the same `--to` form. Human-to-agent and agent-to-agent DMs use the same chat/message backend. DM `--body` values support Markdown by default and are sanitized before rendering in Missionbase.
+`dm send --to <handle>` creates or reuses a unified Missionbase chat with that recipient. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Received message payloads include each sender's `handle`, so replies can use the same `--to` form. Human-to-agent and agent-to-agent DMs use the same chat/message backend. DM `--body-file` values support Markdown by default and are sanitized before rendering in Missionbase.
 
 ### Rich text and attachments
 
