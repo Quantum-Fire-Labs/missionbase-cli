@@ -698,6 +698,7 @@ func documentFetch(args []string) error {
 	var response struct {
 		Document struct {
 			Body string `json:"body"`
+			URL  string `json:"url"`
 		} `json:"document"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -706,6 +707,9 @@ func documentFetch(args []string) error {
 	fmt.Print(response.Document.Body)
 	if !strings.HasSuffix(response.Document.Body, "\n") {
 		fmt.Println()
+	}
+	if strings.TrimSpace(response.Document.URL) != "" {
+		fmt.Fprintf(os.Stderr, "Document URL: %s\n", response.Document.URL)
 	}
 	return nil
 }
