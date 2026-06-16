@@ -845,6 +845,8 @@ func boxes(args []string) error {
 		return boxTasks(args[1:])
 	case "discussions":
 		return boxDiscussions(args[1:])
+	case "files":
+		return boxFiles(args[1:])
 	case "statuses", "task-statuses":
 		return boxTaskStatuses(args[1:])
 	default:
@@ -943,6 +945,52 @@ func boxDiscussionsCreate(args []string) error {
 		return err
 	}
 	return apiPost("/api/v1/boxes/"+url.PathEscape(boxID)+"/discussions", body)
+}
+
+func boxFiles(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--page N] [--per-page N]")
+	}
+
+	boxID := strings.TrimSpace(args[0])
+	if boxID == "" {
+		return fmt.Errorf("box id is required")
+	}
+
+	values := url.Values{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--query", "-q":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			values.Set("query", args[i+1])
+			i++
+		case "--page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--page requires a value")
+			}
+			values.Set("page", args[i+1])
+			i++
+		case "--per-page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--per-page requires a value")
+			}
+			values.Set("per_page", args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--page N] [--per-page N]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files option %q", args[i])
+		}
+	}
+
+	path := "/api/v1/boxes/" + url.PathEscape(boxID) + "/files"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	return apiGet(path)
 }
 
 func boxTaskStatuses(args []string) error {
@@ -1879,6 +1927,8 @@ Commands:
       [--page N] [--per-page N]
   boxes discussions create <box-id>   Create a standalone Markdown-capable box discussion
       --title TITLE --body-file PATH
+  boxes files <box-id>                List/search files and documents in an accessible box
+      [--query QUERY] [--page N] [--per-page N]
   boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived

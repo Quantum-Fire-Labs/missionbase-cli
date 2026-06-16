@@ -153,13 +153,14 @@ missionbase-agent members [--box ID]
 missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--page N] [--per-page N]
 missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
 missionbase-agent boxes discussions create <box-id> --title TITLE --body-file /tmp/body.md
+missionbase-agent boxes files <box-id> [--query QUERY] [--page N] [--per-page N]
 missionbase-agent boxes task-statuses <box-id>
 missionbase-agent boxes statuses <box-id>
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent document fetch ...` prints a document body and reports the document URL when the API response includes one; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
+`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches files in an accessible box and currently returns box documents with identifiers, canonical URLs, fetch metadata, creator/owner, timestamps, status, and pagination metadata. `missionbase-agent document fetch ...` prints a document body and reports the document URL when the API response includes one; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
 
 Task comment, conversation comment, box discussion create, document, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
@@ -200,6 +201,8 @@ missionbase-agent task unassign 123 --self
 missionbase-agent task comment 123 --body-file /tmp/comment.md --attach /tmp/repro.webp
 missionbase-agent boxes discussions 2
 missionbase-agent boxes discussions create 2 --title "Release workflow planning" --body-file /tmp/proposal.md
+missionbase-agent boxes files 2
+missionbase-agent boxes files 2 --query runbook --per-page 25
 missionbase-agent document fetch 789
 missionbase-agent document fetch 789 --format html
 missionbase-agent document fetch 789 --format plain-text
@@ -276,7 +279,7 @@ Use `missionbase-agent tasks`, `missionbase-agent work`, `missionbase-agent task
 
 ### Other agent commands
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status-category`, `--task-status-ids`, legacy `--status`, `--page`, and `--per-page` to refine results. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `conversation show/comment` remains the generic feed-conversation surface for both task conversations and discussion feeds. Box/task API responses include `task_statuses`/`task_status_id`, `status_label`, `status_category`, `task_status_position`, and `status_color` so clients can discover and display allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status-category`, `--task-status-ids`, legacy `--status`, `--page`, and `--per-page` to refine results. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `conversation show/comment` remains the generic feed-conversation surface for both task conversations and discussion feeds. `missionbase-agent boxes files <box-id>` lists and searches box files/documents as JSON; use `--query`, `--page`, and `--per-page` to filter or paginate. Box/task API responses include `task_statuses`/`task_status_id`, `status_label`, `status_category`, `task_status_position`, and `status_color` so clients can discover and display allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Agent check helper
 
