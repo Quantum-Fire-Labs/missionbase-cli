@@ -644,19 +644,82 @@ func conversationComment(args []string) error {
 
 func document(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		return fmt.Errorf("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
 	}
 
 	switch args[0] {
+	case "fetch", "show", "get":
+		return documentFetch(args[1:])
 	case "create":
 		return documentCreate(args[1:])
 	case "edit", "update":
 		return documentEdit(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		fmt.Println("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document fetch 77\n  missionbase-agent document fetch 77 --format markdown\n  missionbase-agent document fetch 77 --format html\n  missionbase-agent document fetch 77 --format plain-text")
 		return nil
 	default:
 		return fmt.Errorf("unknown document command %q", args[0])
+	}
+}
+
+func documentFetch(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
+	}
+	documentID := strings.TrimSpace(args[0])
+	if documentID == "" {
+		return fmt.Errorf("document id is required")
+	}
+
+	format := "markdown"
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--format":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--format requires a value")
+			}
+			format = normalizeDocumentFetchFormat(args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
+			return nil
+		default:
+			return fmt.Errorf("unknown document fetch option %q", args[i])
+		}
+	}
+	if !validDocumentFetchFormat(format) {
+		return fmt.Errorf("invalid document format %q; supported formats: markdown, html, plain-text", format)
+	}
+
+	body, err := apiGetBody("/api/v1/documents/" + url.PathEscape(documentID) + "?format=" + url.QueryEscape(format))
+	if err != nil {
+		return err
+	}
+	var response struct {
+		Document struct {
+			Body string `json:"body"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return err
+	}
+	fmt.Print(response.Document.Body)
+	if !strings.HasSuffix(response.Document.Body, "\n") {
+		fmt.Println()
+	}
+	return nil
+}
+
+func normalizeDocumentFetchFormat(format string) string {
+	return strings.ReplaceAll(strings.TrimSpace(format), "_", "-")
+}
+
+func validDocumentFetchFormat(format string) bool {
+	switch format {
+	case "markdown", "html", "plain-text":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1772,6 +1835,8 @@ Commands:
                                       Restore/reactivate an archived agent
   agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
                                       Add an agent to one or more boxes
+  document fetch <document-id> [--format markdown|html|plain-text]
+                                      Print a document body (default: markdown)
   document create --box BOX_ID --title TITLE --body-file PATH
                                       Create a box document from a Markdown/plain-text file
   document edit <document-id> [--title TITLE] --body-file PATH

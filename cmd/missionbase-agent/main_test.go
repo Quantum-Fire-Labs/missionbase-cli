@@ -815,6 +815,63 @@ func TestTaskCreatePostsHEICMultipartAttachment(t *testing.T) {
 	}
 }
 
+func TestDocumentFetchGetsMarkdownByDefault(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/documents/77" {
+			t.Fatalf("path = %s, want /api/v1/documents/77", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("format"); got != "markdown" {
+			t.Fatalf("format = %q, want markdown", got)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"document":{"id":77,"format":"markdown","body":"# Heading\n\nBody"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	stdout := captureStdout(t, func() {
+		if err := run([]string{"document", "fetch", "77"}); err != nil {
+			t.Fatalf("run document fetch: %v", err)
+		}
+	})
+	if stdout != "# Heading\n\nBody\n" {
+		t.Fatalf("stdout = %q", stdout)
+	}
+}
+
+func TestDocumentFetchSupportsFormats(t *testing.T) {
+	formats := []string{"markdown", "html", "plain-text"}
+	for _, format := range formats {
+		t.Run(format, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.Query().Get("format"); got != format {
+					t.Fatalf("format = %q, want %s", got, format)
+				}
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"document":{"id":77,"body":"ok"}}`))
+			}))
+			defer server.Close()
+
+			setAgentEnv(t, server.URL)
+			if err := run([]string{"document", "fetch", "77", "--format", format}); err != nil {
+				t.Fatalf("run document fetch --format %s: %v", format, err)
+			}
+		})
+	}
+}
+
+func TestDocumentFetchRejectsInvalidFormat(t *testing.T) {
+	if err := run([]string{"document", "fetch", "77", "--format", "json"}); err == nil || !strings.Contains(err.Error(), "invalid document format") {
+		t.Fatalf("err = %v, want invalid format", err)
+	}
+}
+
 func TestDocumentCreatePostsFileBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -899,6 +956,24 @@ func TestAttachmentRejectsUnsupportedType(t *testing.T) {
 	if err := run([]string{"task", "comment", "123", "--attach", path}); err == nil || !strings.Contains(err.Error(), "unsupported attachment type") {
 		t.Fatalf("err = %v, want unsupported attachment type", err)
 	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	original := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writer
+	fn()
+	_ = writer.Close()
+	os.Stdout = original
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body)
 }
 
 func writeTextFile(t *testing.T, name, body string) string {
