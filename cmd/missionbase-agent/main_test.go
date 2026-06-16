@@ -830,18 +830,24 @@ func TestDocumentFetchGetsMarkdownByDefault(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"document":{"id":77,"format":"markdown","body":"# Heading\n\nBody"}}`))
+		_, _ = w.Write([]byte(`{"document":{"id":77,"format":"markdown","url":"https://dash.missionbase.app/boxes/2/files/77","body":"# Heading\n\nBody"}}`))
 	}))
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
+	var stderr string
 	stdout := captureStdout(t, func() {
-		if err := run([]string{"document", "fetch", "77"}); err != nil {
-			t.Fatalf("run document fetch: %v", err)
-		}
+		stderr = captureStderr(t, func() {
+			if err := run([]string{"document", "fetch", "77"}); err != nil {
+				t.Fatalf("run document fetch: %v", err)
+			}
+		})
 	})
 	if stdout != "# Heading\n\nBody\n" {
 		t.Fatalf("stdout = %q", stdout)
+	}
+	if !strings.Contains(stderr, "Document URL: https://dash.missionbase.app/boxes/2/files/77") {
+		t.Fatalf("stderr = %q, want document URL", stderr)
 	}
 }
 
@@ -894,14 +900,19 @@ func TestDocumentCreatePostsFileBody(t *testing.T) {
 			t.Fatalf("body = %q", payload["body"])
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","version_count":1}}`))
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","url":"https://dash.missionbase.app/boxes/2/files/77","version_count":1}}`))
 	}))
 	defer server.Close()
 
 	bodyFile := writeTextFile(t, "document.md", "# Heading\n\nLine 2")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run document create: %v", err)
+	stdout := captureStdout(t, func() {
+		if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile}); err != nil {
+			t.Fatalf("run document create: %v", err)
+		}
+	})
+	if !strings.Contains(stdout, `"url":"https://dash.missionbase.app/boxes/2/files/77"`) {
+		t.Fatalf("stdout = %q, want document url", stdout)
 	}
 }
 
@@ -969,6 +980,24 @@ func captureStdout(t *testing.T, fn func()) string {
 	fn()
 	_ = writer.Close()
 	os.Stdout = original
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body)
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	original := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = writer
+	fn()
+	_ = writer.Close()
+	os.Stderr = original
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
