@@ -241,6 +241,46 @@ func TestBoxesDiscussionsGetsStandaloneDiscussions(t *testing.T) {
 	}
 }
 
+func TestBoxesFilesGetsListAndSearchesDocuments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/boxes/2/files" {
+			t.Fatalf("path = %s, want /api/v1/boxes/2/files", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("query"); got != "runbook" {
+			t.Fatalf("query = %q, want runbook", got)
+		}
+		if got := r.URL.Query().Get("page"); got != "2" {
+			t.Fatalf("page = %q, want 2", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "25" {
+			t.Fatalf("per_page = %q, want 25", got)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"files":[{"id":77,"title":"Runbook","type":"document","kind":"document","url":"https://dash.missionbase.app/boxes/2/files/77","fetch_id":77,"fetch_type":"document"}],"meta":{"total":1,"page":2,"per_page":25,"query":"runbook"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"boxes", "files", "2", "--query", "runbook", "--page", "2", "--per-page", "25"}); err != nil {
+		t.Fatalf("run boxes files: %v", err)
+	}
+}
+
+func TestBoxesFilesRequiresBoxIDAndOptionValues(t *testing.T) {
+	if err := run([]string{"boxes", "files"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes files <box-id>") {
+		t.Fatalf("err = %v, want usage error", err)
+	}
+	if err := run([]string{"boxes", "files", "2", "--query"}); err == nil || !strings.Contains(err.Error(), "--query requires a value") {
+		t.Fatalf("err = %v, want query value error", err)
+	}
+}
+
 func TestBoxesDiscussionsRequiresBoxID(t *testing.T) {
 	if err := run([]string{"boxes", "discussions"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes discussions <box-id>") {
 		t.Fatalf("err = %v, want usage error", err)
