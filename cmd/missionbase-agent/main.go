@@ -1092,7 +1092,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -1379,7 +1379,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention) [--description-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -1391,9 +1391,6 @@ func taskCreate(args []string) error {
 	}
 	if strings.TrimSpace(payload["box_id"]) == "" {
 		return fmt.Errorf("--box is required")
-	}
-	if payload["assign_to_agent_slug"] == "" && payload["assign_to_user_id"] == "" {
-		return fmt.Errorf("one of --assign-agent or --assign-user is required")
 	}
 	if payload["assign_to_agent_slug"] != "" && payload["assign_to_user_id"] != "" {
 		return fmt.Errorf("use only one of --assign-agent or --assign-user")
@@ -1846,7 +1843,7 @@ Commands:
   document edit <document-id> [--title TITLE] --body-file PATH
                                       Edit a document by creating a new version from a file
   tasks                               Show assigned tasks
-  task create --title TITLE --box ID (--assign-agent slug | --assign-user ID|@mention)
+  task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention]
       [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
   task assign <task-id> --user ID|@mention
