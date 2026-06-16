@@ -127,6 +127,7 @@ missionbase-agent dm send --to <handle> --body-file /tmp/body.md
 missionbase-agent dm send --chat <chat-id> --body-file /tmp/body.md
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--description "Handles fleet tasks"]
 missionbase-agent agent archive fleet-worker --yes
+missionbase-agent agent restore fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
 missionbase-agent document create --box <box-id> --title "Doc title" --body-file /tmp/document.md
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
@@ -213,14 +214,17 @@ missionbase-agent task comment 123 --body-file /tmp/comment.md --attach-blob "<s
 
 `missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and box membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks according to each box's configured task-status categories, so hand off or close that work first.
 
+`missionbase-agent agent restore ... --yes` restores/reactivates an archived agent with its existing identity and box memberships so it can be assigned and used for new work again. Restoring does not recreate agent-owned API keys that were revoked during archival; create new credentials if the restored agent needs to authenticate.
+
 ```bash
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --description "Handles fleet tasks"
 missionbase-agent agent boxes add fleet-worker --box 2
 missionbase-agent agent boxes add 42 --box 2 --box 7
 missionbase-agent agent archive fleet-worker --yes
+missionbase-agent agent restore fleet-worker --yes
 ```
 
-These management commands use the authenticated team token and do not require a selected agent slug, so they can be used during initial fleet bootstrap and cleanup.
+These management commands use the authenticated team token and do not require a selected agent slug, so they can be used during initial fleet bootstrap, cleanup, and restore.
 
 ### Agent long polling
 

@@ -132,6 +132,36 @@ func TestAgentArchiveRequiresConfirmation(t *testing.T) {
 	}
 }
 
+func TestAgentRestorePatchesWithoutSelectedAgentWhenConfirmed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents/fleet-worker/restore" {
+			t.Fatalf("path = %s, want /api/v1/agents/fleet-worker/restore", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"restored":true,"operation":"restore","agent":{"slug":"fleet-worker","status":"active"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "restore", "fleet-worker", "--yes"}); err != nil {
+		t.Fatalf("run agent restore: %v", err)
+	}
+}
+
+func TestAgentRestoreRequiresConfirmation(t *testing.T) {
+	if err := run([]string{"agent", "restore", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "--yes is required") {
+		t.Fatalf("err = %v, want --yes required", err)
+	}
+}
+
 func TestAgentBoxesAddPostsBoxIDs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

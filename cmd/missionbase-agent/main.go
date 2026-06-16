@@ -406,7 +406,7 @@ func isASCIISpace(ch byte) bool {
 
 func agent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent <create|archive|delete|boxes>")
+		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|boxes>")
 	}
 
 	switch args[0] {
@@ -414,6 +414,8 @@ func agent(args []string) error {
 		return agentCreate(args[1:])
 	case "archive", "delete", "deactivate":
 		return agentArchive(args[1:])
+	case "restore", "unarchive", "reactivate":
+		return agentRestore(args[1:])
 	case "boxes":
 		return agentBoxes(args[1:])
 	default:
@@ -490,6 +492,33 @@ func agentArchive(args []string) error {
 	}
 
 	return apiDeleteAllowNoAgent("/api/v1/agents/" + url.PathEscape(agentID))
+}
+
+func agentRestore(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent agent restore <agent-id-or-slug> --yes")
+	}
+	agentID := args[0]
+	confirmed := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--yes", "-y":
+			confirmed = true
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent agent restore <agent-id-or-slug> --yes")
+			return nil
+		default:
+			return fmt.Errorf("unknown agent restore option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(agentID) == "" {
+		return fmt.Errorf("agent id or slug is required")
+	}
+	if !confirmed {
+		return fmt.Errorf("--yes is required to restore an agent; restore reactivates the agent with its existing identity and box memberships")
+	}
+
+	return apiPatchAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/restore", nil)
 }
 
 func agentBoxes(args []string) error {
@@ -1596,6 +1625,15 @@ func apiPatch(path string, requestBody []byte) error {
 	return nil
 }
 
+func apiPatchAllowNoAgent(path string, requestBody []byte) error {
+	body, err := apiPatchBodyAllowNoAgent(path, requestBody)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiDelete(path string) error {
 	body, err := apiDeleteBody(path)
 	if err != nil {
@@ -1655,6 +1693,15 @@ func apiPatchBody(path string, requestBody []byte) ([]byte, error) {
 	}
 	if cfg.AgentSlug == "" {
 		return nil, fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
+	}
+	client := httpclient.New(cfg)
+	return client.Patch(path, requestBody)
+}
+
+func apiPatchBodyAllowNoAgent(path string, requestBody []byte) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
 	}
 	client := httpclient.New(cfg)
 	return client.Patch(path, requestBody)
@@ -1721,6 +1768,8 @@ Commands:
                                       Create an agent on the authenticated team
   agent archive <agent-id-or-slug> --yes
                                       Archive/deactivate an agent safely
+  agent restore <agent-id-or-slug> --yes
+                                      Restore/reactivate an archived agent
   agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
                                       Add an agent to one or more boxes
   document create --box BOX_ID --title TITLE --body-file PATH
