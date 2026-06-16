@@ -750,6 +750,64 @@ func TestTaskCreateReadsMarkdownDescriptionFile(t *testing.T) {
 	}
 }
 
+func TestTaskCreateWithoutAssigneePostsUnassignedPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/tasks" {
+			t.Fatalf("path = %s, want /api/v1/tasks", r.URL.Path)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["title"] != "Unassigned" {
+			t.Fatalf("title = %q, want Unassigned", payload["title"])
+		}
+		if payload["box_id"] != "2" {
+			t.Fatalf("box_id = %q, want 2", payload["box_id"])
+		}
+		if _, ok := payload["assign_to_agent_slug"]; ok {
+			t.Fatalf("assign_to_agent_slug unexpectedly present in payload: %#v", payload)
+		}
+		if _, ok := payload["assign_to_user_id"]; ok {
+			t.Fatalf("assign_to_user_id unexpectedly present in payload: %#v", payload)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"task":{"id":989,"assignees":[]}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "create", "--title", "Unassigned", "--box", "2"}); err != nil {
+		t.Fatalf("run task create without assignee: %v", err)
+	}
+}
+
+func TestTaskCreatePreservesAssignedAgentPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["assign_to_agent_slug"] != "missionbase-dev" {
+			t.Fatalf("assign_to_agent_slug = %q, want missionbase-dev", payload["assign_to_agent_slug"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"task":{"id":990}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "create", "--title", "Assigned", "--box", "2", "--assign-agent", "missionbase-dev"}); err != nil {
+		t.Fatalf("run assigned task create: %v", err)
+	}
+}
+
+func TestTaskCreateRejectsBothAgentAndUserAssignment(t *testing.T) {
+	if err := run([]string{"task", "create", "--title", "Both", "--box", "2", "--assign-agent", "missionbase-dev", "--assign-user", "42"}); err == nil || !strings.Contains(err.Error(), "use only one of --assign-agent or --assign-user") {
+		t.Fatalf("err = %v, want mutually exclusive assignment error", err)
+	}
+}
+
 func TestTaskCreateRejectsInlineDescriptionAndStdin(t *testing.T) {
 	if err := run([]string{"task", "create", "--title", "Inline", "--box", "2", "--assign-agent", "missionbase-dev", "--description", "inline"}); err == nil || !strings.Contains(err.Error(), "--description is not supported") {
 		t.Fatalf("err = %v, want inline description unsupported", err)
