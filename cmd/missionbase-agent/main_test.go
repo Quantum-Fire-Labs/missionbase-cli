@@ -1041,6 +1041,41 @@ func TestDocumentEditPatchesFileBody(t *testing.T) {
 	}
 }
 
+func TestTaskMovePatchesBoxID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tasks/123" {
+			t.Fatalf("path = %s, want /api/v1/tasks/123", r.URL.Path)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["box_id"] != "42" {
+			t.Fatalf("box_id = %q, want 42", payload["box_id"])
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"task":{"id":123,"box":{"id":42}}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "move", "123", "--box", "42"}); err != nil {
+		t.Fatalf("run task move: %v", err)
+	}
+}
+
+func TestTaskMoveRequiresBox(t *testing.T) {
+	if err := run([]string{"task", "move", "123"}); err == nil || !strings.Contains(err.Error(), "task move <task-id> --box BOX_ID") {
+		t.Fatalf("err = %v, want usage error", err)
+	}
+	if err := run([]string{"task", "move", "123", "--status", "todo"}); err == nil || !strings.Contains(err.Error(), "unknown task move option") {
+		t.Fatalf("err = %v, want unknown option error", err)
+	}
+}
+
 func TestDocumentCommandsRequireFileBody(t *testing.T) {
 	bodyFile := writeTextFile(t, "document.md", "Body")
 	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body", "Body"}); err == nil || !strings.Contains(err.Error(), "use --body-file PATH") {
