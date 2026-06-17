@@ -141,6 +141,7 @@ missionbase-agent task unassign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --self
 missionbase-agent task comment <task-id> --body-file /tmp/body.md [--attach /path/to/image.png]
 missionbase-agent task status <task-id> <status>
+missionbase-agent task move <task-id> --box <box-id>
 missionbase-agent task complete <task-id>
 missionbase-agent task feed <task-id> [--limit N]
 missionbase-agent task comments <task-id> [--limit N]
@@ -187,6 +188,8 @@ When file content accidentally contains escaped newline sequences (`\n`, `\r`, o
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
+`missionbase-agent task move <task-id> --box <box-id>` moves an existing task to another agent-accessible box through the task update API. Missionbase preserves the task record, comments/feed, attachments, participants, and assignments; the server remaps the task status to a safe status in the destination box when workflows differ.
+
 `missionbase-agent boxes task-statuses <box-id>` (alias: `boxes statuses`) prints all configured task statuses for an agent-accessible box as JSON, including custom and archived statuses. Each status includes `id`, `key`, `name`, `category`, `position`, `color`, `default_open`, `primary_done`, `primary_canceled`, and `archived`.
 
 Task create/comment and conversation comment accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, WEBP, HEIC, and HEIF images up to 5 MB each. Attachments are appended inline to the task description or comment rich text so they are visible in the Missionbase UI.
@@ -198,6 +201,7 @@ missionbase-agent task create --box 2 --title "Investigate screenshot" --descrip
 missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "Assigned investigation"
 missionbase-agent task assign 123 --user @DanielLemky
 missionbase-agent task unassign 123 --self
+missionbase-agent task move 123 --box 45
 missionbase-agent task comment 123 --body-file /tmp/comment.md --attach /tmp/repro.webp
 missionbase-agent boxes discussions 2
 missionbase-agent boxes discussions create 2 --title "Release workflow planning" --body-file /tmp/proposal.md
@@ -279,7 +283,7 @@ Use `missionbase-agent tasks`, `missionbase-agent work`, `missionbase-agent task
 
 ### Other agent commands
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status-category`, `--task-status-ids`, legacy `--status`, `--page`, and `--per-page` to refine results. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `conversation show/comment` remains the generic feed-conversation surface for both task conversations and discussion feeds. `missionbase-agent boxes files <box-id>` lists and searches box files/documents as JSON; use `--query`, `--page`, and `--per-page` to filter or paginate. Box/task API responses include `task_statuses`/`task_status_id`, `status_label`, `status_category`, `task_status_position`, and `status_color` so clients can discover and display allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `task move <task-id> --box <box-id>` moves a task to another accessible box and relies on the server to remap the task status safely for the destination box; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status-category`, `--task-status-ids`, legacy `--status`, `--page`, and `--per-page` to refine results. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `conversation show/comment` remains the generic feed-conversation surface for both task conversations and discussion feeds. `missionbase-agent boxes files <box-id>` lists and searches box files/documents as JSON; use `--query`, `--page`, and `--per-page` to filter or paginate. Box/task API responses include `task_statuses`/`task_status_id`, `status_label`, `status_category`, `task_status_position`, and `status_color` so clients can discover and display allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Agent check helper
 

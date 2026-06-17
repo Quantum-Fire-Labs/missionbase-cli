@@ -1140,7 +1140,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -1154,6 +1154,8 @@ func task(args []string) error {
 		return taskUnassign(args[1:])
 	case "status":
 		return taskStatus(args[1:])
+	case "move", "box":
+		return taskMove(args[1:])
 	case "complete":
 		return taskComplete(args[1:])
 	case "feed", "comments":
@@ -1342,6 +1344,26 @@ func taskStatus(args []string) error {
 	}
 
 	body, err := json.Marshal(map[string]string{"status": status})
+	if err != nil {
+		return err
+	}
+	return apiPatch("/api/v1/tasks/"+url.PathEscape(taskID), body)
+}
+
+func taskMove(args []string) error {
+	if len(args) != 3 {
+		return fmt.Errorf("usage: missionbase-agent task move <task-id> --box BOX_ID")
+	}
+	taskID := args[0]
+	if args[1] != "--box" {
+		return fmt.Errorf("unknown task move option %q", args[1])
+	}
+	boxID := strings.TrimSpace(args[2])
+	if boxID == "" {
+		return fmt.Errorf("--box requires a box id")
+	}
+
+	body, err := json.Marshal(map[string]string{"box_id": boxID})
 	if err != nil {
 		return err
 	}
@@ -1906,6 +1928,7 @@ Commands:
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable comment to a task conversation/feed
   task status <task-id> <status>      Set status (server validates box-specific statuses)
+  task move <task-id> --box BOX_ID    Move a task to another accessible box
   task complete <task-id>             Mark a task complete
   task feed <task-id> [--limit N]     Show a task feed and comments
   task comments <task-id> [--limit N] Show a task feed and comments
