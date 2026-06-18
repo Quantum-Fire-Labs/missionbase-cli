@@ -74,11 +74,21 @@ func run(args []string) error {
 		return conversations(args[1:])
 	case "conversation":
 		return conversation(args[1:])
+	case "notes":
+		return notes(args[1:])
+	case "document":
+		return document(args[1:])
 	case "get":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase get /api/path")
 		}
 		return apiGet(args[1])
+	case "post":
+		return rawWrite("POST", args[1:])
+	case "patch":
+		return rawWrite("PATCH", args[1:])
+	case "delete":
+		return rawWrite("DELETE", args[1:])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -245,10 +255,12 @@ func boxes(args []string) error {
 		return boxTasks(args[1:])
 	case "discussions":
 		return boxDiscussions(args[1:])
+	case "documents", "docs":
+		return boxDocuments(args[1:])
 	case "statuses", "task-statuses":
 		return boxTaskStatuses(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase boxes [--team TEAM_ID]\n       missionbase boxes <tasks|discussions|statuses|task-statuses> <box-id>")
+		fmt.Println("usage: missionbase boxes [--team TEAM_ID]\n       missionbase boxes <tasks|discussions|documents|statuses|task-statuses> <box-id>")
 		return nil
 	default:
 		return fmt.Errorf("unknown boxes command %q", args[0])
@@ -386,6 +398,60 @@ func boxTaskStatuses(args []string) error {
 		return fmt.Errorf("usage: missionbase boxes task-statuses <box-id>")
 	}
 	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/task_statuses")
+}
+
+func boxDocuments(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+	}
+	if args[0] != "create" {
+		if isHelp(args[0]) {
+			fmt.Println("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+			return nil
+		}
+		return fmt.Errorf("unknown boxes documents command %q", args[0])
+	}
+	return boxDocumentsCreate(args[1:])
+}
+
+func boxDocumentsCreate(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+	}
+	boxID := strings.TrimSpace(args[0])
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--content", "--markdown", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["body"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes documents create option %q", args[i])
+		}
+	}
+	if boxID == "" {
+		return fmt.Errorf("box id is required")
+	}
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	payload["body"] = textbody.Normalize(payload["body"])
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(boxID)+"/documents", payload)
 }
 
 func tasks(args []string) error {
@@ -709,6 +775,174 @@ func conversation(args []string) error {
 		return nil
 	default:
 		return fmt.Errorf("unknown conversation command %q", args[0])
+	}
+}
+
+func notes(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase notes search <query> [--team ID]")
+	}
+	if args[0] != "search" {
+		if isHelp(args[0]) {
+			fmt.Println("usage: missionbase notes search <query> [--team ID]")
+			return nil
+		}
+		return fmt.Errorf("unknown notes command %q", args[0])
+	}
+	return notesSearch(args[1:])
+}
+
+func notesSearch(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase notes search <query> [--team ID]")
+	}
+	query := args[0]
+	values := url.Values{}
+	values.Set("query", query)
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--team":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--team requires a value")
+			}
+			values.Set("team_id", args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase notes search <query> [--team ID]")
+			return nil
+		default:
+			return fmt.Errorf("unknown notes search option %q", args[i])
+		}
+	}
+	return apiGet(withQuery("/api/v1/notes/search", values))
+}
+
+func document(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase document <show|update> ...")
+	}
+	switch args[0] {
+	case "show":
+		return documentShow(args[1:])
+	case "update", "edit":
+		return documentUpdate(args[1:])
+	case "--help", "-h":
+		fmt.Println("usage: missionbase document show <document-id> [--format markdown|html|plain-text]\n       missionbase document update <document-id> [--title TITLE] --body TEXT")
+		return nil
+	default:
+		return fmt.Errorf("unknown document command %q", args[0])
+	}
+}
+
+func documentShow(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase document show <document-id> [--format markdown|html|plain-text]")
+	}
+	documentID := args[0]
+	values := url.Values{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--format":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--format requires a value")
+			}
+			format := strings.ReplaceAll(args[i+1], "_", "-")
+			if !isDocumentFormat(format) {
+				return fmt.Errorf("--format must be one of: markdown, html, plain-text")
+			}
+			values.Set("format", format)
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase document show <document-id> [--format markdown|html|plain-text]")
+			return nil
+		default:
+			return fmt.Errorf("unknown document show option %q", args[i])
+		}
+	}
+	return apiGet(withQuery("/api/v1/documents/"+url.PathEscape(documentID), values))
+}
+
+func documentUpdate(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase document update <document-id> [--title TITLE] --body TEXT")
+	}
+	documentID := args[0]
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--content", "--markdown", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["body"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase document update <document-id> [--title TITLE] --body TEXT")
+			return nil
+		default:
+			return fmt.Errorf("unknown document update option %q", args[i])
+		}
+	}
+	payload["body"] = textbody.Normalize(payload["body"])
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+	return apiPatchJSON("/api/v1/documents/"+url.PathEscape(documentID), payload)
+}
+
+func rawWrite(method string, args []string) error {
+	usage := fmt.Sprintf("usage: missionbase %s /api/path --json JSON", strings.ToLower(method))
+	if method == "DELETE" {
+		usage = "usage: missionbase delete /api/path"
+	}
+	if len(args) < 1 {
+		return fmt.Errorf("%s", usage)
+	}
+	path := args[0]
+	if !strings.HasPrefix(path, "/api/") {
+		return fmt.Errorf("raw write path must start with /api/")
+	}
+	jsonBody := ""
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			if method == "DELETE" {
+				return fmt.Errorf("delete does not accept --json")
+			}
+			if i+1 >= len(args) {
+				return fmt.Errorf("--json requires a value")
+			}
+			jsonBody = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println(usage)
+			fmt.Println("WARNING: raw write helpers act as your signed-in Missionbase user. Prefer high-level commands for common workflows.")
+			return nil
+		default:
+			return fmt.Errorf("unknown raw %s option %q", strings.ToLower(method), args[i])
+		}
+	}
+	if method != "DELETE" {
+		if strings.TrimSpace(jsonBody) == "" {
+			return fmt.Errorf("--json is required")
+		}
+		if !json.Valid([]byte(jsonBody)) {
+			return fmt.Errorf("--json must be valid JSON")
+		}
+	}
+	switch method {
+	case "POST", "PATCH":
+		return apiWriteBytes(method, path, []byte(jsonBody), "application/json")
+	case "DELETE":
+		return apiDelete(path)
+	default:
+		return fmt.Errorf("unsupported raw method %s", method)
 	}
 }
 
@@ -1065,6 +1299,10 @@ func isStatusCategory(value string) bool {
 	return value == "open" || value == "done" || value == "canceled"
 }
 
+func isDocumentFormat(value string) bool {
+	return value == "markdown" || value == "html" || value == "plain-text"
+}
+
 func isHelp(value string) bool {
 	return value == "--help" || value == "-h"
 }
@@ -1095,8 +1333,15 @@ Commands:
       [--page N] [--per-page N]
   boxes discussions <box-id>          List standalone box discussions
       [--page N] [--per-page N]
+  boxes documents create <box-id> --title TITLE --body TEXT
+                                      Create a document in a box
   boxes statuses <box-id>             Alias for boxes task-statuses
   boxes task-statuses <box-id>        List configured task statuses for a box
+  notes search <query> [--team ID]    Search your notes
+  document show <document-id> [--format markdown|html|plain-text]
+                                      Show a document
+  document update <document-id> [--title TITLE] --body TEXT
+                                      Update a document
   tasks assigned                      List tasks assigned to the current user
       [--page N] [--per-page N]
   tasks visible                       List tasks visible to the current user
@@ -1125,8 +1370,13 @@ Commands:
   conversation comment <feed-id> --body TEXT
                                       Add a conversation comment
   get /api/path                       GET an API path and print JSON
+  post /api/path --json JSON          Raw POST as the signed-in user
+  patch /api/path --json JSON         Raw PATCH as the signed-in user
+  delete /api/path                    Raw DELETE as the signed-in user
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
+
+WARNING: raw post/patch/delete helpers act as your signed-in Missionbase user. Prefer high-level commands for common workflows.
 
 For agent acting, use missionbase-agent.
 Default base URL: https://dash.missionbase.app`)

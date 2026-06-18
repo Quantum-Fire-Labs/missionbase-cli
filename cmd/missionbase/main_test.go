@@ -148,6 +148,140 @@ func TestReadOnlyCommandDispatchRepresentativeEndpoints(t *testing.T) {
 	}
 }
 
+func TestNotesSearchUsesVerifiedQueryParams(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/notes/search" {
+			t.Fatalf("path = %s, want /api/v1/notes/search", r.URL.Path)
+		}
+		query := r.URL.Query()
+		if got := query.Get("query"); got != "planning" {
+			t.Fatalf("query = %q, want planning", got)
+		}
+		if got := query.Get("team_id"); got != "2" {
+			t.Fatalf("team_id = %q, want 2", got)
+		}
+		if got := query.Get("q"); got != "" {
+			t.Fatalf("q query = %q, want empty; Rails endpoint uses query", got)
+		}
+		_, _ = w.Write([]byte(`{"notes":[]}`))
+	}))
+	defer server.Close()
+
+	setUserEnv(t, server.URL)
+	if err := run([]string{"notes", "search", "planning", "--team", "2"}); err != nil {
+		t.Fatalf("run notes search: %v", err)
+	}
+}
+
+func TestDocumentCommandsCreateShowUpdate(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		switch calls {
+		case 1:
+			if r.Method != http.MethodPost || r.URL.Path != "/api/v1/boxes/42/documents" {
+				t.Fatalf("first request = %s %s", r.Method, r.URL.Path)
+			}
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["title"] != "Plan" || payload["body"] != "line1\nline2" {
+				t.Fatalf("payload = %#v", payload)
+			}
+			_, _ = w.Write([]byte(`{"document":{"id":9}}`))
+		case 2:
+			if r.Method != http.MethodGet || r.URL.Path != "/api/v1/documents/9" {
+				t.Fatalf("second request = %s %s", r.Method, r.URL.Path)
+			}
+			if got := r.URL.Query().Get("format"); got != "html" {
+				t.Fatalf("format = %q, want html", got)
+			}
+			_, _ = w.Write([]byte(`{"document":{"id":9}}`))
+		case 3:
+			if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/documents/9" {
+				t.Fatalf("third request = %s %s", r.Method, r.URL.Path)
+			}
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["title"] != "Plan v2" || payload["body"] != "updated" {
+				t.Fatalf("payload = %#v", payload)
+			}
+			_, _ = w.Write([]byte(`{"document":{"id":9}}`))
+		default:
+			t.Fatalf("unexpected request %d: %s %s", calls, r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	setUserEnv(t, server.URL)
+	if err := run([]string{"boxes", "documents", "create", "42", "--title", "Plan", "--body", `line1\nline2`}); err != nil {
+		t.Fatalf("run document create: %v", err)
+	}
+	if err := run([]string{"document", "show", "9", "--format", "html"}); err != nil {
+		t.Fatalf("run document show: %v", err)
+	}
+	if err := run([]string{"document", "update", "9", "--title", "Plan v2", "--body", "updated"}); err != nil {
+		t.Fatalf("run document update: %v", err)
+	}
+}
+
+func TestRawWriteHelpersWarnValidateAndUseUserEndpoints(t *testing.T) {
+	if err := run([]string{"post", "/tasks", "--json", `{}`}); err == nil || !strings.Contains(err.Error(), "/api/") {
+		t.Fatalf("raw post path err = %v, want /api/ validation", err)
+	}
+	if err := run([]string{"patch", "/api/v1/tasks/1", "--json", `{bad}`}); err == nil || !strings.Contains(err.Error(), "valid JSON") {
+		t.Fatalf("raw patch json err = %v, want JSON validation", err)
+	}
+
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		switch calls {
+		case 1:
+			if r.Method != http.MethodPost || r.URL.Path != "/api/v1/custom" {
+				t.Fatalf("first request = %s %s", r.Method, r.URL.Path)
+			}
+			body, _ := io.ReadAll(r.Body)
+			if string(body) != `{"ok":true}` {
+				t.Fatalf("body = %s", body)
+			}
+		case 2:
+			if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/custom/1" {
+				t.Fatalf("second request = %s %s", r.Method, r.URL.Path)
+			}
+		case 3:
+			if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/custom/1" {
+				t.Fatalf("third request = %s %s", r.Method, r.URL.Path)
+			}
+		default:
+			t.Fatalf("unexpected request %d", calls)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+	if err := run([]string{"post", "/api/v1/custom", "--json", `{"ok":true}`}); err != nil {
+		t.Fatalf("run raw post: %v", err)
+	}
+	if err := run([]string{"patch", "/api/v1/custom/1", "--json", `{}`}); err != nil {
+		t.Fatalf("run raw patch: %v", err)
+	}
+	if err := run([]string{"delete", "/api/v1/custom/1"}); err != nil {
+		t.Fatalf("run raw delete: %v", err)
+	}
+
+	stdout := captureStdout(t, func() { _ = run([]string{"post", "/api/v1/custom", "--help"}) })
+	if !strings.Contains(stdout, "signed-in Missionbase user") || !strings.Contains(stdout, "Prefer high-level commands") {
+		t.Fatalf("raw help missing warning: %s", stdout)
+	}
+}
+
 func TestUsersLookupQueryUsesUserEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/users/lookup" {
@@ -309,7 +443,7 @@ func TestUsageErrors(t *testing.T) {
 
 func TestHelpShowsUserWorkflowCommands(t *testing.T) {
 	stdout := captureStdout(t, func() { _ = run([]string{"--help"}) })
-	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task feed <task-id>", "conversations", "conversation show <feed-id>"} {
+	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "boxes documents create <box-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task feed <task-id>", "conversations", "conversation show <feed-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q:\n%s", want, stdout)
 		}

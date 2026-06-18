@@ -43,7 +43,7 @@ missionbase tasks assigned
 
 The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
 
-User/operator commands print raw JSON and cover teams, boxes, tasks, task feeds, conversations, standalone box discussions, and `missionbase work` for a current-work overview without requiring raw API paths. Safe user-acting writes cover task create/update/status/complete/comment, conversation comments, and box discussion creation.
+The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, teams, users, boxes, tasks, task feeds, conversations, standalone box discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/comment, conversation comments, and box discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
 
 Credentials are stored at:
 
@@ -129,8 +129,12 @@ missionbase box show <box-id>
 missionbase boxes tasks <box-id> [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS] [--page N] [--per-page N]
 missionbase boxes discussions <box-id> [--page N] [--per-page N]
 missionbase boxes discussions create <box-id> --title TITLE --body TEXT
+missionbase boxes documents create <box-id> --title TITLE --body TEXT
 missionbase boxes task-statuses <box-id>
 missionbase boxes statuses <box-id>
+missionbase notes search <query> [--team <team-id>]
+missionbase document show <document-id> [--format markdown|html|plain-text]
+missionbase document update <document-id> [--title TITLE] --body TEXT
 missionbase tasks assigned [--page N] [--per-page N]
 missionbase tasks visible [--page N] [--per-page N]
 missionbase task create --title TITLE [--box ID] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
@@ -149,6 +153,9 @@ missionbase conversations [--page N] [--per-page N]
 missionbase conversation show <feed-id> [--limit N]
 missionbase conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
 missionbase get /api/v1/users/me
+missionbase post /api/path --json JSON
+missionbase patch /api/path --json JSON
+missionbase delete /api/path
 missionbase update
 
 missionbase-agent version
