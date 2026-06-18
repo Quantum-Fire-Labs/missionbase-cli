@@ -35,7 +35,14 @@ Create a personal API key in Missionbase, then run:
 missionbase auth set-token YOUR_USER_TOKEN
 missionbase auth status
 missionbase me
+missionbase teams
+missionbase boxes
+missionbase tasks assigned
 ```
+
+The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
+
+Phase 1 read-only/operator commands print raw JSON and cover teams, boxes, tasks, task feeds, conversations, and standalone box discussions without requiring raw API paths.
 
 Credentials are stored at:
 
@@ -111,6 +118,22 @@ missionbase version
 missionbase auth status
 missionbase auth set-token <token> [--base-url URL]
 missionbase me
+missionbase teams
+missionbase team show <team-id>
+missionbase team members <team-id>
+missionbase boxes [--team <team-id>]
+missionbase box show <box-id>
+missionbase boxes tasks <box-id> [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS] [--page N] [--per-page N]
+missionbase boxes discussions <box-id> [--page N] [--per-page N]
+missionbase boxes task-statuses <box-id>
+missionbase boxes statuses <box-id>
+missionbase tasks assigned [--page N] [--per-page N]
+missionbase tasks visible [--page N] [--per-page N]
+missionbase task show <task-id>
+missionbase task feed <task-id> [--limit N]
+missionbase task comments <task-id> [--limit N]
+missionbase conversations [--page N] [--per-page N]
+missionbase conversation show <feed-id> [--limit N]
 missionbase get /api/v1/users/me
 missionbase update
 
@@ -165,6 +188,8 @@ missionbase-agent boxes statuses <box-id>
 missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
+
+User CLI phase 1 read-only commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only; agent identity and agent-management/DM workflows remain exclusive to `missionbase-agent`.
 
 `missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches files in an accessible box and currently returns box documents with identifiers, canonical URLs, fetch metadata, creator/owner, timestamps, status, and pagination metadata. `missionbase-agent document fetch ...` prints a document body and reports the document URL when the API response includes one; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
 

@@ -11,15 +11,37 @@ import (
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 )
 
+type ActorMode string
+
+const (
+	ActorUser  ActorMode = "user"
+	ActorAgent ActorMode = "agent"
+)
+
 type Client struct {
-	cfg    config.Config
-	client *http.Client
+	cfg       config.Config
+	actorMode ActorMode
+	client    *http.Client
 }
 
 func New(cfg config.Config) Client {
+	return NewAgent(cfg)
+}
+
+func NewUser(cfg config.Config) Client {
+	cfg.AgentSlug = ""
+	return newWithActor(cfg, ActorUser)
+}
+
+func NewAgent(cfg config.Config) Client {
+	return newWithActor(cfg, ActorAgent)
+}
+
+func newWithActor(cfg config.Config, actorMode ActorMode) Client {
 	return Client{
-		cfg:    cfg,
-		client: &http.Client{Timeout: 30 * time.Second},
+		cfg:       cfg,
+		actorMode: actorMode,
+		client:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -60,7 +82,7 @@ func (c Client) do(method, path string, body []byte, contentType string) ([]byte
 	if c.cfg.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
 	}
-	if c.cfg.AgentSlug != "" {
+	if c.actorMode == ActorAgent && c.cfg.AgentSlug != "" {
 		req.Header.Set("X-Missionbase-Agent-Slug", c.cfg.AgentSlug)
 	}
 	req.Header.Set("Accept", "application/json")
