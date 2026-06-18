@@ -62,7 +62,7 @@ func run(args []string) error {
 	case "document", "documents", "doc", "docs":
 		return document(args[1:])
 	case "tasks":
-		return apiGet("/api/v1/agent/tasks")
+		return tasks(args[1:])
 	case "task":
 		return task(args[1:])
 	case "conversation":
@@ -81,6 +81,104 @@ func run(args []string) error {
 	}
 
 	return nil
+}
+
+func tasks(args []string) error {
+	if len(args) == 0 {
+		return apiGet("/api/v1/agent/tasks")
+	}
+
+	due := ""
+	if isDueShortcut(args[0]) {
+		due = args[0]
+		args = args[1:]
+	}
+
+	query := url.Values{}
+	if due != "" {
+		query.Set("due", due)
+	}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--user":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--user requires a value")
+			}
+			query.Set("user", args[i+1])
+			i++
+		case "--due":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--due requires a value")
+			}
+			if !isDueFilter(args[i+1]) {
+				return fmt.Errorf("--due must be one of: today, upcoming, overdue, none, all")
+			}
+			query.Set("due", args[i+1])
+			i++
+		case "--box":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--box requires a value")
+			}
+			query.Set("box", args[i+1])
+			i++
+		case "--status-category":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--status-category requires a value")
+			}
+			query.Set("status_category", args[i+1])
+			i++
+		case "--status":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--status requires a value")
+			}
+			query.Set("status", args[i+1])
+			i++
+		case "--include-closed", "--include-completed":
+			query.Set("include_closed", "true")
+		case "--page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--page requires a value")
+			}
+			query.Set("page", args[i+1])
+			i++
+		case "--per-page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--per-page requires a value")
+			}
+			query.Set("per_page", args[i+1])
+			i++
+		case "--json":
+			// JSON is the default output format; accept this flag for script-friendly ergonomics.
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent tasks [today|upcoming|overdue] --user ID|@handle [--due today|upcoming|overdue|none|all] [--box ID] [--status-category open|done|canceled] [--status STATUS] [--include-closed] [--page N] [--per-page N] [--json]")
+			return nil
+		default:
+			return fmt.Errorf("unknown tasks option %q", args[i])
+		}
+	}
+
+	if query.Get("due") != "" && query.Get("due") != "all" && query.Get("user") == "" {
+		return fmt.Errorf("--user is required for due-date task listings")
+	}
+
+	if query.Get("user") == "" {
+		return apiGet("/api/v1/agent/tasks")
+	}
+
+	path := "/api/v1/tasks"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	return apiGet(path)
+}
+
+func isDueShortcut(value string) bool {
+	return value == "today" || value == "upcoming" || value == "overdue"
+}
+
+func isDueFilter(value string) bool {
+	return isDueShortcut(value) || value == "none" || value == "all"
 }
 
 func work(args []string) error {
@@ -1090,8 +1188,10 @@ func members(args []string) error {
 			path += "?box_id=" + args[i+1]
 			filtered = true
 			i++
+		case "--json":
+			// JSON is the default output format; accept this flag for consistency.
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent members [--box ID]")
+			fmt.Println("usage: missionbase-agent members [--box ID] [--json]")
 			return nil
 		default:
 			return fmt.Errorf("unknown members option %q", args[i])
@@ -1913,6 +2013,12 @@ Commands:
   document edit <document-id> [--title TITLE] --body-file PATH
                                       Edit a document by creating a new version from a file
   tasks                               Show assigned tasks
+  tasks --user ID|@handle [--due today|upcoming|overdue|none|all]
+      [--box ID] [--status-category open|done|canceled] [--include-closed]
+      [--page N] [--per-page N] [--json]
+                                      Show open tasks assigned to a target user
+  tasks today|upcoming|overdue --user ID|@handle
+                                      Convenience due-date task listings
   task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention]
       [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
@@ -1942,7 +2048,7 @@ Commands:
   conversation comment <feed-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable reply to a conversation/feed
-  members [--box ID]                  List group members and mention handles
+  members [--box ID] [--json]         List group members and mention handles
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
       [--page N] [--per-page N]
