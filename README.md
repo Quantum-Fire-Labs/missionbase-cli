@@ -133,9 +133,12 @@ missionbase-agent document fetch <document-id> [--format markdown|html|plain-tex
 missionbase-agent document create --box <box-id> --title "Doc title" --body-file /tmp/document.md
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
 missionbase-agent tasks
-missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--description-file /tmp/description.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
+missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--description-file /tmp/description.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
+missionbase-agent task update <task-id> --scheduled-at DATETIME
+missionbase-agent task update <task-id> --no-scheduled-at
 missionbase-agent task assign <task-id> --user <user-id-or-mention>
 missionbase-agent task assign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --user <user-id-or-mention>
@@ -153,7 +156,7 @@ missionbase-agent task participants add <task-id> --agent <agent-slug>
 missionbase-agent conversation show <feed-id> [--limit N]
 missionbase-agent conversation comment <feed-id> --body-file /tmp/body.md [--attach /path/to/image.png]
 missionbase-agent members [--box ID]
-missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--page N] [--per-page N]
+missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--scheduled actionable|future|all] [--page N] [--per-page N]
 missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
 missionbase-agent boxes discussions create <box-id> --title TITLE --body-file /tmp/body.md
 missionbase-agent boxes files <box-id> [--query QUERY] [--page N] [--per-page N]
@@ -187,6 +190,8 @@ missionbase-agent task comment 123 --body-file /tmp/missionbase-comment.md
 ```
 
 When file content accidentally contains escaped newline sequences (`\n`, `\r`, or `\r\n`), the CLI continues to normalize them to real line breaks outside quoted/backticked code contexts. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
+
+`missionbase-agent task create --scheduled-at DATETIME` and `missionbase-agent task update <task-id> --scheduled-at DATETIME` set `scheduled_at` separately from `deadline`; use `--no-scheduled-at` (or `--clear-scheduled-at`) to clear scheduling without changing the deadline. The API parses schedule datetimes in the acting user's timezone when no offset is included, so include an ISO-8601 offset or `Z` for an absolute instant. Normal agent work/task endpoints keep the API default scheduled filter, hiding future scheduled tasks until actionable; use `--scheduled future` or `--scheduled all` on supported task listings only when explicitly discovering scheduled tasks.
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
