@@ -34,6 +34,29 @@ func TestMeUsesUserEndpointOnly(t *testing.T) {
 	}
 }
 
+func TestWorkUsesUserWorkEndpointWithoutAgentHeader(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.URL.Path != "/api/v1/users/work" {
+			t.Fatalf("path = %s, want /api/v1/users/work", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		_, _ = w.Write([]byte(`{"user":{"id":1},"tasks":[],"unread_conversations":[],"meta":{"total":0}}`))
+	}))
+	defer server.Close()
+
+	setUserEnv(t, server.URL)
+	if err := run([]string{"work"}); err != nil {
+		t.Fatalf("run work: %v", err)
+	}
+	if !called {
+		t.Fatal("server was not called")
+	}
+}
+
 func TestUserModeIgnoresAgentDirectoryConfigAndHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
@@ -91,6 +114,7 @@ func TestReadOnlyCommandDispatchRepresentativeEndpoints(t *testing.T) {
 		args []string
 		path string
 	}{
+		{"work", []string{"work"}, "/api/v1/users/work"},
 		{"team show", []string{"team", "show", "12"}, "/api/v1/teams/12"},
 		{"team members", []string{"team", "members", "12"}, "/api/v1/teams/12/members"},
 		{"boxes", []string{"boxes", "--team", "12"}, "/api/v1/boxes"},
@@ -285,7 +309,7 @@ func TestUsageErrors(t *testing.T) {
 
 func TestHelpShowsUserWorkflowCommands(t *testing.T) {
 	stdout := captureStdout(t, func() { _ = run([]string{"--help"}) })
-	for _, want := range []string{"teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task feed <task-id>", "conversations", "conversation show <feed-id>"} {
+	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task feed <task-id>", "conversations", "conversation show <feed-id>"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q:\n%s", want, stdout)
 		}
