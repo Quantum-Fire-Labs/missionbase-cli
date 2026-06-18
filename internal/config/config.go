@@ -21,7 +21,8 @@ func LoadUser() (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	applyEnv(&cfg)
+	applyUserEnv(&cfg)
+	cfg.AgentSlug = ""
 	return cfg, nil
 }
 
@@ -40,7 +41,7 @@ func LoadAgent() (Config, error) {
 	if local.AgentSlug != "" {
 		cfg.AgentSlug = local.AgentSlug
 	}
-	applyEnv(&cfg)
+	applyAgentEnv(&cfg)
 	return cfg, nil
 }
 
@@ -166,13 +167,17 @@ func mustGetwd() string {
 	return dir
 }
 
-func applyEnv(cfg *Config) {
+func applyUserEnv(cfg *Config) {
 	if baseURL := os.Getenv("MISSIONBASE_BASE_URL"); baseURL != "" {
 		cfg.BaseURL = baseURL
 	}
 	if token := os.Getenv("MISSIONBASE_TOKEN"); token != "" {
 		cfg.Token = token
 	}
+}
+
+func applyAgentEnv(cfg *Config) {
+	applyUserEnv(cfg)
 	if agentSlug := os.Getenv("MISSIONBASE_AGENT_SLUG"); agentSlug != "" {
 		cfg.AgentSlug = agentSlug
 	}
