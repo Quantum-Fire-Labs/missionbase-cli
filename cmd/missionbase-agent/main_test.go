@@ -11,6 +11,69 @@ import (
 	"testing"
 )
 
+func TestTasksUserDueBuildsTaskListQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tasks" {
+			t.Fatalf("path = %s, want /api/v1/tasks", r.URL.Path)
+		}
+		query := r.URL.Query()
+		if got := query.Get("user"); got != "@DanielLemky" {
+			t.Fatalf("user query = %q, want @DanielLemky", got)
+		}
+		if got := query.Get("due"); got != "today" {
+			t.Fatalf("due query = %q, want today", got)
+		}
+		if got := query.Get("box"); got != "2" {
+			t.Fatalf("box query = %q, want 2", got)
+		}
+		if got := query.Get("status_category"); got != "open" {
+			t.Fatalf("status_category query = %q, want open", got)
+		}
+		if got := query.Get("include_closed"); got != "true" {
+			t.Fatalf("include_closed query = %q, want true", got)
+		}
+		if got := query.Get("page"); got != "2" {
+			t.Fatalf("page query = %q, want 2", got)
+		}
+		if got := query.Get("per_page"); got != "25" {
+			t.Fatalf("per_page query = %q, want 25", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tasks":[],"meta":{"total":0}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"tasks", "--user", "@DanielLemky", "--due", "today", "--box", "2", "--status-category", "open", "--include-closed", "--page", "2", "--per-page", "25", "--json"}); err != nil {
+		t.Fatalf("run tasks: %v", err)
+	}
+}
+
+func TestTasksDueShortcutRequiresUser(t *testing.T) {
+	if err := run([]string{"tasks", "today"}); err == nil || !strings.Contains(err.Error(), "--user is required") {
+		t.Fatalf("err = %v, want --user required", err)
+	}
+}
+
+func TestTasksWithoutFiltersUsesAssignedAgentEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/agent/tasks" {
+			t.Fatalf("path = %s, want /api/v1/agent/tasks", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tasks":[],"meta":{"total":0}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"tasks"}); err != nil {
+		t.Fatalf("run tasks: %v", err)
+	}
+}
+
 func TestWorkNextGetsNextTaskEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
