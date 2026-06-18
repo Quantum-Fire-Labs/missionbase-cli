@@ -119,6 +119,7 @@ missionbase auth status
 missionbase auth set-token <token> [--base-url URL]
 missionbase me
 missionbase teams
+missionbase users lookup <query-or-mention> [--team <team-id>]
 missionbase team show <team-id>
 missionbase team members <team-id>
 missionbase boxes [--team <team-id>]
@@ -135,6 +136,10 @@ missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID
 missionbase task status <task-id> <status>
 missionbase task complete <task-id>
 missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+missionbase task assign <task-id> --user <user-id-or-mention> [--team <team-id>]
+missionbase task unassign <task-id> --user <user-id-or-mention> [--team <team-id>]
+missionbase task participants list <task-id>
+missionbase task participants add <task-id> --user <user-id-or-mention> [--team <team-id>]
 missionbase task show <task-id>
 missionbase task feed <task-id> [--limit N]
 missionbase task comments <task-id> [--limit N]
@@ -196,9 +201,11 @@ missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-User CLI commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only; agent identity and agent-management/DM workflows remain exclusive to `missionbase-agent`.
+User CLI read and write commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only; user/mention lookup uses `/api/v1/users/lookup` and `/api/v1/teams/:team_id/members`; assignment and participant writes use user-acting task endpoints. The user CLI never calls agent-only member endpoints, never supports `--agent` assignment/participants, and agent identity, agent-management, and DM workflows remain exclusive to `missionbase-agent`.
 
 User CLI write commands use JSON requests when no attachments are present and multipart requests when repeated `--attach PATH` or `--attach-blob SIGNED_ID_OR_SGID` flags are used. Local attachments are limited to PNG, JPEG, GIF, and WEBP images up to 5 MB. User-authored task descriptions, comments, conversation comments, and box discussion bodies are Markdown-capable and normalize accidental escaped newline sequences outside quoted/code contexts. Comment body aliases `--body`, `--comment`, `--message`, and `--text` are supported.
+
+`missionbase users lookup <query>` calls user lookup directly. `missionbase users lookup @mention --team <team-id>` resolves a team member mention. Task assignment and participant commands accept numeric user ids directly; when resolving `@mention`, pass `--team` or let the CLI derive the team from the task when the task response includes box/team context. If team context cannot be inferred, the CLI asks for `--team` or a numeric user id.
 
 `missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches files in an accessible box and currently returns box documents with identifiers, canonical URLs, fetch metadata, creator/owner, timestamps, status, and pagination metadata. `missionbase-agent document fetch ...` prints a document body and reports the document URL when the API response includes one; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
 
@@ -227,6 +234,8 @@ When file content accidentally contains escaped newline sequences (`\n`, `\r`, o
 
 `missionbase-agent task create --scheduled-at DATETIME` and `missionbase-agent task update <task-id> --scheduled-at DATETIME` set `scheduled_at` separately from `deadline`; use `--no-scheduled-at` (or `--clear-scheduled-at`) to clear scheduling without changing the deadline. The API parses schedule datetimes in the acting user's timezone when no offset is included, so include an ISO-8601 offset or `Z` for an absolute instant. Normal agent work/task endpoints keep the API default scheduled filter, hiding future scheduled tasks until actionable; use `--scheduled future` or `--scheduled all` on supported task listings only when explicitly discovering scheduled tasks.
 
+`missionbase task assign ...` and `missionbase task unassign ...` manage user assignments for existing tasks with the user-acting CLI. Use `--user` with a numeric user id or `@mention`; mention resolution uses `--team <team-id>` or task-derived team context when available. `missionbase task participants list ...` lists task participants, and `missionbase task participants add ... --user ...` adds user participants only.
+
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
 `missionbase-agent task move <task-id> --box <box-id>` moves an existing task to another agent-accessible box through the task update API. Missionbase preserves the task record, comments/feed, attachments, participants, and assignments; the server remaps the task status to a safe status in the destination box when workflows differ.
@@ -239,6 +248,9 @@ Examples:
 
 ```bash
 missionbase-agent task create --box 2 --title "Investigate screenshot" --description-file /tmp/description.md --attach /tmp/screenshot.png
+missionbase users lookup Daniel --team 2
+missionbase task assign 123 --user @DanielLemky --team 2
+missionbase task participants add 123 --user 42
 missionbase-agent task create --box 2 --assign-agent missionbase-dev --title "Assigned investigation"
 missionbase-agent task assign 123 --user @DanielLemky
 missionbase-agent task unassign 123 --self
