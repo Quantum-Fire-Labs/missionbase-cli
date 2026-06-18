@@ -35,6 +35,7 @@ Create a personal API key in Missionbase, then run:
 missionbase auth set-token YOUR_USER_TOKEN
 missionbase auth status
 missionbase me
+missionbase work
 missionbase teams
 missionbase boxes
 missionbase tasks assigned
@@ -42,7 +43,7 @@ missionbase tasks assigned
 
 The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
 
-Phase 1 read-only/operator commands print raw JSON and cover teams, boxes, tasks, task feeds, conversations, and standalone box discussions without requiring raw API paths. Phase 2 adds safe user-acting writes for task create/update/status/complete/comment, conversation comments, and box discussion creation.
+User/operator commands print raw JSON and cover teams, boxes, tasks, task feeds, conversations, standalone box discussions, and `missionbase work` for a current-work overview without requiring raw API paths. Safe user-acting writes cover task create/update/status/complete/comment, conversation comments, and box discussion creation.
 
 Credentials are stored at:
 
@@ -118,6 +119,7 @@ missionbase version
 missionbase auth status
 missionbase auth set-token <token> [--base-url URL]
 missionbase me
+missionbase work
 missionbase teams
 missionbase team show <team-id>
 missionbase team members <team-id>
@@ -196,7 +198,7 @@ missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-User CLI commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only; agent identity and agent-management/DM workflows remain exclusive to `missionbase-agent`.
+User CLI commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only, and `missionbase work` calls `/api/v1/users/work` to return the current user, assigned/open tasks, unread conversations, and metadata. Agent identity and agent-management/DM workflows remain exclusive to `missionbase-agent`.
 
 User CLI write commands use JSON requests when no attachments are present and multipart requests when repeated `--attach PATH` or `--attach-blob SIGNED_ID_OR_SGID` flags are used. Local attachments are limited to PNG, JPEG, GIF, and WEBP images up to 5 MB. User-authored task descriptions, comments, conversation comments, and box discussion bodies are Markdown-capable and normalize accidental escaped newline sequences outside quoted/code contexts. Comment body aliases `--body`, `--comment`, `--message`, and `--text` are supported.
 

@@ -45,6 +45,16 @@ func run(args []string) error {
 		return auth(args[1:])
 	case "me":
 		return apiGet("/api/v1/users/me")
+	case "work":
+		workArgs := args[1:]
+		if len(workArgs) > 1 || (len(workArgs) == 1 && !isHelp(workArgs[0])) {
+			return fmt.Errorf("usage: missionbase work")
+		}
+		if len(workArgs) == 1 && isHelp(workArgs[0]) {
+			fmt.Println("usage: missionbase work")
+			return nil
+		}
+		return apiGet("/api/v1/users/work")
 	case "teams":
 		return teams(args[1:])
 	case "team":
@@ -771,6 +781,7 @@ Commands:
   auth set-token <token> [--base-url URL]
                                       Save a personal/user API token
   me                                  Show the current user
+  work                                Show current user work overview
   teams                               List teams visible to the current user
   team show <team-id>                 Show a team
   team members <team-id>              List team members
