@@ -61,6 +61,10 @@ func (c Client) Patch(path string, body []byte) ([]byte, error) {
 	return c.Do(http.MethodPatch, path, body)
 }
 
+func (c Client) PatchWithContentType(path string, body []byte, contentType string) ([]byte, error) {
+	return c.do(http.MethodPatch, path, body, contentType)
+}
+
 func (c Client) Delete(path string) ([]byte, error) {
 	return c.Do(http.MethodDelete, path, nil)
 }

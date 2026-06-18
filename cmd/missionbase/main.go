@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/attachments"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/textbody"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/update"
 )
 
@@ -256,7 +260,10 @@ func boxTasks(args []string) error {
 
 func boxDiscussions(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes discussions <box-id> [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
+	}
+	if args[0] == "create" {
+		return boxDiscussionsCreate(args[1:])
 	}
 	boxID := args[0]
 	values := url.Values{}
@@ -275,7 +282,7 @@ func boxDiscussions(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes discussions <box-id> [--page N] [--per-page N]")
+			fmt.Println("usage: missionbase boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes discussions option %q", args[i])
@@ -337,9 +344,19 @@ func tasks(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase task <show|feed|comments> <task-id> [--limit N]")
+		return fmt.Errorf("usage: missionbase task <create|update|status|complete|comment|show|feed|comments> ...")
 	}
 	switch args[0] {
+	case "create":
+		return taskCreate(args[1:])
+	case "update", "edit":
+		return taskUpdate(args[1:])
+	case "status":
+		return taskStatus(args[1:])
+	case "complete":
+		return taskComplete(args[1:])
+	case "comment", "reply", "create-comment":
+		return taskComment(args[1:])
 	case "show":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: missionbase task show <task-id>")
@@ -355,7 +372,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task <show|feed|comments> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task <show|feed|comments> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -390,9 +407,11 @@ func conversations(args []string) error {
 
 func conversation(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase conversation show <feed-id> [--limit N]")
+		return fmt.Errorf("usage: missionbase conversation <show|comment> ...")
 	}
 	switch args[0] {
+	case "comment", "reply", "create-comment":
+		return conversationComment(args[1:])
 	case "show":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase conversation show <feed-id> [--limit N]")
@@ -403,11 +422,211 @@ func conversation(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase conversation show <feed-id> [--limit N]")
+		fmt.Println("usage: missionbase conversation show <feed-id> [--limit N]\n       missionbase conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 		return nil
 	default:
 		return fmt.Errorf("unknown conversation command %q", args[0])
 	}
+}
+
+func boxDiscussionsCreate(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
+	}
+	boxID := strings.TrimSpace(args[0])
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--comment", "--message", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["body"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes discussions create option %q", args[i])
+		}
+	}
+	if boxID == "" {
+		return fmt.Errorf("box id is required")
+	}
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	payload["body"] = textbody.Normalize(payload["body"])
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body is required")
+	}
+	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(boxID)+"/discussions", payload)
+}
+
+func taskCreate(args []string) error {
+	payload := map[string]string{}
+	var attaches, blobs []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--title", "--description", "--box", "--deadline", "--status", "--task-status-id", "--assign-user":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			key := map[string]string{"--title": "title", "--description": "description", "--box": "box_id", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id"}[args[i]]
+			payload[key] = args[i+1]
+			i++
+		case "--attach":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach requires a file path")
+			}
+			attaches = append(attaches, args[i+1])
+			i++
+		case "--attach-blob":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--attach-blob requires a signed_id or sgid")
+			}
+			blobs = append(blobs, args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			return nil
+		default:
+			return fmt.Errorf("unknown task create option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	if payload["deadline"] != "" {
+		if _, err := time.Parse("2006-01-02", payload["deadline"]); err != nil {
+			return fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
+		}
+	}
+	payload["description"] = textbody.Normalize(payload["description"])
+	return apiWrite("POST", "/api/v1/tasks", payload, attaches, blobs)
+}
+
+func taskUpdate(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]")
+	}
+	taskID := args[0]
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title", "--description", "--box", "--status", "--task-status-id":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			key := map[string]string{"--title": "title", "--description": "description", "--box": "box_id", "--status": "status", "--task-status-id": "task_status_id"}[args[i]]
+			payload[key] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]")
+			return nil
+		default:
+			return fmt.Errorf("unknown task update option %q", args[i])
+		}
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("at least one update field is required")
+	}
+	payload["description"] = textbody.Normalize(payload["description"])
+	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(taskID), payload)
+}
+
+func taskStatus(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: missionbase task status <task-id> <status>")
+	}
+	if args[1] == "complete" {
+		return taskComplete([]string{args[0]})
+	}
+	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(args[0]), map[string]string{"status": args[1]})
+}
+
+func taskComplete(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: missionbase task complete <task-id>")
+	}
+	userID, err := currentUserID()
+	if err != nil {
+		return err
+	}
+	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(args[0])+"/complete", map[string]any{"acting_as_user_id": userID})
+}
+
+func taskComment(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+	}
+	taskID := args[0]
+	payload, attaches, blobs, err := parseCommentArgs(args[1:], "task comment")
+	if err != nil {
+		return err
+	}
+	if payload == nil {
+		return nil
+	}
+	return apiWrite("POST", "/api/v1/tasks/"+url.PathEscape(taskID)+"/comments", payload, attaches, blobs)
+}
+
+func conversationComment(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+	}
+	feedID := args[0]
+	payload, attaches, blobs, err := parseCommentArgs(args[1:], "conversation comment")
+	if err != nil {
+		return err
+	}
+	if payload == nil {
+		return nil
+	}
+	return apiWrite("POST", "/api/v1/conversations/"+url.PathEscape(feedID)+"/comments", payload, attaches, blobs)
+}
+
+func parseCommentArgs(args []string, name string) (map[string]string, []string, []string, error) {
+	payload := map[string]string{}
+	var attaches, blobs []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--body", "--comment", "--message", "--text":
+			if i+1 >= len(args) {
+				return nil, nil, nil, fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["comment"] = args[i+1]
+			i++
+		case "--attach":
+			if i+1 >= len(args) {
+				return nil, nil, nil, fmt.Errorf("--attach requires a file path")
+			}
+			attaches = append(attaches, args[i+1])
+			i++
+		case "--attach-blob":
+			if i+1 >= len(args) {
+				return nil, nil, nil, fmt.Errorf("--attach-blob requires a signed_id or sgid")
+			}
+			blobs = append(blobs, args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Printf("usage: missionbase %s <id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n", name)
+			return nil, nil, nil, nil
+		default:
+			return nil, nil, nil, fmt.Errorf("unknown %s option %q", name, args[i])
+		}
+	}
+	payload["comment"] = textbody.Normalize(payload["comment"])
+	if strings.TrimSpace(payload["comment"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
+		return nil, nil, nil, fmt.Errorf("--body or at least one attachment is required")
+	}
+	return payload, attaches, blobs, nil
 }
 
 func appendLimit(path string, args []string) (string, error) {
@@ -429,6 +648,30 @@ func appendLimit(path string, args []string) (string, error) {
 	return withQuery(path, values), nil
 }
 
+func currentUserID() (int, error) {
+	cfg, err := config.LoadUser()
+	if err != nil {
+		return 0, err
+	}
+	client := httpclient.NewUser(cfg)
+	body, err := client.Get("/api/v1/users/me")
+	if err != nil {
+		return 0, err
+	}
+	var response struct {
+		User struct {
+			ID int `json:"id"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return 0, err
+	}
+	if response.User.ID == 0 {
+		return 0, fmt.Errorf("/api/v1/users/me did not include user.id")
+	}
+	return response.User.ID, nil
+}
+
 func apiGet(path string) error {
 	cfg, err := config.LoadUser()
 	if err != nil {
@@ -436,6 +679,63 @@ func apiGet(path string) error {
 	}
 	client := httpclient.NewUser(cfg)
 	body, err := client.Get(path)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
+func apiPostJSON(path string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiWriteBytes("POST", path, body, "application/json")
+}
+
+func apiPatchJSON(path string, payload any) error {
+	var body []byte
+	var err error
+	if payload != nil {
+		body, err = json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+	}
+	return apiWriteBytes("PATCH", path, body, "application/json")
+}
+
+func apiWrite(method, path string, fields map[string]string, attaches []string, blobs []string) error {
+	if len(attaches) > 0 || len(blobs) > 0 {
+		body, contentType, err := attachments.BuildMultipart(fields, attaches, blobs)
+		if err != nil {
+			return err
+		}
+		return apiWriteBytes(method, path, body, contentType)
+	}
+	body, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	return apiWriteBytes(method, path, body, "application/json")
+}
+
+func apiWriteBytes(method, path string, requestBody []byte, contentType string) error {
+	cfg, err := config.LoadUser()
+	if err != nil {
+		return err
+	}
+	client := httpclient.NewUser(cfg)
+	var body []byte
+	switch method {
+	case "POST":
+		body, err = client.PostWithContentType(path, requestBody, contentType)
+	case "PATCH":
+		body, err = client.PatchWithContentType(path, requestBody, contentType)
+	default:
+		return fmt.Errorf("unsupported write method %s", method)
+	}
 	if err != nil {
 		return err
 	}
