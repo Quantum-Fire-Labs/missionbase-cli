@@ -172,3 +172,108 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	return string(body)
 }
+
+func TestTaskCreatePostsJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/tasks" {
+			t.Fatalf("%s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+			t.Fatalf("content type = %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		for _, want := range []string{`"title":"Write"`, `"box_id":"2"`, `"description":"line1\nline2"`} {
+			if !strings.Contains(string(body), want) {
+				t.Fatalf("body missing %s: %s", want, body)
+			}
+		}
+		_, _ = w.Write([]byte(`{"task":{"id":123}}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+	if err := run([]string{"task", "create", "--title", "Write", "--box", "2", "--description", `line1\nline2`}); err != nil {
+		t.Fatalf("run task create: %v", err)
+	}
+}
+
+func TestTaskCompletePatchesCompleteEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/users/me" {
+			_, _ = w.Write([]byte(`{"user":{"id":44}}`))
+			return
+		}
+		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/tasks/123/complete" {
+			t.Fatalf("%s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"acting_as_user_id":44`) {
+			t.Fatalf("body = %s", body)
+		}
+		_, _ = w.Write([]byte(`{"task":{"id":123,"status":"complete"}}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+	if err := run([]string{"task", "complete", "123"}); err != nil {
+		t.Fatalf("run task complete: %v", err)
+	}
+}
+
+func TestTaskCommentUsesMultipartWithAttachment(t *testing.T) {
+	png := filepath.Join(t.TempDir(), "image.png")
+	if err := os.WriteFile(png, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/tasks/123/comments" {
+			t.Fatalf("%s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "multipart/form-data") {
+			t.Fatalf("content type = %q", got)
+		}
+		if err := r.ParseMultipartForm(6 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+		if got := r.FormValue("comment"); got != "hello\nthere" {
+			t.Fatalf("comment = %q", got)
+		}
+		if got := r.FormValue("attachment_blobs[]"); got != "signed-1" {
+			t.Fatalf("blob = %q", got)
+		}
+		if len(r.MultipartForm.File["attachments[]"]) != 1 {
+			t.Fatalf("attachments = %#v", r.MultipartForm.File)
+		}
+		_, _ = w.Write([]byte(`{"comment":{"id":9}}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+	if err := run([]string{"task", "comment", "123", "--body", `hello\nthere`, "--attach", png, "--attach-blob", "signed-1"}); err != nil {
+		t.Fatalf("run task comment: %v", err)
+	}
+}
+
+func TestConversationCommentPostsJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/conversations/feed-1/comments" {
+			t.Fatalf("%s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+			t.Fatalf("content type = %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"comment":"hi"`) {
+			t.Fatalf("body = %s", body)
+		}
+		_, _ = w.Write([]byte(`{"comment":{"id":10}}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+	if err := run([]string{"conversation", "comment", "feed-1", "--message", "hi"}); err != nil {
+		t.Fatalf("run conversation comment: %v", err)
+	}
+}

@@ -42,7 +42,7 @@ missionbase tasks assigned
 
 The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
 
-Phase 1 read-only/operator commands print raw JSON and cover teams, boxes, tasks, task feeds, conversations, and standalone box discussions without requiring raw API paths.
+Phase 1 read-only/operator commands print raw JSON and cover teams, boxes, tasks, task feeds, conversations, and standalone box discussions without requiring raw API paths. Phase 2 adds safe user-acting writes for task create/update/status/complete/comment, conversation comments, and box discussion creation.
 
 Credentials are stored at:
 
@@ -125,15 +125,22 @@ missionbase boxes [--team <team-id>]
 missionbase box show <box-id>
 missionbase boxes tasks <box-id> [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS] [--page N] [--per-page N]
 missionbase boxes discussions <box-id> [--page N] [--per-page N]
+missionbase boxes discussions create <box-id> --title TITLE --body TEXT
 missionbase boxes task-statuses <box-id>
 missionbase boxes statuses <box-id>
 missionbase tasks assigned [--page N] [--per-page N]
 missionbase tasks visible [--page N] [--per-page N]
+missionbase task create --title TITLE [--box ID] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]
+missionbase task status <task-id> <status>
+missionbase task complete <task-id>
+missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
 missionbase task show <task-id>
 missionbase task feed <task-id> [--limit N]
 missionbase task comments <task-id> [--limit N]
 missionbase conversations [--page N] [--per-page N]
 missionbase conversation show <feed-id> [--limit N]
+missionbase conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
 missionbase get /api/v1/users/me
 missionbase update
 
@@ -189,7 +196,9 @@ missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-User CLI phase 1 read-only commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only; agent identity and agent-management/DM workflows remain exclusive to `missionbase-agent`.
+User CLI commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only; agent identity and agent-management/DM workflows remain exclusive to `missionbase-agent`.
+
+User CLI write commands use JSON requests when no attachments are present and multipart requests when repeated `--attach PATH` or `--attach-blob SIGNED_ID_OR_SGID` flags are used. Local attachments are limited to PNG, JPEG, GIF, and WEBP images up to 5 MB. User-authored task descriptions, comments, conversation comments, and box discussion bodies are Markdown-capable and normalize accidental escaped newline sequences outside quoted/code contexts. Comment body aliases `--body`, `--comment`, `--message`, and `--text` are supported.
 
 `missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches files in an accessible box and currently returns box documents with identifiers, canonical URLs, fetch metadata, creator/owner, timestamps, status, and pagination metadata. `missionbase-agent document fetch ...` prints a document body and reports the document URL when the API response includes one; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
 
