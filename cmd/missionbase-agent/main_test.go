@@ -822,6 +822,105 @@ func TestTaskCreateWithoutAssigneePostsUnassignedPayload(t *testing.T) {
 	}
 }
 
+func TestTaskCreateWithDeadlinePostsDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["deadline"] != "2026-07-15" {
+			t.Fatalf("deadline = %q, want 2026-07-15", payload["deadline"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"task":{"id":991,"deadline":"2026-07-15"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "create", "--title", "With deadline", "--box", "2", "--deadline", "2026-07-15"}); err != nil {
+		t.Fatalf("run task create with deadline: %v", err)
+	}
+}
+
+func TestTaskCreateRejectsInvalidDeadline(t *testing.T) {
+	if err := run([]string{"task", "create", "--title", "Bad deadline", "--box", "2", "--deadline", "2026-99-99"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
+		t.Fatalf("err = %v, want invalid deadline error", err)
+	}
+}
+
+func TestTaskUpdateDeadlinePatchesDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tasks/123" {
+			t.Fatalf("path = %s, want /api/v1/tasks/123", r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["deadline"] != "2026-07-15" {
+			t.Fatalf("deadline = %#v, want 2026-07-15", payload["deadline"])
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"task":{"id":123,"deadline":"2026-07-15"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "update", "123", "--deadline", "2026-07-15"}); err != nil {
+		t.Fatalf("run task update deadline: %v", err)
+	}
+}
+
+func TestTaskUpdateNoDeadlinePatchesNullDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		value, ok := payload["deadline"]
+		if !ok {
+			t.Fatalf("deadline key missing from payload: %#v", payload)
+		}
+		if value != nil {
+			t.Fatalf("deadline = %#v, want nil", value)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"task":{"id":123,"deadline":null}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "update", "123", "--no-deadline"}); err != nil {
+		t.Fatalf("run task update --no-deadline: %v", err)
+	}
+}
+
+func TestTaskUpdateRejectsInvalidDeadline(t *testing.T) {
+	if err := run([]string{"task", "update", "123", "--deadline", "not-a-date"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
+		t.Fatalf("err = %v, want invalid deadline error", err)
+	}
+}
+
+func TestTaskUpdateRejectsDeadlineAndNoDeadline(t *testing.T) {
+	if err := run([]string{"task", "update", "123", "--deadline", "2026-07-15", "--no-deadline"}); err == nil || !strings.Contains(err.Error(), "use only one of --deadline or --no-deadline") {
+		t.Fatalf("err = %v, want mutually exclusive deadline error", err)
+	}
+}
+
+func TestTaskHelpDocumentsDeadlineOptions(t *testing.T) {
+	stdout := captureStdout(t, func() {
+		printHelp()
+	})
+	for _, want := range []string{"--deadline YYYY-MM-DD", "task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("help missing %q in:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestTaskCreatePreservesAssignedAgentPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]string

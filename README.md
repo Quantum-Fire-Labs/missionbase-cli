@@ -133,7 +133,9 @@ missionbase-agent document fetch <document-id> [--format markdown|html|plain-tex
 missionbase-agent document create --box <box-id> --title "Doc title" --body-file /tmp/document.md
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
 missionbase-agent tasks
-missionbase-agent task create --title "Task title" --box <box-id> [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--description-file /tmp/description.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--description-file /tmp/description.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent task update <task-id> --deadline YYYY-MM-DD
+missionbase-agent task update <task-id> --no-deadline
 missionbase-agent task assign <task-id> --user <user-id-or-mention>
 missionbase-agent task assign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --user <user-id-or-mention>
