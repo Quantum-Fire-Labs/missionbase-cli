@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Missionbase user CLI catch-up phase 5 notes/document/raw helpers: `missionbase notes search`, `missionbase boxes documents create`, `missionbase document show`, `missionbase document update`, plus clearly warned raw `post`/`patch`/`delete` signed-in-user helpers.
+- Updated `missionbase --help` and README user CLI documentation to describe day-to-day Missionbase workflows beyond low-level API access.
 - Added Missionbase user CLI catch-up phase 3 lookup, user assignment/unassignment, and task participant commands: `missionbase users lookup`, `missionbase task assign`, `missionbase task unassign`, `missionbase task participants list`, and `missionbase task participants add --user`.
 - Added user mention resolution for numeric ids and team-scoped `@mention`s using only user-facing endpoints.
 - Added Missionbase user CLI catch-up phase 2 safe write commands for task create/update/status/complete/comment, conversation comments, and box discussion creation.
