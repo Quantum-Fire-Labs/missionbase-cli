@@ -137,6 +137,15 @@ func tasks(args []string) error {
 			i++
 		case "--include-closed", "--include-completed":
 			query.Set("include_closed", "true")
+		case "--scheduled":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--scheduled requires a value: actionable, future, or all")
+			}
+			if !isScheduledFilter(args[i+1]) {
+				return fmt.Errorf("--scheduled must be one of: actionable, future, all")
+			}
+			query.Set("scheduled", args[i+1])
+			i++
 		case "--page":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--page requires a value")
@@ -152,7 +161,7 @@ func tasks(args []string) error {
 		case "--json":
 			// JSON is the default output format; accept this flag for script-friendly ergonomics.
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent tasks [today|upcoming|overdue] --user ID|@handle [--due today|upcoming|overdue|none|all] [--box ID] [--status-category open|done|canceled] [--status STATUS] [--include-closed] [--page N] [--per-page N] [--json]")
+			fmt.Println("usage: missionbase-agent tasks [today|upcoming|overdue] --user ID|@handle [--due today|upcoming|overdue|none|all] [--box ID] [--status-category open|done|canceled] [--status STATUS] [--include-closed] [--scheduled actionable|future|all] [--page N] [--per-page N] [--json]")
 			return nil
 		default:
 			return fmt.Errorf("unknown tasks option %q", args[i])
@@ -180,6 +189,10 @@ func isDueShortcut(value string) bool {
 
 func isDueFilter(value string) bool {
 	return isDueShortcut(value) || value == "none" || value == "all"
+}
+
+func isScheduledFilter(value string) bool {
+	return value == "actionable" || value == "future" || value == "all"
 }
 
 func work(args []string) error {
@@ -1110,7 +1123,7 @@ func boxTaskStatuses(args []string) error {
 
 func boxTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS|--status-category open|done|canceled|--task-status-ids IDS] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS|--status-category open|done|canceled|--task-status-ids IDS] [--scheduled actionable|future|all] [--page N] [--per-page N]")
 	}
 
 	boxID := args[0]
@@ -1134,6 +1147,15 @@ func boxTasks(args []string) error {
 				return fmt.Errorf("--task-status-ids requires a value")
 			}
 			values.Set("task_status_ids", args[i+1])
+			i++
+		case "--scheduled":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--scheduled requires a value: actionable, future, or all")
+			}
+			if !isScheduledFilter(args[i+1]) {
+				return fmt.Errorf("--scheduled must be one of: actionable, future, all")
+			}
+			values.Set("scheduled", args[i+1])
 			i++
 		case "--page":
 			if i+1 >= len(args) {
@@ -1241,7 +1263,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline) OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -1295,17 +1317,20 @@ func task(args []string) error {
 }
 
 func taskUpdate(args []string) error {
+	usage := "usage: missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at]"
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)")
+		fmt.Println(usage)
 		return nil
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)")
+		return fmt.Errorf("%s", usage)
 	}
 	taskID := args[0]
 	payload := map[string]any{}
 	deadlineSet := false
 	deadlineCleared := false
+	scheduledAtSet := false
+	scheduledAtCleared := false
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -1323,8 +1348,22 @@ func taskUpdate(args []string) error {
 		case "--no-deadline":
 			payload["deadline"] = nil
 			deadlineCleared = true
+		case "--scheduled-at":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--scheduled-at requires a datetime value")
+			}
+			scheduledAt, err := validateScheduledAt(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["scheduled_at"] = scheduledAt
+			scheduledAtSet = true
+			i++
+		case "--no-scheduled-at", "--clear-scheduled-at":
+			payload["scheduled_at"] = nil
+			scheduledAtCleared = true
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)")
+			fmt.Println(usage)
 			return nil
 		default:
 			return fmt.Errorf("unknown task update option %q", args[i])
@@ -1334,8 +1373,11 @@ func taskUpdate(args []string) error {
 	if deadlineSet && deadlineCleared {
 		return fmt.Errorf("use only one of --deadline or --no-deadline")
 	}
-	if !deadlineSet && !deadlineCleared {
-		return fmt.Errorf("one of --deadline or --no-deadline is required")
+	if scheduledAtSet && scheduledAtCleared {
+		return fmt.Errorf("use only one of --scheduled-at or --no-scheduled-at")
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("one of --deadline, --no-deadline, --scheduled-at, or --no-scheduled-at is required")
 	}
 
 	body, err := json.Marshal(payload)
@@ -1352,6 +1394,14 @@ func validateDeadline(value string) (string, error) {
 	}
 	if _, err := time.Parse("2006-01-02", value); err != nil {
 		return "", fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
+	}
+	return value, nil
+}
+
+func validateScheduledAt(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("--scheduled-at requires a datetime value")
 	}
 	return value, nil
 }
@@ -1585,6 +1635,16 @@ func taskCreate(args []string) error {
 			}
 			payload["deadline"] = deadline
 			i++
+		case "--scheduled-at":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--scheduled-at requires a datetime value")
+			}
+			scheduledAt, err := validateScheduledAt(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["scheduled_at"] = scheduledAt
+			i++
 		case "--assign-agent":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--assign-agent requires a value")
@@ -1624,7 +1684,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -2090,16 +2150,17 @@ Commands:
   tasks                               Show assigned tasks
   tasks --user ID|@handle [--due today|upcoming|overdue|none|all]
       [--box ID] [--status-category open|done|canceled] [--include-closed]
-      [--page N] [--per-page N] [--json]
+      [--scheduled actionable|future|all] [--page N] [--per-page N] [--json]
                                       Show open tasks assigned to a target user
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
-  task create --title TITLE --box ID [--deadline YYYY-MM-DD]
+  task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
       [--assign-agent slug | --assign-user ID|@mention]
       [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
-  task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)
-                                      Update or clear a task deadline and print the updated task JSON
+  task update <task-id> [--deadline YYYY-MM-DD | --no-deadline]
+      [--scheduled-at DATETIME | --no-scheduled-at]
+                                      Update or clear task deadline/schedule and print the updated task JSON
   task assign <task-id> --user ID|@mention
                                       Assign an existing task to a user
   task assign <task-id> --agent slug  Assign an existing task to an agent
@@ -2129,7 +2190,7 @@ Commands:
   members [--box ID] [--json]         List group members and mention handles
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
-      [--page N] [--per-page N]
+      [--scheduled actionable|future|all] [--page N] [--per-page N]
   boxes discussions <box-id>          List standalone box discussions (not task conversations)
       [--page N] [--per-page N]
   boxes discussions create <box-id>   Create a standalone Markdown-capable box discussion
@@ -2143,6 +2204,12 @@ Commands:
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
+
+Scheduling:
+  --scheduled-at sends scheduled_at separately from deadline. The Missionbase API parses DATETIME in the acting
+  user's timezone when no offset is included; include an ISO-8601 offset or Z for an absolute instant.
+  Normal agent work/task endpoints keep using the API default scheduled filter, so future scheduled tasks are hidden
+  until actionable. Use --scheduled future or --scheduled all on task listing commands when explicitly discovering them.
 
 Markdown:
   DM bodies, task comment bodies, conversation comment bodies, box discussion bodies, and document bodies are Markdown-capable
