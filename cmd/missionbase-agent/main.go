@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
@@ -1240,7 +1241,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline) OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -1248,6 +1249,8 @@ func task(args []string) error {
 		return taskCreate(args[1:])
 	case "comment", "create-comment", "reply":
 		return taskComment(args[1:])
+	case "update", "edit":
+		return taskUpdate(args[1:])
 	case "assign":
 		return taskAssign(args[1:])
 	case "unassign":
@@ -1289,6 +1292,68 @@ func task(args []string) error {
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
 	}
+}
+
+func taskUpdate(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)")
+		return nil
+	}
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)")
+	}
+	taskID := args[0]
+	payload := map[string]any{}
+	deadlineSet := false
+	deadlineCleared := false
+
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--deadline":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--deadline requires a value in YYYY-MM-DD format")
+			}
+			deadline, err := validateDeadline(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["deadline"] = deadline
+			deadlineSet = true
+			i++
+		case "--no-deadline":
+			payload["deadline"] = nil
+			deadlineCleared = true
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)")
+			return nil
+		default:
+			return fmt.Errorf("unknown task update option %q", args[i])
+		}
+	}
+
+	if deadlineSet && deadlineCleared {
+		return fmt.Errorf("use only one of --deadline or --no-deadline")
+	}
+	if !deadlineSet && !deadlineCleared {
+		return fmt.Errorf("one of --deadline or --no-deadline is required")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPatch("/api/v1/tasks/"+url.PathEscape(taskID), body)
+}
+
+func validateDeadline(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("--deadline requires a value in YYYY-MM-DD format")
+	}
+	if _, err := time.Parse("2006-01-02", value); err != nil {
+		return "", fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
+	}
+	return value, nil
 }
 
 func taskAssign(args []string) error {
@@ -1510,6 +1575,16 @@ func taskCreate(args []string) error {
 			}
 			payload["box_id"] = args[i+1]
 			i++
+		case "--deadline":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--deadline requires a value in YYYY-MM-DD format")
+			}
+			deadline, err := validateDeadline(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["deadline"] = deadline
+			i++
 		case "--assign-agent":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--assign-agent requires a value")
@@ -1549,7 +1624,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -2019,9 +2094,12 @@ Commands:
                                       Show open tasks assigned to a target user
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
-  task create --title TITLE --box ID [--assign-agent slug | --assign-user ID|@mention]
+  task create --title TITLE --box ID [--deadline YYYY-MM-DD]
+      [--assign-agent slug | --assign-user ID|@mention]
       [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
+  task update <task-id> (--deadline YYYY-MM-DD | --no-deadline)
+                                      Update or clear a task deadline and print the updated task JSON
   task assign <task-id> --user ID|@mention
                                       Assign an existing task to a user
   task assign <task-id> --agent slug  Assign an existing task to an agent
