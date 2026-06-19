@@ -441,6 +441,53 @@ func TestUsageErrors(t *testing.T) {
 	}
 }
 
+func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files":
+			if got := r.URL.Query().Get("filter"); got != "files" {
+				t.Fatalf("filter = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"files":[]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/boxes/2/files":
+			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+				t.Fatalf("parse multipart: %v", err)
+			}
+			if len(r.MultipartForm.File["file"]) != 1 {
+				t.Fatalf("file count = %d, want 1", len(r.MultipartForm.File["file"]))
+			}
+			_, _ = w.Write([]byte(`{"file":{"id":88}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/88/download":
+			_, _ = w.Write([]byte("user-download"))
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+	upload := filepath.Join(t.TempDir(), "upload.txt")
+	if err := os.WriteFile(upload, []byte("upload-body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "download.txt")
+
+	if err := run([]string{"boxes", "files", "2", "--filter", "files"}); err != nil {
+		t.Fatalf("run list: %v", err)
+	}
+	if err := run([]string{"boxes", "files", "upload", "2", "--file", upload}); err != nil {
+		t.Fatalf("run upload: %v", err)
+	}
+	if err := run([]string{"boxes", "files", "download", "2", "88", "--output", output}); err != nil {
+		t.Fatalf("run download: %v", err)
+	}
+	if got, err := os.ReadFile(output); err != nil || string(got) != "user-download" {
+		t.Fatalf("download output = %q, %v", got, err)
+	}
+}
+
 func TestHelpShowsUserWorkflowCommands(t *testing.T) {
 	stdout := captureStdout(t, func() { _ = run([]string{"--help"}) })
 	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "boxes documents create <box-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task feed <task-id>", "conversations", "conversation show <feed-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {

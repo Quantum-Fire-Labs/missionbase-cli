@@ -1061,14 +1061,35 @@ func boxDiscussionsCreate(args []string) error {
 
 func boxFiles(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH")
 	}
+	switch args[0] {
+	case "list", "search":
+		return boxFilesList(args[1:])
+	case "show", "get", "preview":
+		return boxFileShow(args[1:])
+	case "upload", "add":
+		return boxFileUpload(args[1:])
+	case "update", "edit":
+		return boxFileUpdate(args[1:])
+	case "download", "fetch":
+		return boxFileDownload(args[1:])
+	case "--help", "-h":
+		fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH")
+		return nil
+	default:
+		return boxFilesList(args)
+	}
+}
 
+func boxFilesList(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
+	}
 	boxID := strings.TrimSpace(args[0])
 	if boxID == "" {
 		return fmt.Errorf("box id is required")
 	}
-
 	values := url.Values{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -1077,6 +1098,18 @@ func boxFiles(args []string) error {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
 			values.Set("query", args[i+1])
+			i++
+		case "--filter":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--filter requires a value")
+			}
+			values.Set("filter", args[i+1])
+			i++
+		case "--sort":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--sort requires a value")
+			}
+			values.Set("sort", args[i+1])
 			i++
 		case "--page":
 			if i+1 >= len(args) {
@@ -1091,18 +1124,133 @@ func boxFiles(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--page N] [--per-page N]")
+			fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes files option %q", args[i])
 		}
 	}
+	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(boxID)+"/files", values))
+}
 
-	path := "/api/v1/boxes/" + url.PathEscape(boxID) + "/files"
-	if encoded := values.Encode(); encoded != "" {
-		path += "?" + encoded
+func boxFileShow(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: missionbase-agent boxes files show <box-id> <file-id>")
 	}
-	return apiGet(path)
+	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
+}
+
+func boxFileUpload(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+	}
+	boxID := strings.TrimSpace(args[0])
+	fields := map[string]string{}
+	filePath := ""
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--file", "--path":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			filePath = args[i+1]
+			i++
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			fields["title"] = args[i+1]
+			i++
+		case "--description":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description requires a value")
+			}
+			fields["description"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files upload option %q", args[i])
+		}
+	}
+	if boxID == "" {
+		return fmt.Errorf("box id is required")
+	}
+	if strings.TrimSpace(filePath) == "" {
+		return fmt.Errorf("--file is required")
+	}
+	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(boxID)+"/files", fields, "file", filePath)
+}
+
+func boxFileUpdate(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+	}
+	payload := map[string]string{}
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--description":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description requires a value")
+			}
+			payload["description"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files update option %q", args[i])
+		}
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("at least one of --title or --description is required")
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPatch("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), body)
+}
+
+func boxFileDownload(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH")
+	}
+	output := ""
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--output", "-o":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			output = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files download option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(output) == "" {
+		return fmt.Errorf("--output is required")
+	}
+	body, err := apiGetBody("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(output, body, 0o644); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Downloaded file to %s\n", output)
+	return nil
 }
 
 func boxTaskStatuses(args []string) error {
@@ -1884,6 +2032,64 @@ func apiPostMultipart(path string, fields map[string]string, attaches []string, 
 	return nil
 }
 
+func apiPostSingleFileMultipart(path string, fields map[string]string, fieldName, filePath string) error {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return err
+		}
+	}
+	if err := addMultipartFile(writer, fieldName, filePath); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	body, err := apiPostBodyWithContentType(path, buf.Bytes(), writer.FormDataContentType())
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
+func addMultipartFile(writer *multipart.Writer, fieldName, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open file %q: %w", path, err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat file %q: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("file %q is a directory", path)
+	}
+	if info.Size() > 100*1024*1024 {
+		return fmt.Errorf("file %q is too large (max 100 MB)", path)
+	}
+	peek := make([]byte, 512)
+	n, err := file.Read(peek)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("read file %q: %w", path, err)
+	}
+	contentType := http.DetectContentType(peek[:n])
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(fieldName), escapeQuotes(filepath.Base(path))))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, file)
+	return err
+}
+
 func apiPostMultipartBody(path string, fields map[string]string, attaches []string, blobs []string) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -2109,6 +2315,13 @@ func apiGetBody(path string) ([]byte, error) {
 	return client.Get(path)
 }
 
+func withQuery(path string, values url.Values) string {
+	if encoded := values.Encode(); encoded != "" {
+		return path + "?" + encoded
+	}
+	return path
+}
+
 func printHelp() {
 	fmt.Println(`Missionbase Agent CLI
 
@@ -2196,7 +2409,14 @@ Commands:
   boxes discussions create <box-id>   Create a standalone Markdown-capable box discussion
       --title TITLE --body-file PATH
   boxes files <box-id>                List/search files and documents in an accessible box
-      [--query QUERY] [--page N] [--per-page N]
+      [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
+  boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
+  boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
+                                      Upload a file to Docs & Files
+  boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
+                                      Update uploaded file metadata
+  boxes files download <box-id> <file-id> --output PATH
+                                      Download an uploaded file
   boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived

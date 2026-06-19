@@ -338,6 +338,69 @@ func TestBoxesFilesGetsListAndSearchesDocuments(t *testing.T) {
 	}
 }
 
+func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
+	var sawUpload, sawUpdate, sawDownload bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/77":
+			_, _ = w.Write([]byte(`{"file":{"id":77,"type":"file"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/boxes/2/files":
+			sawUpload = true
+			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+				t.Fatalf("parse multipart: %v", err)
+			}
+			if got := r.MultipartForm.Value["title"][0]; got != "Upload" {
+				t.Fatalf("title = %q", got)
+			}
+			if len(r.MultipartForm.File["file"]) != 1 {
+				t.Fatalf("file count = %d, want 1", len(r.MultipartForm.File["file"]))
+			}
+			_, _ = w.Write([]byte(`{"file":{"id":78}}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/boxes/2/files/78":
+			sawUpdate = true
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode update: %v", err)
+			}
+			if payload["description"] != "Changed" {
+				t.Fatalf("description = %q", payload["description"])
+			}
+			_, _ = w.Write([]byte(`{"file":{"id":78}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/78/download":
+			sawDownload = true
+			_, _ = w.Write([]byte("download-body"))
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+	file := writeTextFile(t, "upload.txt", "upload-body")
+	output := filepath.Join(t.TempDir(), "download.txt")
+
+	if err := run([]string{"boxes", "files", "show", "2", "77"}); err != nil {
+		t.Fatalf("run show: %v", err)
+	}
+	if err := run([]string{"boxes", "files", "upload", "2", "--file", file, "--title", "Upload"}); err != nil {
+		t.Fatalf("run upload: %v", err)
+	}
+	if err := run([]string{"boxes", "files", "update", "2", "78", "--description", "Changed"}); err != nil {
+		t.Fatalf("run update: %v", err)
+	}
+	if err := run([]string{"boxes", "files", "download", "2", "78", "--output", output}); err != nil {
+		t.Fatalf("run download: %v", err)
+	}
+	if got, err := os.ReadFile(output); err != nil || string(got) != "download-body" {
+		t.Fatalf("download output = %q, %v", got, err)
+	}
+	if !sawUpload || !sawUpdate || !sawDownload {
+		t.Fatalf("saw upload/update/download = %v/%v/%v", sawUpload, sawUpdate, sawDownload)
+	}
+}
+
 func TestBoxesFilesRequiresBoxIDAndOptionValues(t *testing.T) {
 	if err := run([]string{"boxes", "files"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes files <box-id>") {
 		t.Fatalf("err = %v, want usage error", err)

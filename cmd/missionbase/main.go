@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -257,10 +263,12 @@ func boxes(args []string) error {
 		return boxDiscussions(args[1:])
 	case "documents", "docs":
 		return boxDocuments(args[1:])
+	case "files":
+		return boxFiles(args[1:])
 	case "statuses", "task-statuses":
 		return boxTaskStatuses(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase boxes [--team TEAM_ID]\n       missionbase boxes <tasks|discussions|documents|statuses|task-statuses> <box-id>")
+		fmt.Println("usage: missionbase boxes [--team TEAM_ID]\n       missionbase boxes <tasks|discussions|documents|files|statuses|task-statuses> <box-id>")
 		return nil
 	default:
 		return fmt.Errorf("unknown boxes command %q", args[0])
@@ -452,6 +460,191 @@ func boxDocumentsCreate(args []string) error {
 		return fmt.Errorf("--body is required")
 	}
 	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(boxID)+"/documents", payload)
+}
+
+func boxFiles(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files download <box-id> <file-id> --output PATH")
+	}
+	switch args[0] {
+	case "list", "search":
+		return boxFilesList(args[1:])
+	case "show", "get", "preview":
+		return boxFileShow(args[1:])
+	case "upload", "add":
+		return boxFileUpload(args[1:])
+	case "update", "edit":
+		return boxFileUpdate(args[1:])
+	case "download", "fetch":
+		return boxFileDownload(args[1:])
+	case "--help", "-h":
+		fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files download <box-id> <file-id> --output PATH")
+		return nil
+	default:
+		return boxFilesList(args)
+	}
+}
+
+func boxFilesList(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
+	}
+	values := url.Values{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--query", "-q":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			values.Set("query", args[i+1])
+			i++
+		case "--filter":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--filter requires a value")
+			}
+			values.Set("filter", args[i+1])
+			i++
+		case "--sort":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--sort requires a value")
+			}
+			values.Set("sort", args[i+1])
+			i++
+		case "--page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--page requires a value")
+			}
+			values.Set("page", args[i+1])
+			i++
+		case "--per-page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--per-page requires a value")
+			}
+			values.Set("per_page", args[i+1])
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files option %q", args[i])
+		}
+	}
+	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", values))
+}
+
+func boxFileShow(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: missionbase boxes files show <box-id> <file-id>")
+	}
+	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
+}
+
+func boxFileUpload(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+	}
+	fields := map[string]string{}
+	filePath := ""
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--file", "--path":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			filePath = args[i+1]
+			i++
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			fields["title"] = args[i+1]
+			i++
+		case "--description":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description requires a value")
+			}
+			fields["description"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files upload option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(args[0]) == "" {
+		return fmt.Errorf("box id is required")
+	}
+	if strings.TrimSpace(filePath) == "" {
+		return fmt.Errorf("--file is required")
+	}
+	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
+}
+
+func boxFileUpdate(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+	}
+	payload := map[string]string{}
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--description":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description requires a value")
+			}
+			payload["description"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files update option %q", args[i])
+		}
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("at least one of --title or --description is required")
+	}
+	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
+}
+
+func boxFileDownload(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase boxes files download <box-id> <file-id> --output PATH")
+	}
+	output := ""
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--output", "-o":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			output = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes files download <box-id> <file-id> --output PATH")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files download option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(output) == "" {
+		return fmt.Errorf("--output is required")
+	}
+	body, err := apiGetBody("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(output, body, 0o644); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Downloaded file to %s\n", output)
+	return nil
 }
 
 func tasks(args []string) error {
@@ -1218,17 +1411,21 @@ func apiDelete(path string) error {
 }
 
 func apiGet(path string) error {
-	cfg, err := config.LoadUser()
-	if err != nil {
-		return err
-	}
-	client := httpclient.NewUser(cfg)
-	body, err := client.Get(path)
+	body, err := apiGetBody(path)
 	if err != nil {
 		return err
 	}
 	fmt.Println(string(body))
 	return nil
+}
+
+func apiGetBody(path string) ([]byte, error) {
+	cfg, err := config.LoadUser()
+	if err != nil {
+		return nil, err
+	}
+	client := httpclient.NewUser(cfg)
+	return client.Get(path)
 }
 
 func apiPostJSON(path string, payload any) error {
@@ -1264,6 +1461,59 @@ func apiWrite(method, path string, fields map[string]string, attaches []string, 
 		return err
 	}
 	return apiWriteBytes(method, path, body, "application/json")
+}
+
+func apiPostSingleFileMultipart(path string, fields map[string]string, fieldName, filePath string) error {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return err
+		}
+	}
+	if err := addMultipartFile(writer, fieldName, filePath); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return apiWriteBytes("POST", path, buf.Bytes(), writer.FormDataContentType())
+}
+
+func addMultipartFile(writer *multipart.Writer, fieldName, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open file %q: %w", path, err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat file %q: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("file %q is a directory", path)
+	}
+	if info.Size() > 100*1024*1024 {
+		return fmt.Errorf("file %q is too large (max 100 MB)", path)
+	}
+	peek := make([]byte, 512)
+	n, err := file.Read(peek)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("read file %q: %w", path, err)
+	}
+	contentType := http.DetectContentType(peek[:n])
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, strings.ReplaceAll(fieldName, `"`, `\\"`), strings.ReplaceAll(filepath.Base(path), `"`, `\\"`)))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, file)
+	return err
 }
 
 func apiWriteBytes(method, path string, requestBody []byte, contentType string) error {
@@ -1335,6 +1585,15 @@ Commands:
       [--page N] [--per-page N]
   boxes documents create <box-id> --title TITLE --body TEXT
                                       Create a document in a box
+  boxes files <box-id>                List/search Docs & Files entries
+      [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
+  boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
+  boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
+                                      Upload a file to Docs & Files
+  boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
+                                      Update uploaded file metadata
+  boxes files download <box-id> <file-id> --output PATH
+                                      Download an uploaded file
   boxes statuses <box-id>             Alias for boxes task-statuses
   boxes task-statuses <box-id>        List configured task statuses for a box
   notes search <query> [--team ID]    Search your notes
