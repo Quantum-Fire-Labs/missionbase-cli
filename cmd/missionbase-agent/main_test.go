@@ -1419,6 +1419,58 @@ func TestAttachmentRejectsUnsupportedType(t *testing.T) {
 	}
 }
 
+func TestSidebarCommandsUseAgentEndpointWithTargetUser(t *testing.T) {
+	seen := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/v1/sidebar_pins":
+			seen["pins"] = true
+			if r.URL.Query().Get("user_id") != "7" {
+				t.Fatalf("query = %s", r.URL.RawQuery)
+			}
+		case "POST /api/v1/sidebar_pins":
+			seen["pin"] = true
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["user_id"] != "7" || payload["type"] != "box_file" || payload["id"] != "42" {
+				t.Fatalf("payload = %#v", payload)
+			}
+		case "DELETE /api/v1/sidebar_pins":
+			seen["unpin"] = true
+			query := r.URL.Query()
+			if query.Get("user_id") != "7" || query.Get("type") != "box_file" || query.Get("id") != "42" {
+				t.Fatalf("query = %s", r.URL.RawQuery)
+			}
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	commands := [][]string{
+		{"sidebar", "pins", "--user", "7"},
+		{"sidebar", "pin", "--user", "7", "--type", "box_file", "--id", "42"},
+		{"sidebar", "unpin", "--user", "7", "--type", "box_file", "--id", "42"},
+	}
+	for _, command := range commands {
+		if err := run(command); err != nil {
+			t.Fatalf("run %v: %v", command, err)
+		}
+	}
+	for _, key := range []string{"pins", "pin", "unpin"} {
+		if !seen[key] {
+			t.Fatalf("%s request was not seen", key)
+		}
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	original := os.Stdout
