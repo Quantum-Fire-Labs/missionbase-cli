@@ -1061,7 +1061,7 @@ func boxDiscussionsCreate(args []string) error {
 
 func boxFiles(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH")
+		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	switch args[0] {
 	case "list", "search":
@@ -1072,10 +1072,14 @@ func boxFiles(args []string) error {
 		return boxFileUpload(args[1:])
 	case "update", "edit":
 		return boxFileUpdate(args[1:])
+	case "versions", "version-list":
+		return boxFileVersions(args[1:])
+	case "upload-version", "new-version":
+		return boxFileUploadVersion(args[1:])
 	case "download", "fetch":
 		return boxFileDownload(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH")
+		fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 		return nil
 	default:
 		return boxFilesList(args)
@@ -1219,11 +1223,45 @@ func boxFileUpdate(args []string) error {
 	return apiPatch("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), body)
 }
 
+func boxFileVersions(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: missionbase-agent boxes files versions <box-id> <file-id>")
+	}
+	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions")
+}
+
+func boxFileUploadVersion(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH")
+	}
+	filePath := ""
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--file", "--path":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			filePath = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files upload-version option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(filePath) == "" {
+		return fmt.Errorf("--file is required")
+	}
+	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1])+"/versions", map[string]string{}, "file", filePath)
+}
+
 func boxFileDownload(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH")
+		return fmt.Errorf("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	output := ""
+	versionID := ""
 	for i := 2; i < len(args); i++ {
 		switch args[i] {
 		case "--output", "-o":
@@ -1232,8 +1270,14 @@ func boxFileDownload(args []string) error {
 			}
 			output = args[i+1]
 			i++
+		case "--version":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--version requires a value")
+			}
+			versionID = args[i+1]
+			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH")
+			fmt.Println("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes files download option %q", args[i])
@@ -1242,7 +1286,11 @@ func boxFileDownload(args []string) error {
 	if strings.TrimSpace(output) == "" {
 		return fmt.Errorf("--output is required")
 	}
-	body, err := apiGetBody("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download")
+	path := "/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download"
+	if strings.TrimSpace(versionID) != "" {
+		path = "/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions/" + url.PathEscape(versionID) + "/download"
+	}
+	body, err := apiGetBody(path)
 	if err != nil {
 		return err
 	}

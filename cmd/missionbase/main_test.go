@@ -442,6 +442,7 @@ func TestUsageErrors(t *testing.T) {
 }
 
 func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
+	var sawVersions, sawUploadVersion, sawDownloadVersion bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
 			t.Fatalf("agent slug header = %q, want empty", got)
@@ -462,6 +463,21 @@ func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
 			_, _ = w.Write([]byte(`{"file":{"id":88}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/88/download":
 			_, _ = w.Write([]byte("user-download"))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/88/versions":
+			sawVersions = true
+			_, _ = w.Write([]byte(`{"versions":[{"id":9,"version_number":1}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/boxes/2/files/88/versions":
+			sawUploadVersion = true
+			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+				t.Fatalf("parse version multipart: %v", err)
+			}
+			if len(r.MultipartForm.File["file"]) != 1 {
+				t.Fatalf("version file count = %d, want 1", len(r.MultipartForm.File["file"]))
+			}
+			_, _ = w.Write([]byte(`{"version":{"id":10}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/88/versions/9/download":
+			sawDownloadVersion = true
+			_, _ = w.Write([]byte("user-version-download"))
 		default:
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -485,6 +501,22 @@ func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
 	}
 	if got, err := os.ReadFile(output); err != nil || string(got) != "user-download" {
 		t.Fatalf("download output = %q, %v", got, err)
+	}
+	if err := run([]string{"boxes", "files", "versions", "2", "88"}); err != nil {
+		t.Fatalf("run versions: %v", err)
+	}
+	if err := run([]string{"boxes", "files", "upload-version", "2", "88", "--file", upload}); err != nil {
+		t.Fatalf("run upload-version: %v", err)
+	}
+	versionOutput := filepath.Join(t.TempDir(), "version.txt")
+	if err := run([]string{"boxes", "files", "download", "2", "88", "--output", versionOutput, "--version", "9"}); err != nil {
+		t.Fatalf("run version download: %v", err)
+	}
+	if got, err := os.ReadFile(versionOutput); err != nil || string(got) != "user-version-download" {
+		t.Fatalf("version download output = %q, %v", got, err)
+	}
+	if !sawVersions || !sawUploadVersion || !sawDownloadVersion {
+		t.Fatalf("saw versions/uploadVersion/downloadVersion = %v/%v/%v", sawVersions, sawUploadVersion, sawDownloadVersion)
 	}
 }
 
