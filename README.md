@@ -138,6 +138,9 @@ missionbase boxes files download <box-id> <file-id> --output PATH
 missionbase boxes task-statuses <box-id>
 missionbase boxes statuses <box-id>
 missionbase notes search <query> [--team <team-id>]
+missionbase sidebar pins
+missionbase sidebar pin --type box_file --id <box-file-id>
+missionbase sidebar unpin --type box_file --id <box-file-id>
 missionbase document show <document-id> [--format markdown|html|plain-text]
 missionbase document update <document-id> [--title TITLE] --body TEXT
 missionbase tasks assigned [--page N] [--per-page N]
@@ -213,6 +216,9 @@ missionbase-agent boxes files show <box-id> <file-id>
 missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
 missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
 missionbase-agent boxes files download <box-id> <file-id> --output PATH
+missionbase-agent sidebar pins --user <user-id-or-mention>
+missionbase-agent sidebar pin --user <user-id-or-mention> --type box_file --id <box-file-id>
+missionbase-agent sidebar unpin --user <user-id-or-mention> --type box_file --id <box-file-id>
 missionbase-agent boxes task-statuses <box-id>
 missionbase-agent boxes statuses <box-id>
 missionbase-agent get /api/v1/agent/me
@@ -222,6 +228,8 @@ missionbase-agent update
 User CLI read and write commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only, `missionbase work` calls `/api/v1/users/work` to return the current user, assigned/open tasks, unread conversations, and metadata, user/mention lookup uses `/api/v1/users/lookup` and `/api/v1/teams/:team_id/members`, and assignment/participant writes use user-acting task endpoints. The user CLI never calls agent-only member endpoints, never supports `--agent` assignment/participants, and agent identity, agent-management, and DM workflows remain exclusive to `missionbase-agent`.
 
 User CLI write commands use JSON requests when no attachments are present and multipart requests when repeated `--attach PATH` or `--attach-blob SIGNED_ID_OR_SGID` flags are used. Local attachments are limited to PNG, JPEG, GIF, and WEBP images up to 5 MB. User-authored task descriptions, comments, conversation comments, and box discussion bodies are Markdown-capable and normalize accidental escaped newline sequences outside quoted/code contexts. Comment body aliases `--body`, `--comment`, `--message`, and `--text` are supported.
+
+Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar pins`, `missionbase sidebar pin --type box_file --id ID`, and `missionbase sidebar unpin --type box_file --id ID` always act as the signed-in user and do not accept a target user. `missionbase-agent sidebar pins --user ID|@mention`, `missionbase-agent sidebar pin --user ID|@mention --type box_file --id ID`, and `missionbase-agent sidebar unpin --user ID|@mention --type box_file --id ID` use agent authentication and permissions to manage a specific user's pins. The initial supported item type is `box_file`, where `ID` is the BoxFile/Docs & Files entry id.
 
 `missionbase users lookup <query>` calls user lookup directly. `missionbase users lookup @mention --team <team-id>` resolves a team member mention. Task assignment and participant commands accept numeric user ids directly; when resolving `@mention`, pass `--team` or let the CLI derive the team from the task when the task response includes box/team context. If team context cannot be inferred, the CLI asks for `--team` or a numeric user id.
 

@@ -70,6 +70,8 @@ func run(args []string) error {
 		return conversation(args[1:])
 	case "members":
 		return members(args[1:])
+	case "sidebar":
+		return sidebar(args[1:])
 	case "boxes":
 		return boxes(args[1:])
 	case "get":
@@ -1921,6 +1923,111 @@ func taskParticipantsAdd(taskID string, args []string) error {
 	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/participants", body)
 }
 
+func sidebar(args []string) error {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		fmt.Println("usage: missionbase-agent sidebar <pins|pin|unpin> --user ID|@mention [--type box_file --id ID]")
+		return nil
+	}
+
+	switch args[0] {
+	case "pins", "list":
+		userID, err := parseSidebarUserArg(args[1:])
+		if err != nil {
+			return err
+		}
+		query := url.Values{}
+		query.Set("user_id", userID)
+		return apiGet("/api/v1/sidebar_pins?" + query.Encode())
+	case "pin":
+		userID, typeValue, idValue, err := parseAgentSidebarItemArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		body, err := json.Marshal(map[string]string{"user_id": userID, "type": typeValue, "id": idValue})
+		if err != nil {
+			return err
+		}
+		return apiPost("/api/v1/sidebar_pins", body)
+	case "unpin":
+		userID, typeValue, idValue, err := parseAgentSidebarItemArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		query := url.Values{}
+		query.Set("user_id", userID)
+		query.Set("type", typeValue)
+		query.Set("id", idValue)
+		return apiDelete("/api/v1/sidebar_pins?" + query.Encode())
+	default:
+		return fmt.Errorf("unknown sidebar command %q", args[0])
+	}
+}
+
+func parseSidebarUserArg(args []string) (string, error) {
+	if len(args) == 0 {
+		return "", fmt.Errorf("usage: missionbase-agent sidebar pins --user ID|@mention")
+	}
+	userValue := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--user":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("--user requires a value")
+			}
+			userValue = args[i+1]
+			i++
+		case "--help", "-h":
+			return "", fmt.Errorf("usage: missionbase-agent sidebar pins --user ID|@mention")
+		default:
+			return "", fmt.Errorf("unknown sidebar option %q", args[i])
+		}
+	}
+	if userValue == "" {
+		return "", fmt.Errorf("usage: missionbase-agent sidebar pins --user ID|@mention")
+	}
+	return resolveUserID(userValue)
+}
+
+func parseAgentSidebarItemArgs(args []string) (string, string, string, error) {
+	userValue := ""
+	typeValue := ""
+	idValue := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--user":
+			if i+1 >= len(args) {
+				return "", "", "", fmt.Errorf("--user requires a value")
+			}
+			userValue = args[i+1]
+			i++
+		case "--type":
+			if i+1 >= len(args) {
+				return "", "", "", fmt.Errorf("--type requires a value")
+			}
+			typeValue = args[i+1]
+			i++
+		case "--id":
+			if i+1 >= len(args) {
+				return "", "", "", fmt.Errorf("--id requires a value")
+			}
+			idValue = args[i+1]
+			i++
+		case "--help", "-h":
+			return "", "", "", fmt.Errorf("usage: missionbase-agent sidebar <pin|unpin> --user ID|@mention --type box_file --id ID")
+		default:
+			return "", "", "", fmt.Errorf("unknown sidebar option %q", args[i])
+		}
+	}
+	if userValue == "" || typeValue == "" || idValue == "" {
+		return "", "", "", fmt.Errorf("usage: missionbase-agent sidebar <pin|unpin> --user ID|@mention --type box_file --id ID")
+	}
+	userID, err := resolveUserID(userValue)
+	if err != nil {
+		return "", "", "", err
+	}
+	return userID, typeValue, idValue, nil
+}
+
 func resolveUserID(value string) (string, error) {
 	if _, err := strconv.Atoi(value); err == nil {
 		return value, nil
@@ -2417,6 +2524,12 @@ Commands:
                                       Update uploaded file metadata
   boxes files download <box-id> <file-id> --output PATH
                                       Download an uploaded file
+  sidebar pins --user ID|@mention
+                                      List pinned sidebar pages for a user
+  sidebar pin --user ID|@mention --type box_file --id ID
+                                      Pin a supported page to a user's sidebar
+  sidebar unpin --user ID|@mention --type box_file --id ID
+                                      Unpin a supported page from a user's sidebar
   boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived

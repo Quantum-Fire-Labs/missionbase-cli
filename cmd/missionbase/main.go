@@ -82,6 +82,8 @@ func run(args []string) error {
 		return conversation(args[1:])
 	case "notes":
 		return notes(args[1:])
+	case "sidebar":
+		return sidebar(args[1:])
 	case "document":
 		return document(args[1:])
 	case "get":
@@ -143,6 +145,67 @@ func auth(args []string) error {
 	}
 
 	return nil
+}
+
+func sidebar(args []string) error {
+	if len(args) == 0 || isHelp(args[0]) {
+		fmt.Println("usage: missionbase sidebar <pins|pin|unpin> [--type box_file --id ID]")
+		return nil
+	}
+
+	switch args[0] {
+	case "pins", "list":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: missionbase sidebar pins")
+		}
+		return apiGet("/api/v1/sidebar_pins")
+	case "pin":
+		typeValue, idValue, err := parseSidebarItemArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		return apiPostJSON("/api/v1/sidebar_pins", map[string]string{"type": typeValue, "id": idValue})
+	case "unpin":
+		typeValue, idValue, err := parseSidebarItemArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		query := url.Values{}
+		query.Set("type", typeValue)
+		query.Set("id", idValue)
+		return apiDelete("/api/v1/sidebar_pins?" + query.Encode())
+	default:
+		return fmt.Errorf("unknown sidebar command %q", args[0])
+	}
+}
+
+func parseSidebarItemArgs(args []string) (string, string, error) {
+	typeValue := ""
+	idValue := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--type":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("--type requires a value")
+			}
+			typeValue = args[i+1]
+			i++
+		case "--id":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("--id requires a value")
+			}
+			idValue = args[i+1]
+			i++
+		case "--help", "-h":
+			return "", "", fmt.Errorf("usage: missionbase sidebar <pin|unpin> --type box_file --id ID")
+		default:
+			return "", "", fmt.Errorf("unknown sidebar option %q", args[i])
+		}
+	}
+	if typeValue == "" || idValue == "" {
+		return "", "", fmt.Errorf("usage: missionbase sidebar <pin|unpin> --type box_file --id ID")
+	}
+	return typeValue, idValue, nil
 }
 
 func teams(args []string) error {
@@ -1597,6 +1660,10 @@ Commands:
   boxes statuses <box-id>             Alias for boxes task-statuses
   boxes task-statuses <box-id>        List configured task statuses for a box
   notes search <query> [--team ID]    Search your notes
+  sidebar pins                         List pinned sidebar pages for the current user
+  sidebar pin --type box_file --id ID  Pin a supported page to the current user's sidebar
+  sidebar unpin --type box_file --id ID
+                                      Unpin a supported page from the current user's sidebar
   document show <document-id> [--format markdown|html|plain-text]
                                       Show a document
   document update <document-id> [--title TITLE] --body TEXT
