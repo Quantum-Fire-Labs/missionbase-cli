@@ -134,7 +134,9 @@ missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--so
 missionbase boxes files show <box-id> <file-id>
 missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
 missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
-missionbase boxes files download <box-id> <file-id> --output PATH
+missionbase boxes files versions <box-id> <file-id>
+missionbase boxes files upload-version <box-id> <file-id> --file PATH
+missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
 missionbase boxes task-statuses <box-id>
 missionbase boxes statuses <box-id>
 missionbase notes search <query> [--team <team-id>]
@@ -215,7 +217,9 @@ missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files]
 missionbase-agent boxes files show <box-id> <file-id>
 missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
 missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
-missionbase-agent boxes files download <box-id> <file-id> --output PATH
+missionbase-agent boxes files versions <box-id> <file-id>
+missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH
+missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
 missionbase-agent sidebar pins --user <user-id-or-mention>
 missionbase-agent sidebar pin --user <user-id-or-mention> --type box_file --id <box-file-id>
 missionbase-agent sidebar unpin --user <user-id-or-mention> --type box_file --id <box-file-id>
