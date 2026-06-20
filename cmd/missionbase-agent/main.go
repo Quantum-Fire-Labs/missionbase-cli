@@ -758,18 +758,18 @@ func conversationComment(args []string) error {
 
 func document(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
 	}
 
 	switch args[0] {
-	case "fetch", "show", "get":
+	case "show", "fetch", "get":
 		return documentFetch(args[1:])
 	case "create":
 		return documentCreate(args[1:])
 	case "edit", "update":
 		return documentEdit(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document fetch 77\n  missionbase-agent document fetch 77 --format markdown\n  missionbase-agent document fetch 77 --format html\n  missionbase-agent document fetch 77 --format plain-text")
+		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document show 77\n  missionbase-agent document fetch 77\n  missionbase-agent document show 77 --format markdown\n  missionbase-agent document show 77 --format html\n  missionbase-agent document show 77 --format plain-text")
 		return nil
 	default:
 		return fmt.Errorf("unknown document command %q", args[0])
@@ -778,7 +778,7 @@ func document(args []string) error {
 
 func documentFetch(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
+		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
 	}
 	documentID := strings.TrimSpace(args[0])
 	if documentID == "" {
@@ -795,7 +795,7 @@ func documentFetch(args []string) error {
 			format = normalizeDocumentFetchFormat(args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
+			fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
 			return nil
 		default:
 			return fmt.Errorf("unknown document fetch option %q", args[i])
@@ -1461,10 +1461,15 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
+	case "show", "get":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: missionbase-agent task show <task-id>")
+		}
+		return apiGet("/api/v1/tasks/" + url.PathEscape(args[1]))
 	case "create":
 		return taskCreate(args[1:])
 	case "comment", "create-comment", "reply":
@@ -2509,8 +2514,10 @@ Commands:
                                       Restore/reactivate an archived agent
   agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
                                       Add an agent to one or more boxes
-  document fetch <document-id> [--format markdown|html|plain-text]
+  document show <document-id> [--format markdown|html|plain-text]
                                       Print a document body (default: markdown)
+  document fetch <document-id> [--format markdown|html|plain-text]
+                                      Compatibility alias for document show
   document create --box BOX_ID --title TITLE --body-file PATH
                                       Create a box document from a Markdown/plain-text file
   document edit <document-id> [--title TITLE] --body-file PATH
@@ -2522,6 +2529,7 @@ Commands:
                                       Show open tasks assigned to a target user
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
+  task show <task-id>                  Show full task working context
   task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
       [--assign-agent slug | --assign-user ID|@mention]
       [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]

@@ -183,11 +183,13 @@ missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--desc
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent restore fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
-missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]
+missionbase-agent document show <document-id> [--format markdown|html|plain-text]
+missionbase-agent document fetch <document-id> [--format markdown|html|plain-text] # compatibility alias
 missionbase-agent document create --box <box-id> --title "Doc title" --body-file /tmp/document.md
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
 missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
+missionbase-agent task show <task-id>
 missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--description-file /tmp/description.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
@@ -237,7 +239,7 @@ Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar p
 
 `missionbase users lookup <query>` calls user lookup directly. `missionbase users lookup @mention --team <team-id>` resolves a team member mention. Task assignment and participant commands accept numeric user ids directly; when resolving `@mention`, pass `--team` or let the CLI derive the team from the task when the task response includes box/team context. If team context cannot be inferred, the CLI asks for `--team` or a numeric user id.
 
-`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches unified BoxFile-backed Docs & Files entries with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, filter/sort, and pagination metadata. `missionbase-agent boxes files show ...` prints one BoxFile/document entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file metadata, and `download ... --output PATH` writes an uploaded file to disk. User-facing `missionbase boxes files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document fetch ...` prints a document body and reports the document URL when the API response includes one; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
+`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches unified BoxFile-backed Docs & Files entries with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, filter/sort, and pagination metadata. `missionbase-agent boxes files show ...` prints one BoxFile/document entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file metadata, and `download ... --output PATH` writes an uploaded file to disk. User-facing `missionbase boxes files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document show ...` prints a document body and reports the document URL when the API response includes one; `document fetch` remains a compatibility alias; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task show ...` prints full task working context from `/api/v1/tasks/:id`. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
 
 Task comment, conversation comment, box discussion create, document, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
@@ -290,8 +292,8 @@ missionbase-agent boxes discussions 2
 missionbase-agent boxes discussions create 2 --title "Release workflow planning" --body-file /tmp/proposal.md
 missionbase-agent boxes files 2
 missionbase-agent boxes files 2 --query runbook --per-page 25
-missionbase-agent document fetch 789
-missionbase-agent document fetch 789 --format html
+missionbase-agent document show 789
+missionbase-agent document show 789 --format html
 missionbase-agent document fetch 789 --format plain-text
 missionbase-agent document create --box 2 --title "Runbook" --body-file /tmp/runbook.md
 missionbase-agent document edit 789 --title "Updated runbook" --body-file /tmp/runbook-v2.md
@@ -355,14 +357,14 @@ missionbase-agent dm send --chat 42 --body-file /tmp/reply.md
 
 ### Rich text and attachments
 
-`missionbase-agent` prints the Missionbase API JSON response as-is for read commands. Task descriptions, task feed comments, unread work items, and DM messages include backwards-compatible plain text fields plus rich text fields when the server provides them:
+`missionbase-agent` prints the Missionbase API JSON response as-is for read commands. `missionbase-agent work` is a compact triage surface with routing metadata and previews; use `task show`, `conversation show`, `document show`, and `dm show` for authoritative full working context. Task descriptions, task feed comments, full conversation entries, and DM messages include backwards-compatible plain text fields plus rich text fields when the server provides them:
 
 - `description`, `body`, or `content`: existing plain text or HTML-compatible field, depending on the command.
 - `description_html`, `body_html`, or `content_html`: rendered rich-text HTML.
 - `description_rich_text`, `body_rich_text`, or `content_rich_text`: object with `plain_text`, `html`, and `attachments`.
 - `attachments`: convenience copy of the rich-text attachment list. File/image attachments include `filename`, `content_type`, `byte_size`, `image`, and a relative download `url` where supported.
 
-Use `missionbase-agent tasks`, `missionbase-agent work`, `missionbase-agent task feed <task-id>`, `missionbase-agent task comments <task-id>`, and `missionbase-agent dm show <chat-id>` to inspect this rich content. Agents should use the plain text fields for prompt context and consult the `attachments` arrays to discover files/images that may need separate handling.
+Use `missionbase-agent task show <task-id>`, `missionbase-agent conversation show <feed-id>`, `missionbase-agent task feed <task-id>`, `missionbase-agent task comments <task-id>`, `missionbase-agent document show <document-id>`, and `missionbase-agent dm show <chat-id>` to inspect this rich content. Agents should use the plain text fields for prompt context and consult the `attachments` arrays to discover files/images that may need separate handling.
 
 ### Other agent commands
 
@@ -374,7 +376,7 @@ Use `missionbase-agent tasks`, `missionbase-agent work`, `missionbase-agent task
 
 Selected direct tasks use Pi session id `missionbase-task-<task_id>`. Selected unread conversations use `missionbase-task-<task_id>` only when the conversation payload includes a task assigned to the current agent; otherwise they use `missionbase-conversation-<conversation_id>`. The script passes both `--session-id` and a descriptive `--name` to Pi.
 
-For clean conversation scoping, the Missionbase work payload should continue to include each unread conversation's stable conversation/feed id and, for task conversations, the task id plus assignees.
+For clean conversation scoping, the Missionbase work payload should stay compact: each unread conversation includes stable conversation/feed id, feedable identifiers, box/status routing metadata, actor/update metadata, preview text, and links. Full task assignees, descriptions, rich text, and attachments are fetched through the matching `show` command after triage.
 
 ## Release flow
 

@@ -509,6 +509,25 @@ func TestBoxesTaskStatusesRequiresBoxID(t *testing.T) {
 	}
 }
 
+func TestTaskShowGetsFullTaskEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/tasks/123" {
+			t.Fatalf("path = %s, want /api/v1/tasks/123", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"task":{"id":123,"description_rich_text":{"plain_text":"full context"}}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "show", "123"}); err != nil {
+		t.Fatalf("run task show: %v", err)
+	}
+}
+
 func TestTaskAssignPostsUserAssignment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -1258,7 +1277,7 @@ func TestTaskCreatePostsHEICMultipartAttachment(t *testing.T) {
 	}
 }
 
-func TestDocumentFetchGetsMarkdownByDefault(t *testing.T) {
+func TestDocumentShowGetsMarkdownByDefault(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
@@ -1281,8 +1300,8 @@ func TestDocumentFetchGetsMarkdownByDefault(t *testing.T) {
 	var stderr string
 	stdout := captureStdout(t, func() {
 		stderr = captureStderr(t, func() {
-			if err := run([]string{"document", "fetch", "77"}); err != nil {
-				t.Fatalf("run document fetch: %v", err)
+			if err := run([]string{"document", "show", "77"}); err != nil {
+				t.Fatalf("run document show: %v", err)
 			}
 		})
 	})
@@ -1294,7 +1313,7 @@ func TestDocumentFetchGetsMarkdownByDefault(t *testing.T) {
 	}
 }
 
-func TestDocumentFetchSupportsFormats(t *testing.T) {
+func TestDocumentShowSupportsFormats(t *testing.T) {
 	formats := []string{"markdown", "html", "plain-text"}
 	for _, format := range formats {
 		t.Run(format, func(t *testing.T) {
@@ -1308,10 +1327,29 @@ func TestDocumentFetchSupportsFormats(t *testing.T) {
 			defer server.Close()
 
 			setAgentEnv(t, server.URL)
-			if err := run([]string{"document", "fetch", "77", "--format", format}); err != nil {
-				t.Fatalf("run document fetch --format %s: %v", format, err)
+			if err := run([]string{"document", "show", "77", "--format", format}); err != nil {
+				t.Fatalf("run document show --format %s: %v", format, err)
 			}
 		})
+	}
+}
+
+func TestDocumentFetchRemainsCompatibilityAlias(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/documents/77" {
+			t.Fatalf("path = %s, want /api/v1/documents/77", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("format"); got != "plain-text" {
+			t.Fatalf("format = %q, want plain-text", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"document":{"id":77,"body":"ok"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"document", "fetch", "77", "--format", "plain-text"}); err != nil {
+		t.Fatalf("run document fetch alias: %v", err)
 	}
 }
 
