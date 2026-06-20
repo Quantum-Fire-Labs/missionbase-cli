@@ -357,7 +357,7 @@ missionbase-agent dm send --chat 42 --body-file /tmp/reply.md
 
 ### Rich text and attachments
 
-`missionbase-agent` prints the Missionbase API JSON response as-is for read commands. `missionbase-agent work` is a compact triage surface with routing metadata and previews; use `task show`, `conversation show`, `document show`, and `dm show` for authoritative full working context. Task descriptions, task feed comments, full conversation entries, and DM messages include backwards-compatible plain text fields plus rich text fields when the server provides them:
+`missionbase-agent` prints the Missionbase API JSON response as-is for read commands. `missionbase-agent work` returns the next actionable assigned task as full task context, or a structured empty response (`{"has_work":false,"task":null}`). Conversations, mentions, and DMs are wake-up/read flows driven by `listen`, `conversation show`, and `dm show`, not by `work`. Task descriptions, task feed comments, full conversation entries, and DM messages include backwards-compatible plain text fields plus rich text fields when the server provides them:
 
 - `description`, `body`, or `content`: existing plain text or HTML-compatible field, depending on the command.
 - `description_html`, `body_html`, or `content_html`: rendered rich-text HTML.
@@ -372,11 +372,9 @@ Use `missionbase-agent task show <task-id>`, `missionbase-agent conversation sho
 
 ## Agent check helper
 
-`scripts/missionbase-agent-check` is the local fleet check script used by timers on agent hosts. It currently runs `missionbase-agent work`, exits when there is no actionable work, and otherwise selects exactly one actionable item for the Pi run. `missionbase-agent work --next`/`--next-task` asks the server for only the next assigned open task, selected by box id and task box position ordering with stable tie-breakers, and omits unread conversations/direct messages. Newer agent hosts can use `missionbase-agent listen --once` before invoking this check to reduce periodic polling latency.
+`scripts/missionbase-agent-check` is the local fleet check script used by timers on agent hosts. It currently runs `missionbase-agent work`, exits when `has_work` is false, and otherwise uses the single returned task for the Pi run. `missionbase-agent work --next`/`--next-task` are accepted as backward-compatible no-ops; the server always returns at most one actionable assigned open task. Selection prefers due scheduled tasks by `scheduled_at`, then unscheduled tasks by `created_at`.
 
-Selected direct tasks use Pi session id `missionbase-task-<task_id>`. Selected unread conversations use `missionbase-task-<task_id>` only when the conversation payload includes a task assigned to the current agent; otherwise they use `missionbase-conversation-<conversation_id>`. The script passes both `--session-id` and a descriptive `--name` to Pi.
-
-For clean conversation scoping, the Missionbase work payload should stay compact: each unread conversation includes stable conversation/feed id, feedable identifiers, box/status routing metadata, actor/update metadata, preview text, and links. Full task assignees, descriptions, rich text, and attachments are fetched through the matching `show` command after triage.
+Selected direct tasks use Pi session id `missionbase-task-<task_id>`. The script passes both `--session-id` and a descriptive `--name` to Pi. If the task box includes `working_directory`, fleet wrappers can invoke Pi from that absolute path.
 
 ## Release flow
 
