@@ -545,6 +545,12 @@ func agentCreate(args []string) error {
 			}
 			payload["slug"] = args[i+1]
 			i++
+		case "--title", "--role-title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["title"] = args[i+1]
+			i++
 		case "--description":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--description requires a value")
@@ -552,7 +558,7 @@ func agentCreate(args []string) error {
 			payload["description"] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent agent create --name NAME --slug SLUG [--description TEXT]")
+			fmt.Println("usage: missionbase-agent agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT]")
 			return nil
 		default:
 			return fmt.Errorf("unknown agent create option %q", args[i])
@@ -2498,7 +2504,7 @@ Commands:
                                       Start/send a DM to a user or agent
   dm send --chat <chat-id> --body-file PATH
                                       Reply in an existing DM chat
-  agent create --name NAME --slug SLUG [--description TEXT]
+  agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT]
                                       Create an agent on the authenticated team
   agent archive <agent-id-or-slug> --yes
                                       Archive/deactivate an agent safely

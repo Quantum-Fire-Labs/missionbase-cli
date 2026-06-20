@@ -179,7 +179,7 @@ missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
 missionbase-agent dm send --to <handle> --body-file /tmp/body.md
 missionbase-agent dm send --chat <chat-id> --body-file /tmp/body.md
-missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--description "Handles fleet tasks"]
+missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--title "Fleet Architect"] [--description "Handles fleet tasks"]
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent restore fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
@@ -313,7 +313,7 @@ missionbase-agent task comment 123 --body-file /tmp/comment.md --attach-blob "<s
 `missionbase-agent agent restore ... --yes` restores/reactivates an archived agent with its existing identity and box memberships so it can be assigned and used for new work again. Restoring does not recreate agent-owned API keys that were revoked during archival; create new credentials if the restored agent needs to authenticate.
 
 ```bash
-missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --description "Handles fleet tasks"
+missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --title "Fleet Architect" --description "Handles fleet tasks"
 missionbase-agent agent boxes add fleet-worker --box 2
 missionbase-agent agent boxes add 42 --box 2 --box 7
 missionbase-agent agent archive fleet-worker --yes

@@ -143,7 +143,7 @@ func TestAgentCreatePostsAgentPayloadWithoutSelectedAgent(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["name"] != "Fleet Worker" || payload["slug"] != "fleet-worker" || payload["description"] != "Bootstrapper" {
+		if payload["name"] != "Fleet Worker" || payload["slug"] != "fleet-worker" || payload["title"] != "Fleet Architect" || payload["description"] != "Bootstrapper" {
 			t.Fatalf("payload = %#v", payload)
 		}
 
@@ -154,7 +154,7 @@ func TestAgentCreatePostsAgentPayloadWithoutSelectedAgent(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnvNoSlug(t, server.URL)
-	if err := run([]string{"agent", "create", "--name", "Fleet Worker", "--slug", "fleet-worker", "--description", "Bootstrapper"}); err != nil {
+	if err := run([]string{"agent", "create", "--name", "Fleet Worker", "--slug", "fleet-worker", "--title", "Fleet Architect", "--description", "Bootstrapper"}); err != nil {
 		t.Fatalf("run agent create: %v", err)
 	}
 }
