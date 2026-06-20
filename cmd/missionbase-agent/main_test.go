@@ -77,7 +77,7 @@ func TestTasksWithoutFiltersUsesAssignedAgentEndpoint(t *testing.T) {
 	}
 }
 
-func TestWorkNextGetsNextTaskEndpoint(t *testing.T) {
+func TestWorkNextGetsSelectedTaskEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
@@ -85,14 +85,14 @@ func TestWorkNextGetsNextTaskEndpoint(t *testing.T) {
 		if r.URL.Path != "/api/v1/agent/work" {
 			t.Fatalf("path = %s, want /api/v1/agent/work", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("next"); got != "true" {
-			t.Fatalf("next query = %q, want true", got)
+		if got := r.URL.RawQuery; got != "" {
+			t.Fatalf("query = %q, want empty", got)
 		}
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"tasks":[{"id":2420}],"unread_conversations":[],"unread_direct_messages":[],"meta":{"tasks":1,"unread_conversations":0,"unread_direct_messages":0,"total":1,"actionable":true}}`))
+		_, _ = w.Write([]byte(`{"has_work":true,"task":{"id":2420,"box":{"id":2,"name":"Missionbase","working_directory":"/workspace/missionbase"}}}`))
 	}))
 	defer server.Close()
 
@@ -102,16 +102,16 @@ func TestWorkNextGetsNextTaskEndpoint(t *testing.T) {
 	}
 }
 
-func TestWorkNextTaskAliasGetsNextTaskEndpoint(t *testing.T) {
+func TestWorkNextTaskAliasGetsSelectedTaskEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/agent/work" {
 			t.Fatalf("path = %s, want /api/v1/agent/work", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("next"); got != "true" {
-			t.Fatalf("next query = %q, want true", got)
+		if got := r.URL.RawQuery; got != "" {
+			t.Fatalf("query = %q, want empty", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"tasks":[],"unread_conversations":[],"unread_direct_messages":[],"meta":{"tasks":0,"unread_conversations":0,"unread_direct_messages":0,"total":0,"actionable":false}}`))
+		_, _ = w.Write([]byte(`{"has_work":false,"task":null}`))
 	}))
 	defer server.Close()
 

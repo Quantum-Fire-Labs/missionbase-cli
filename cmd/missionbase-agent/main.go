@@ -198,15 +198,10 @@ func isScheduledFilter(value string) bool {
 }
 
 func work(args []string) error {
-	if len(args) == 0 {
-		return apiGet("/api/v1/agent/work")
-	}
-
-	next := false
 	for _, arg := range args {
 		switch arg {
 		case "--next", "--next-task":
-			next = true
+			// Backward-compatible no-op: work is now always task-only and returns at most one task.
 		case "--help", "-h":
 			fmt.Println("usage: missionbase-agent work [--next|--next-task]")
 			return nil
@@ -215,9 +210,6 @@ func work(args []string) error {
 		}
 	}
 
-	if next {
-		return apiGet("/api/v1/agent/work?next=true")
-	}
 	return apiGet("/api/v1/agent/work")
 }
 
@@ -2496,7 +2488,7 @@ Commands:
                                       Save a team API token
   use <agent-slug> [--base-url URL]   Set the agent for this directory
   me                                  Show the current agent
-  work [--next|--next-task]           Show assigned tasks, unread conversations, and DMs
+  work [--next|--next-task]           Show the next actionable assigned task
                                       With --next, return only the next assigned task
   listen [--timeout N] [--offset ID] [--once]
                                       Long-poll for agent updates
