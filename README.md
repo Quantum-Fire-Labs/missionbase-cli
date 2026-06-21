@@ -130,10 +130,12 @@ missionbase boxes tasks <box-id> [--status STATUS] [--status-category open|done|
 missionbase boxes discussions <box-id> [--page N] [--per-page N]
 missionbase boxes discussions create <box-id> --title TITLE --body TEXT
 missionbase boxes documents create <box-id> --title TITLE --body TEXT
-missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
+missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder FOLDER_ID|--root] [--recursive]
 missionbase boxes files show <box-id> <file-id>
-missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
-missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
+missionbase boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]
+missionbase boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)
+missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
+missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
 missionbase boxes files versions <box-id> <file-id>
 missionbase boxes files upload-version <box-id> <file-id> --file PATH
 missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
@@ -215,10 +217,12 @@ missionbase-agent members [--box ID]
 missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--scheduled actionable|future|all] [--page N] [--per-page N]
 missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
 missionbase-agent boxes discussions create <box-id> --title TITLE --body-file /tmp/body.md
-missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
+missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder FOLDER_ID|--root] [--recursive]
 missionbase-agent boxes files show <box-id> <file-id>
-missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
-missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
+missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]
+missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)
+missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
+missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
 missionbase-agent boxes files versions <box-id> <file-id>
 missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH
 missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
@@ -239,7 +243,7 @@ Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar p
 
 `missionbase users lookup <query>` calls user lookup directly. `missionbase users lookup @mention --team <team-id>` resolves a team member mention. Task assignment and participant commands accept numeric user ids directly; when resolving `@mention`, pass `--team` or let the CLI derive the team from the task when the task response includes box/team context. If team context cannot be inferred, the CLI asks for `--team` or a numeric user id.
 
-`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches unified BoxFile-backed Docs & Files entries with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, filter/sort, and pagination metadata. `missionbase-agent boxes files show ...` prints one BoxFile/document entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file metadata, and `download ... --output PATH` writes an uploaded file to disk. User-facing `missionbase boxes files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document show ...` prints a document body and reports the document URL when the API response includes one; `document fetch` remains a compatibility alias; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task show ...` prints full task working context from `/api/v1/tasks/:id`. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
+`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches unified BoxFile-backed Docs & Files entries with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, folder parent/path/children metadata, filter/sort, and pagination metadata. Use `--folder FOLDER_ID` or `--root` to scope listings/uploads, `--recursive` to search across folders, `mkdir` to create folders, and `mv`/`update --folder|--root` to move docs/files/folders. `show ...` prints one BoxFile/document/folder entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file/folder metadata, and `download ... --output PATH` writes an uploaded file to disk (folders are rejected by the API). User-facing `missionbase boxes files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document show ...` prints a document body and reports the document URL when the API response includes one; `document fetch` remains a compatibility alias; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task show ...` prints full task working context from `/api/v1/tasks/:id`. `missionbase-agent task comment ...` posts a comment/reply to the task conversation feed. `missionbase-agent conversation comment ...` posts a reply to any readable feed conversation, including task conversations and standalone discussion feeds.
 
 Task comment, conversation comment, box discussion create, document, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
@@ -292,6 +296,9 @@ missionbase-agent boxes discussions 2
 missionbase-agent boxes discussions create 2 --title "Release workflow planning" --body-file /tmp/proposal.md
 missionbase-agent boxes files 2
 missionbase-agent boxes files 2 --query runbook --per-page 25
+missionbase-agent boxes files mkdir 2 --title Assets
+missionbase-agent boxes files mv 2 77 --folder 42
+missionbase-agent boxes files 2 --folder 42
 missionbase-agent document show 789
 missionbase-agent document show 789 --format html
 missionbase-agent document fetch 789 --format plain-text

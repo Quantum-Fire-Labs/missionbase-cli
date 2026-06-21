@@ -1070,6 +1070,10 @@ func boxFiles(args []string) error {
 		return boxFileShow(args[1:])
 	case "upload", "add":
 		return boxFileUpload(args[1:])
+	case "mkdir", "folder":
+		return boxFileMkdir(args[1:])
+	case "mv", "move":
+		return boxFileMove(args[1:])
 	case "update", "edit":
 		return boxFileUpdate(args[1:])
 	case "versions", "version-list":
@@ -1089,10 +1093,6 @@ func boxFiles(args []string) error {
 func boxFilesList(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
-	}
-	boxID := strings.TrimSpace(args[0])
-	if boxID == "" {
-		return fmt.Errorf("box id is required")
 	}
 	values := url.Values{}
 	for i := 1; i < len(args); i++ {
@@ -1127,14 +1127,24 @@ func boxFilesList(args []string) error {
 			}
 			values.Set("per_page", args[i+1])
 			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			values.Set("folder_id", args[i+1])
+			i++
+		case "--root":
+			values.Set("folder_id", "root")
+		case "--recursive", "--all-folders":
+			values.Set("scope", "recursive")
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
+			fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder FOLDER_ID|--root] [--recursive]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes files option %q", args[i])
 		}
 	}
-	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(boxID)+"/files", values))
+	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", values))
 }
 
 func boxFileShow(args []string) error {
@@ -1148,7 +1158,6 @@ func boxFileUpload(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
 	}
-	boxID := strings.TrimSpace(args[0])
 	fields := map[string]string{}
 	filePath := ""
 	for i := 1; i < len(args); i++ {
@@ -1171,6 +1180,14 @@ func boxFileUpload(args []string) error {
 			}
 			fields["description"] = args[i+1]
 			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			fields["folder_id"] = args[i+1]
+			i++
+		case "--root":
+			fields["folder_id"] = "root"
 		case "--help", "-h":
 			fmt.Println("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
 			return nil
@@ -1178,13 +1195,75 @@ func boxFileUpload(args []string) error {
 			return fmt.Errorf("unknown boxes files upload option %q", args[i])
 		}
 	}
-	if boxID == "" {
+	if strings.TrimSpace(args[0]) == "" {
 		return fmt.Errorf("box id is required")
 	}
 	if strings.TrimSpace(filePath) == "" {
 		return fmt.Errorf("--file is required")
 	}
-	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(boxID)+"/files", fields, "file", filePath)
+	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
+}
+
+func boxFileMkdir(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+	}
+	payload := map[string]string{"kind": "folder"}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title", "--name":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			payload["folder_id"] = args[i+1]
+			i++
+		case "--root":
+			payload["folder_id"] = "root"
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files mkdir option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", payload)
+}
+
+func boxFileMove(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+	}
+	payload := map[string]string{}
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			payload["parent_folder_id"] = args[i+1]
+			i++
+		case "--root":
+			payload["parent_folder_id"] = "root"
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files mv option %q", args[i])
+		}
+	}
+	if _, ok := payload["parent_folder_id"]; !ok {
+		return fmt.Errorf("one of --folder or --root is required")
+	}
+	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
 
 func boxFileUpdate(args []string) error {
@@ -1206,6 +1285,14 @@ func boxFileUpdate(args []string) error {
 			}
 			payload["description"] = args[i+1]
 			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			payload["parent_folder_id"] = args[i+1]
+			i++
+		case "--root":
+			payload["parent_folder_id"] = "root"
 		case "--help", "-h":
 			fmt.Println("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
 			return nil
@@ -1214,13 +1301,9 @@ func boxFileUpdate(args []string) error {
 		}
 	}
 	if len(payload) == 0 {
-		return fmt.Errorf("at least one of --title or --description is required")
+		return fmt.Errorf("at least one of --title, --description, --folder, or --root is required")
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	return apiPatch("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), body)
+	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
 
 func boxFileVersions(args []string) error {
@@ -2170,6 +2253,22 @@ func apiPost(path string, requestBody []byte) error {
 	}
 	fmt.Println(string(body))
 	return nil
+}
+
+func apiPostJSON(path string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost(path, body)
+}
+
+func apiPatchJSON(path string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPatch(path, body)
 }
 
 func apiPostAllowNoAgent(path string, requestBody []byte) error {
