@@ -536,6 +536,10 @@ func boxFiles(args []string) error {
 		return boxFileShow(args[1:])
 	case "upload", "add":
 		return boxFileUpload(args[1:])
+	case "mkdir", "folder":
+		return boxFileMkdir(args[1:])
+	case "mv", "move":
+		return boxFileMove(args[1:])
 	case "update", "edit":
 		return boxFileUpdate(args[1:])
 	case "versions", "version-list":
@@ -589,8 +593,18 @@ func boxFilesList(args []string) error {
 			}
 			values.Set("per_page", args[i+1])
 			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			values.Set("folder_id", args[i+1])
+			i++
+		case "--root":
+			values.Set("folder_id", "root")
+		case "--recursive", "--all-folders":
+			values.Set("scope", "recursive")
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
+			fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder FOLDER_ID|--root] [--recursive]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes files option %q", args[i])
@@ -632,6 +646,14 @@ func boxFileUpload(args []string) error {
 			}
 			fields["description"] = args[i+1]
 			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			fields["folder_id"] = args[i+1]
+			i++
+		case "--root":
+			fields["folder_id"] = "root"
 		case "--help", "-h":
 			fmt.Println("usage: missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
 			return nil
@@ -646,6 +668,68 @@ func boxFileUpload(args []string) error {
 		return fmt.Errorf("--file is required")
 	}
 	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
+}
+
+func boxFileMkdir(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+	}
+	payload := map[string]string{"kind": "folder"}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title", "--name":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			payload["folder_id"] = args[i+1]
+			i++
+		case "--root":
+			payload["folder_id"] = "root"
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files mkdir option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", payload)
+}
+
+func boxFileMove(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+	}
+	payload := map[string]string{}
+	for i := 2; i < len(args); i++ {
+		switch args[i] {
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			payload["parent_folder_id"] = args[i+1]
+			i++
+		case "--root":
+			payload["parent_folder_id"] = "root"
+		case "--help", "-h":
+			fmt.Println("usage: missionbase boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files mv option %q", args[i])
+		}
+	}
+	if _, ok := payload["parent_folder_id"]; !ok {
+		return fmt.Errorf("one of --folder or --root is required")
+	}
+	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
 
 func boxFileUpdate(args []string) error {
@@ -667,6 +751,14 @@ func boxFileUpdate(args []string) error {
 			}
 			payload["description"] = args[i+1]
 			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			payload["parent_folder_id"] = args[i+1]
+			i++
+		case "--root":
+			payload["parent_folder_id"] = "root"
 		case "--help", "-h":
 			fmt.Println("usage: missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
 			return nil
@@ -675,7 +767,7 @@ func boxFileUpdate(args []string) error {
 		}
 	}
 	if len(payload) == 0 {
-		return fmt.Errorf("at least one of --title or --description is required")
+		return fmt.Errorf("at least one of --title, --description, --folder, or --root is required")
 	}
 	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
