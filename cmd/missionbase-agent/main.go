@@ -2698,8 +2698,7 @@ Commands:
       [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
       [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]
   boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
-  boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
-      [--folder FOLDER_ID|--root]
+  boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
                                       Upload a file to Docs & Files
   boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
       [--folder FOLDER_ID|--root]

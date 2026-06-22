@@ -462,8 +462,7 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	})
 	for _, want := range []string{
 		"[--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]",
-		"boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]",
-		"[--folder FOLDER_ID|--root]",
+		"boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
 		"boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]",
 	} {
 		if !strings.Contains(stdout, want) {
