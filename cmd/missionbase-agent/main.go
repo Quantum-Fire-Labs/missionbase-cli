@@ -68,6 +68,8 @@ func run(args []string) error {
 		return task(args[1:])
 	case "conversation":
 		return conversation(args[1:])
+	case "workspace":
+		return workspace(args[1:])
 	case "members":
 		return members(args[1:])
 	case "sidebar":
@@ -970,6 +972,182 @@ func documentEdit(args []string) error {
 		return err
 	}
 	return apiPatch("/api/v1/documents/"+url.PathEscape(documentID), body)
+}
+
+func workspace(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent workspace <get|create|update> --chat-id CHAT_ID")
+	}
+
+	switch args[0] {
+	case "get", "show":
+		chatID, err := workspaceChatID(args[1:])
+		if err != nil {
+			return err
+		}
+		if chatID == "" {
+			return nil
+		}
+		return apiGet("/api/v1/chats/" + url.PathEscape(chatID) + "/workspace")
+	case "create":
+		return workspaceCreate(args[1:])
+	case "update":
+		return workspaceUpdate(args[1:])
+	default:
+		return fmt.Errorf("unknown workspace command %q", args[0])
+	}
+}
+
+func workspaceCreate(args []string) error {
+	chatID := ""
+	payload := map[string]string{}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--chat-id", "--chat":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			chatID = args[i+1]
+			i++
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--markdown", "--content", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["markdown"] = args[i+1]
+			i++
+		case "--file", "--body-file", "--markdown-file", "--content-file", "--text-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			content, err := os.ReadFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["markdown"] = string(content)
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent workspace create --chat-id CHAT_ID [--title TITLE] [--file PATH|--markdown TEXT]")
+			return nil
+		default:
+			return fmt.Errorf("unknown workspace create option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(chatID) == "" {
+		return fmt.Errorf("--chat-id is required")
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost("/api/v1/chats/" + url.PathEscape(chatID) + "/workspace", body)
+}
+
+func workspaceUpdate(args []string) error {
+	chatID := ""
+	payload := map[string]string{}
+	contentProvided := false
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--chat-id", "--chat":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			chatID = args[i+1]
+			i++
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--file", "--body-file", "--markdown-file", "--content-file", "--text-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			content, err := os.ReadFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["markdown"] = string(content)
+			contentProvided = true
+			i++
+		case "--body", "--markdown", "--content", "--text":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["markdown"] = args[i+1]
+			contentProvided = true
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent workspace update --chat-id CHAT_ID [--title TITLE] [--file PATH|--markdown TEXT]\n       cat draft.md | missionbase-agent workspace update --chat-id CHAT_ID")
+			return nil
+		default:
+			return fmt.Errorf("unknown workspace update option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(chatID) == "" {
+		return fmt.Errorf("--chat-id is required")
+	}
+	if !contentProvided {
+		stdin, err := readWorkspaceStdinIfPiped()
+		if err != nil {
+			return err
+		}
+		if stdin != nil {
+			payload["markdown"] = string(stdin)
+			contentProvided = true
+		}
+	}
+	if !contentProvided && strings.TrimSpace(payload["title"]) == "" {
+		return fmt.Errorf("--file, --markdown, stdin, or --title is required")
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPatch("/api/v1/chats/" + url.PathEscape(chatID) + "/workspace", body)
+}
+
+func workspaceChatID(args []string) (string, error) {
+	chatID := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--chat-id", "--chat":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("%s requires a value", args[i])
+			}
+			chatID = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase-agent workspace get --chat-id CHAT_ID")
+			return "", nil
+		default:
+			return "", fmt.Errorf("unknown workspace option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(chatID) == "" {
+		return "", fmt.Errorf("--chat-id is required")
+	}
+	return chatID, nil
+}
+
+func readWorkspaceStdinIfPiped() ([]byte, error) {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeCharDevice != 0 {
+		return nil, nil
+	}
+	return io.ReadAll(os.Stdin)
 }
 
 func boxes(args []string) error {
@@ -2726,6 +2904,11 @@ Commands:
   conversation comment <feed-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable reply to a conversation/feed
+  workspace get --chat-id CHAT_ID     Get the chat workspace as Markdown JSON
+  workspace create --chat-id CHAT_ID [--title TITLE]
+      [--file PATH|--markdown TEXT]   Create/open a temporary chat workspace
+  workspace update --chat-id CHAT_ID [--title TITLE]
+      [--file PATH|--markdown TEXT]   Replace workspace content from Markdown or stdin
   members [--box ID] [--json]         List group members and mention handles
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
