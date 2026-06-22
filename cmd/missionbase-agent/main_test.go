@@ -379,6 +379,9 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 			if got := r.MultipartForm.Value["title"][0]; got != "Upload" {
 				t.Fatalf("title = %q", got)
 			}
+			if got := r.MultipartForm.Value["folder_id"][0]; got != "67" {
+				t.Fatalf("folder_id = %q, want 67", got)
+			}
 			if len(r.MultipartForm.File["file"]) != 1 {
 				t.Fatalf("file count = %d, want 1", len(r.MultipartForm.File["file"]))
 			}
@@ -423,7 +426,7 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 	if err := run([]string{"boxes", "files", "show", "2", "77"}); err != nil {
 		t.Fatalf("run show: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "upload", "2", "--file", file, "--title", "Upload"}); err != nil {
+	if err := run([]string{"boxes", "files", "upload", "2", "--file", file, "--title", "Upload", "--folder", "67"}); err != nil {
 		t.Fatalf("run upload: %v", err)
 	}
 	if err := run([]string{"boxes", "files", "update", "2", "78", "--description", "Changed"}); err != nil {
@@ -450,6 +453,55 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 	}
 	if !sawUpload || !sawUpdate || !sawDownload || !sawVersions || !sawUploadVersion || !sawDownloadVersion {
 		t.Fatalf("saw upload/update/download/versions/uploadVersion/downloadVersion = %v/%v/%v/%v/%v/%v", sawUpload, sawUpdate, sawDownload, sawVersions, sawUploadVersion, sawDownloadVersion)
+	}
+}
+
+func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
+	stdout := captureStdout(t, func() {
+		printHelp()
+	})
+	for _, want := range []string{
+		"[--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]",
+		"boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]",
+		"[--folder FOLDER_ID|--root]",
+		"boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("top-level help missing %q in:\n%s", want, stdout)
+		}
+	}
+
+	stdout = captureStdout(t, func() {
+		if err := run([]string{"boxes", "files", "--help"}); err != nil {
+			t.Fatalf("run boxes files --help: %v", err)
+		}
+	})
+	for _, want := range []string{
+		"missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("boxes files help missing %q in:\n%s", want, stdout)
+		}
+	}
+
+	stdout = captureStdout(t, func() {
+		if err := run([]string{"boxes", "files", "upload", "--help"}); err != nil {
+			t.Fatalf("run upload --help: %v", err)
+		}
+	})
+	if want := "missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]"; !strings.Contains(stdout, want) {
+		t.Fatalf("upload help missing %q in:\n%s", want, stdout)
+	}
+
+	stdout = captureStdout(t, func() {
+		if err := run([]string{"boxes", "files", "upload-version", "--help"}); err != nil {
+			t.Fatalf("run upload-version --help: %v", err)
+		}
+	})
+	if want := "missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH"; !strings.Contains(stdout, want) {
+		t.Fatalf("upload-version help missing %q in:\n%s", want, stdout)
 	}
 }
 

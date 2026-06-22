@@ -1079,7 +1079,7 @@ func boxDiscussionsCreate(args []string) error {
 
 func boxFiles(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	switch args[0] {
 	case "list", "search":
@@ -1101,7 +1101,7 @@ func boxFiles(args []string) error {
 	case "download", "fetch":
 		return boxFileDownload(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 		return nil
 	default:
 		return boxFilesList(args)
@@ -1173,8 +1173,12 @@ func boxFileShow(args []string) error {
 }
 
 func boxFileUpload(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
+		return nil
+	}
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+		return fmt.Errorf("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 	}
 	fields := map[string]string{}
 	filePath := ""
@@ -1207,7 +1211,7 @@ func boxFileUpload(args []string) error {
 		case "--root":
 			fields["folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+			fmt.Println("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes files upload option %q", args[i])
@@ -1286,7 +1290,7 @@ func boxFileMove(args []string) error {
 
 func boxFileUpdate(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+		return fmt.Errorf("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 	}
 	payload := map[string]string{}
 	for i := 2; i < len(args); i++ {
@@ -1312,7 +1316,7 @@ func boxFileUpdate(args []string) error {
 		case "--root":
 			payload["parent_folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+			fmt.Println("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes files update option %q", args[i])
@@ -1332,6 +1336,10 @@ func boxFileVersions(args []string) error {
 }
 
 func boxFileUploadVersion(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH")
+		return nil
+	}
 	if len(args) < 2 {
 		return fmt.Errorf("usage: missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH")
 	}
@@ -2688,10 +2696,13 @@ Commands:
       --title TITLE --body-file PATH
   boxes files <box-id>                List/search files and documents in an accessible box
       [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
+      [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]
   boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
   boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
+      [--folder FOLDER_ID|--root]
                                       Upload a file to Docs & Files
   boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
+      [--folder FOLDER_ID|--root]
                                       Update uploaded file metadata
   boxes files download <box-id> <file-id> --output PATH
                                       Download an uploaded file
