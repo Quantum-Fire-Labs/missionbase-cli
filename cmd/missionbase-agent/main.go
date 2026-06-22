@@ -756,7 +756,7 @@ func conversationComment(args []string) error {
 
 func document(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
 	}
 
 	switch args[0] {
@@ -767,7 +767,7 @@ func document(args []string) error {
 	case "edit", "update":
 		return documentEdit(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document show 77\n  missionbase-agent document fetch 77\n  missionbase-agent document show 77 --format markdown\n  missionbase-agent document show 77 --format html\n  missionbase-agent document show 77 --format plain-text")
+		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document show 77\n  missionbase-agent document fetch 77\n  missionbase-agent document show 77 --format markdown\n  missionbase-agent document show 77 --format html\n  missionbase-agent document show 77 --format plain-text\n  missionbase-agent document create --box 2 --title Runbook --body-file /tmp/runbook.md --folder 67")
 		return nil
 	default:
 		return fmt.Errorf("unknown document command %q", args[0])
@@ -842,6 +842,8 @@ func validDocumentFetchFormat(format string) bool {
 func documentCreate(args []string) error {
 	payload := map[string]string{}
 	boxID := ""
+	folderSet := false
+	rootSet := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -869,8 +871,18 @@ func documentCreate(args []string) error {
 			}
 			payload["body"] = body
 			i++
+		case "--folder", "--folder-id":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["folder_id"] = args[i+1]
+			folderSet = true
+			i++
+		case "--root":
+			payload["folder_id"] = "root"
+			rootSet = true
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH")
+			fmt.Println("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]")
 			return nil
 		default:
 			return fmt.Errorf("unknown document create option %q", args[i])
@@ -879,6 +891,12 @@ func documentCreate(args []string) error {
 
 	if strings.TrimSpace(boxID) == "" {
 		return fmt.Errorf("--box is required")
+	}
+	if folderSet && rootSet {
+		return fmt.Errorf("use only one of --folder or --root")
+	}
+	if folderSet && strings.TrimSpace(payload["folder_id"]) == "" {
+		return fmt.Errorf("--folder requires a value")
 	}
 	if strings.TrimSpace(payload["title"]) == "" {
 		return fmt.Errorf("--title is required")
@@ -2615,7 +2633,7 @@ Commands:
                                       Print a document body (default: markdown)
   document fetch <document-id> [--format markdown|html|plain-text]
                                       Compatibility alias for document show
-  document create --box BOX_ID --title TITLE --body-file PATH
+  document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]
                                       Create a box document from a Markdown/plain-text file
   document edit <document-id> [--title TITLE] --body-file PATH
                                       Edit a document by creating a new version from a file
