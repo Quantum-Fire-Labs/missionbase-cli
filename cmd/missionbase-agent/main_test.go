@@ -1407,20 +1407,54 @@ func TestDocumentCreatePostsFileBody(t *testing.T) {
 		if payload["body"] != "# Heading\n\nLine 2" {
 			t.Fatalf("body = %q", payload["body"])
 		}
+		if payload["folder_id"] != "67" {
+			t.Fatalf("folder_id = %q, want 67", payload["folder_id"])
+		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","url":"https://dash.missionbase.app/boxes/2/files/77","version_count":1}}`))
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","url":"https://dash.missionbase.app/boxes/2/files/77","box_file_id":88,"parent_folder_id":67,"version_count":1}}`))
 	}))
 	defer server.Close()
 
 	bodyFile := writeTextFile(t, "document.md", "# Heading\n\nLine 2")
 	setAgentEnv(t, server.URL)
 	stdout := captureStdout(t, func() {
-		if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile}); err != nil {
+		if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile, "--folder", "67"}); err != nil {
 			t.Fatalf("run document create: %v", err)
 		}
 	})
 	if !strings.Contains(stdout, `"url":"https://dash.missionbase.app/boxes/2/files/77"`) {
 		t.Fatalf("stdout = %q, want document url", stdout)
+	}
+	if !strings.Contains(stdout, `"box_file_id":88`) || !strings.Contains(stdout, `"parent_folder_id":67`) {
+		t.Fatalf("stdout = %q, want backing BoxFile metadata", stdout)
+	}
+}
+
+func TestDocumentCreateRootPlacement(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["folder_id"] != "root" {
+			t.Fatalf("folder_id = %q, want root", payload["folder_id"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","box_file_id":88}}`))
+	}))
+	defer server.Close()
+
+	bodyFile := writeTextFile(t, "document.md", "Body")
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile, "--root"}); err != nil {
+		t.Fatalf("run document create: %v", err)
+	}
+}
+
+func TestDocumentCreateRejectsFolderAndRootTogether(t *testing.T) {
+	bodyFile := writeTextFile(t, "document.md", "Body")
+	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile, "--folder", "67", "--root"}); err == nil || !strings.Contains(err.Error(), "use only one of --folder or --root") {
+		t.Fatalf("err = %v, want mutually exclusive folder/root", err)
 	}
 }
 
