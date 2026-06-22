@@ -775,6 +775,10 @@ func document(args []string) error {
 }
 
 func documentFetch(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
+		return nil
+	}
 	if len(args) < 1 {
 		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]")
 	}
@@ -914,6 +918,10 @@ func documentCreate(args []string) error {
 }
 
 func documentEdit(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		return nil
+	}
 	if len(args) < 1 {
 		return fmt.Errorf("usage: missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
 	}
@@ -1166,6 +1174,10 @@ func boxFilesList(args []string) error {
 }
 
 func boxFileShow(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes files show <box-id> <file-id>")
+		return nil
+	}
 	if len(args) != 2 {
 		return fmt.Errorf("usage: missionbase-agent boxes files show <box-id> <file-id>")
 	}
@@ -1227,6 +1239,10 @@ func boxFileUpload(args []string) error {
 }
 
 func boxFileMkdir(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+		return nil
+	}
 	if len(args) < 1 {
 		return fmt.Errorf("usage: missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
 	}
@@ -1261,6 +1277,10 @@ func boxFileMkdir(args []string) error {
 }
 
 func boxFileMove(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+		return nil
+	}
 	if len(args) < 2 {
 		return fmt.Errorf("usage: missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
 	}
@@ -1329,6 +1349,10 @@ func boxFileUpdate(args []string) error {
 }
 
 func boxFileVersions(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes files versions <box-id> <file-id>")
+		return nil
+	}
 	if len(args) != 2 {
 		return fmt.Errorf("usage: missionbase-agent boxes files versions <box-id> <file-id>")
 	}
@@ -1366,6 +1390,10 @@ func boxFileUploadVersion(args []string) error {
 }
 
 func boxFileDownload(args []string) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return nil
+	}
 	if len(args) < 2 {
 		return fmt.Errorf("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
@@ -2091,6 +2119,10 @@ func sidebar(args []string) error {
 
 	switch args[0] {
 	case "pins", "list":
+		if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+			fmt.Println("usage: missionbase-agent sidebar pins --user ID|@mention")
+			return nil
+		}
 		userID, err := parseSidebarUserArg(args[1:])
 		if err != nil {
 			return err
@@ -2099,6 +2131,10 @@ func sidebar(args []string) error {
 		query.Set("user_id", userID)
 		return apiGet("/api/v1/sidebar_pins?" + query.Encode())
 	case "pin":
+		if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+			fmt.Println("usage: missionbase-agent sidebar pin --user ID|@mention --type box_file --id ID")
+			return nil
+		}
 		userID, typeValue, idValue, err := parseAgentSidebarItemArgs(args[1:])
 		if err != nil {
 			return err
@@ -2109,6 +2145,10 @@ func sidebar(args []string) error {
 		}
 		return apiPost("/api/v1/sidebar_pins", body)
 	case "unpin":
+		if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+			fmt.Println("usage: missionbase-agent sidebar unpin --user ID|@mention --type box_file --id ID")
+			return nil
+		}
 		userID, typeValue, idValue, err := parseAgentSidebarItemArgs(args[1:])
 		if err != nil {
 			return err
@@ -2700,10 +2740,18 @@ Commands:
   boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
   boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
                                       Upload a file to Docs & Files
+  boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]
+                                      Create a Docs & Files folder
+  boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)
+                                      Move a file, document, or folder
   boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
       [--folder FOLDER_ID|--root]
-                                      Update uploaded file metadata
-  boxes files download <box-id> <file-id> --output PATH
+                                      Update uploaded file metadata or placement
+  boxes files versions <box-id> <file-id>
+                                      List uploaded file versions
+  boxes files upload-version <box-id> <file-id> --file PATH
+                                      Upload a new version of an uploaded file
+  boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
                                       Download an uploaded file
   sidebar pins --user ID|@mention
                                       List pinned sidebar pages for a user

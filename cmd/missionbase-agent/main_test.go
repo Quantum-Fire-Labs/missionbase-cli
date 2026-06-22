@@ -463,7 +463,12 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	for _, want := range []string{
 		"[--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]",
 		"boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]",
+		"boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)",
 		"boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]",
+		"boxes files versions <box-id> <file-id>",
+		"boxes files upload-version <box-id> <file-id> --file PATH",
+		"boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("top-level help missing %q in:\n%s", want, stdout)
@@ -501,6 +506,27 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	})
 	if want := "missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH"; !strings.Contains(stdout, want) {
 		t.Fatalf("upload-version help missing %q in:\n%s", want, stdout)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"show", []string{"boxes", "files", "show", "--help"}, "missionbase-agent boxes files show <box-id> <file-id>"},
+		{"mkdir", []string{"boxes", "files", "mkdir", "--help"}, "missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]"},
+		{"mv", []string{"boxes", "files", "mv", "--help"}, "missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)"},
+		{"versions", []string{"boxes", "files", "versions", "--help"}, "missionbase-agent boxes files versions <box-id> <file-id>"},
+		{"download", []string{"boxes", "files", "download", "--help"}, "missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]"},
+	} {
+		stdout := captureStdout(t, func() {
+			if err := run(tc.args); err != nil {
+				t.Fatalf("run %s --help: %v", tc.name, err)
+			}
+		})
+		if !strings.Contains(stdout, tc.want) {
+			t.Fatalf("%s help missing %q in:\n%s", tc.name, tc.want, stdout)
+		}
 	}
 }
 
@@ -1391,6 +1417,27 @@ func TestDocumentShowGetsMarkdownByDefault(t *testing.T) {
 	}
 }
 
+func TestDocumentSubcommandHelpDoesNotCallAPI(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"show", []string{"document", "show", "--help"}, "missionbase-agent document show <document-id> [--format markdown|html|plain-text]"},
+		{"fetch", []string{"document", "fetch", "--help"}, "missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]"},
+		{"edit", []string{"document", "edit", "--help"}, "missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH"},
+	} {
+		stdout := captureStdout(t, func() {
+			if err := run(tc.args); err != nil {
+				t.Fatalf("run %s --help: %v", tc.name, err)
+			}
+		})
+		if !strings.Contains(stdout, tc.want) {
+			t.Fatalf("%s help missing %q in:\n%s", tc.name, tc.want, stdout)
+		}
+	}
+}
+
 func TestDocumentShowSupportsFormats(t *testing.T) {
 	formats := []string{"markdown", "html", "plain-text"}
 	for _, format := range formats {
@@ -1594,6 +1641,27 @@ func TestAttachmentRejectsUnsupportedType(t *testing.T) {
 	}
 	if err := run([]string{"task", "comment", "123", "--attach", path}); err == nil || !strings.Contains(err.Error(), "unsupported attachment type") {
 		t.Fatalf("err = %v, want unsupported attachment type", err)
+	}
+}
+
+func TestSidebarSubcommandHelpDoesNotResolveUser(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"pins", []string{"sidebar", "pins", "--help"}, "missionbase-agent sidebar pins --user ID|@mention"},
+		{"pin", []string{"sidebar", "pin", "--help"}, "missionbase-agent sidebar pin --user ID|@mention --type box_file --id ID"},
+		{"unpin", []string{"sidebar", "unpin", "--help"}, "missionbase-agent sidebar unpin --user ID|@mention --type box_file --id ID"},
+	} {
+		stdout := captureStdout(t, func() {
+			if err := run(tc.args); err != nil {
+				t.Fatalf("run %s --help: %v", tc.name, err)
+			}
+		})
+		if !strings.Contains(stdout, tc.want) {
+			t.Fatalf("%s help missing %q in:\n%s", tc.name, tc.want, stdout)
+		}
 	}
 }
 
