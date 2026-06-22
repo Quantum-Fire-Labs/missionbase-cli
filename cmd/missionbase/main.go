@@ -527,7 +527,7 @@ func boxDocumentsCreate(args []string) error {
 
 func boxFiles(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	switch args[0] {
 	case "list", "search":
@@ -549,7 +549,7 @@ func boxFiles(args []string) error {
 	case "download", "fetch":
 		return boxFileDownload(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 		return nil
 	default:
 		return boxFilesList(args)
@@ -558,7 +558,7 @@ func boxFiles(args []string) error {
 
 func boxFilesList(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
 	}
 	values := url.Values{}
 	for i := 1; i < len(args); i++ {
@@ -593,9 +593,9 @@ func boxFilesList(args []string) error {
 			}
 			values.Set("per_page", args[i+1])
 			i++
-		case "--folder":
+		case "--folder", "--folder-id":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--folder requires a value")
+				return fmt.Errorf("%s requires a value", args[i])
 			}
 			values.Set("folder_id", args[i+1])
 			i++
@@ -604,7 +604,7 @@ func boxFilesList(args []string) error {
 		case "--recursive", "--all-folders":
 			values.Set("scope", "recursive")
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder FOLDER_ID|--root] [--recursive]")
+			fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes files option %q", args[i])

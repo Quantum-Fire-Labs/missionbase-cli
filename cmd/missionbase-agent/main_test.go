@@ -324,6 +324,9 @@ func TestBoxesFilesGetsListAndSearchesDocuments(t *testing.T) {
 		if got := r.URL.Query().Get("per_page"); got != "25" {
 			t.Fatalf("per_page = %q, want 25", got)
 		}
+		if got := r.URL.Query().Get("folder_id"); got != "67" {
+			t.Fatalf("folder_id = %q, want 67", got)
+		}
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
@@ -333,7 +336,28 @@ func TestBoxesFilesGetsListAndSearchesDocuments(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "files", "2", "--query", "runbook", "--page", "2", "--per-page", "25"}); err != nil {
+	if err := run([]string{"boxes", "files", "2", "--query", "runbook", "--page", "2", "--per-page", "25", "--folder-id", "67"}); err != nil {
+		t.Fatalf("run boxes files: %v", err)
+	}
+}
+
+func TestBoxesFilesListWithoutFolderIDIsUnchanged(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/boxes/2/files" {
+			t.Fatalf("path = %s, want /api/v1/boxes/2/files", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("folder_id"); got != "" {
+			t.Fatalf("folder_id = %q, want empty", got)
+		}
+		_, _ = w.Write([]byte(`{"files":[],"meta":{"total":0}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"boxes", "files", "2"}); err != nil {
 		t.Fatalf("run boxes files: %v", err)
 	}
 }
@@ -435,6 +459,9 @@ func TestBoxesFilesRequiresBoxIDAndOptionValues(t *testing.T) {
 	}
 	if err := run([]string{"boxes", "files", "2", "--query"}); err == nil || !strings.Contains(err.Error(), "--query requires a value") {
 		t.Fatalf("err = %v, want query value error", err)
+	}
+	if err := run([]string{"boxes", "files", "2", "--folder-id"}); err == nil || !strings.Contains(err.Error(), "--folder-id requires a value") {
+		t.Fatalf("err = %v, want folder-id value error", err)
 	}
 }
 
