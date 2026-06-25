@@ -1849,7 +1849,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--description-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -1908,7 +1908,7 @@ func task(args []string) error {
 }
 
 func taskUpdate(args []string) error {
-	usage := "usage: missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at]"
+	usage := "usage: missionbase-agent task update <task-id> [--description-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at]"
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(usage)
 		return nil
@@ -1925,6 +1925,20 @@ func taskUpdate(args []string) error {
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
+		case "--description":
+			return fmt.Errorf("--description is not supported; use --description-file PATH")
+		case "--description-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description-file requires a file path")
+			}
+			description, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["description"] = description
+			i++
+		case "--description-stdin":
+			return fmt.Errorf("--description-stdin is not supported; use --description-file PATH")
 		case "--deadline":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--deadline requires a value in YYYY-MM-DD format")
@@ -1968,7 +1982,7 @@ func taskUpdate(args []string) error {
 		return fmt.Errorf("use only one of --scheduled-at or --no-scheduled-at")
 	}
 	if len(payload) == 0 {
-		return fmt.Errorf("one of --deadline, --no-deadline, --scheduled-at, or --no-scheduled-at is required")
+		return fmt.Errorf("one of --description-file, --deadline, --no-deadline, --scheduled-at, or --no-scheduled-at is required")
 	}
 
 	body, err := json.Marshal(payload)
@@ -3012,9 +3026,9 @@ Commands:
       [--assign-agent slug | --assign-user ID|@mention]
       [--description-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
-  task update <task-id> [--deadline YYYY-MM-DD | --no-deadline]
+  task update <task-id> [--description-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
       [--scheduled-at DATETIME | --no-scheduled-at]
-                                      Update or clear task deadline/schedule and print the updated task JSON
+                                      Update task description, deadline, or schedule and print the updated task JSON
   task assign <task-id> --user ID|@mention
                                       Assign an existing task to a user
   task assign <task-id> --agent slug  Assign an existing task to an agent

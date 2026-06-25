@@ -193,6 +193,7 @@ missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
 missionbase-agent task show <task-id>
 missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--description-file /tmp/description.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent task update <task-id> --description-file /tmp/description.md
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
 missionbase-agent task update <task-id> --scheduled-at DATETIME
