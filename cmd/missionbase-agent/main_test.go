@@ -456,6 +456,55 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 	}
 }
 
+func TestBoxesFilesCreateArtifact(t *testing.T) {
+	var sawArtifact bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/boxes/2/files" {
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		sawArtifact = true
+		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+			t.Fatalf("parse artifact multipart: %v", err)
+		}
+		if got := r.MultipartForm.Value["file_type"][0]; got != "missionbase_artifact" {
+			t.Fatalf("file_type = %q", got)
+		}
+		if got := r.MultipartForm.Value["title"][0]; got != "Counter" {
+			t.Fatalf("title = %q", got)
+		}
+		if got := r.MultipartForm.Value["folder_id"][0]; got != "root" {
+			t.Fatalf("folder_id = %q", got)
+		}
+		files := r.MultipartForm.File["file"]
+		if len(files) != 1 {
+			t.Fatalf("artifact file count = %d, want 1", len(files))
+		}
+		if got := files[0].Header.Get("Content-Type"); got != "text/html; charset=utf-8" {
+			t.Fatalf("artifact content type = %q", got)
+		}
+		opened, err := files[0].Open()
+		if err != nil {
+			t.Fatalf("open artifact upload: %v", err)
+		}
+		defer opened.Close()
+		body, _ := io.ReadAll(opened)
+		if !strings.Contains(string(body), "saveState") {
+			t.Fatalf("artifact body missing saveState: %q", body)
+		}
+		_, _ = w.Write([]byte(`{"file":{"id":99,"kind":"missionbase_artifact"}}`))
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+	file := writeTextFile(t, "artifact.html", "<button onclick=\"saveState({count:1})\">Save</button>")
+
+	if err := run([]string{"boxes", "files", "create-artifact", "2", "--file", file, "--title", "Counter", "--root"}); err != nil {
+		t.Fatalf("run create-artifact: %v", err)
+	}
+	if !sawArtifact {
+		t.Fatal("server did not see artifact create")
+	}
+}
+
 func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
@@ -463,6 +512,8 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	for _, want := range []string{
 		"[--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]",
 		"boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]",
+		"sandboxed interactive HTML with persisted JSON state",
 		"boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]",
 		"boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)",
 		"boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]",
@@ -482,6 +533,8 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	})
 	for _, want := range []string{
 		"missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]",
+		"loadState()/saveState(data)",
 		"missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
 		"missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH",
 	} {
@@ -506,6 +559,17 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	})
 	if want := "missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH"; !strings.Contains(stdout, want) {
 		t.Fatalf("upload-version help missing %q in:\n%s", want, stdout)
+	}
+
+	stdout = captureStdout(t, func() {
+		if err := run([]string{"boxes", "files", "create-artifact", "--help"}); err != nil {
+			t.Fatalf("run create-artifact --help: %v", err)
+		}
+	})
+	for _, want := range []string{"missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE", "sandboxed interactive HTML", "loadState()", "Static .html uploads remain static previews"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("create-artifact help missing %q in:\n%s", want, stdout)
+		}
 	}
 
 	for _, tc := range []struct {
