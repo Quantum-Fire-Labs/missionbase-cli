@@ -1046,7 +1046,7 @@ func workspaceCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return apiPost("/api/v1/chats/" + url.PathEscape(chatID) + "/workspace", body)
+	return apiPost("/api/v1/chats/"+url.PathEscape(chatID)+"/workspace", body)
 }
 
 func workspaceUpdate(args []string) error {
@@ -1113,7 +1113,7 @@ func workspaceUpdate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return apiPatch("/api/v1/chats/" + url.PathEscape(chatID) + "/workspace", body)
+	return apiPatch("/api/v1/chats/"+url.PathEscape(chatID)+"/workspace", body)
 }
 
 func workspaceChatID(args []string) (string, error) {
@@ -1265,7 +1265,7 @@ func boxDiscussionsCreate(args []string) error {
 
 func boxFiles(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return fmt.Errorf("%s", boxFilesUsage())
 	}
 	switch args[0] {
 	case "list", "search":
@@ -1274,6 +1274,8 @@ func boxFiles(args []string) error {
 		return boxFileShow(args[1:])
 	case "upload", "add":
 		return boxFileUpload(args[1:])
+	case "create-artifact", "artifact":
+		return boxFileCreateArtifact(args[1:])
 	case "mkdir", "folder":
 		return boxFileMkdir(args[1:])
 	case "mv", "move":
@@ -1287,11 +1289,23 @@ func boxFiles(args []string) error {
 	case "download", "fetch":
 		return boxFileDownload(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase-agent boxes files show <box-id> <file-id>\n       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n       missionbase-agent boxes files versions <box-id> <file-id>\n       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		fmt.Println(boxFilesUsage())
 		return nil
 	default:
 		return boxFilesList(args)
 	}
+}
+
+func boxFilesUsage() string {
+	return "usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n" +
+		"       missionbase-agent boxes files show <box-id> <file-id>\n" +
+		"       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
+		"       missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]\n" +
+		"       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
+		"       missionbase-agent boxes files versions <box-id> <file-id>\n" +
+		"       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n" +
+		"       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]\n\n" +
+		"Missionbase artifacts are sandboxed interactive HTML files. Artifact JavaScript runs outside the main Missionbase app origin and cannot access app DOM, local storage, auth tokens, or normal Missionbase APIs. Use window.MissionbaseArtifact.loadState()/saveState(data) (or loadState()/saveState(data)) for one shared persisted JSON state blob. Static .html uploads remain static previews."
 }
 
 func boxFilesList(args []string) error {
@@ -1414,6 +1428,67 @@ func boxFileUpload(args []string) error {
 		return fmt.Errorf("--file is required")
 	}
 	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
+}
+
+func boxFileCreateArtifact(args []string) error {
+	artifactHelp := "usage: missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]\n\nCreates a missionbase_artifact from HTML. Artifacts are sandboxed interactive HTML with JavaScript enabled and a persisted shared JSON state bridge: loadState() and saveState(data). Artifact JavaScript cannot access the Missionbase app origin, DOM, local storage, auth tokens, or normal Missionbase APIs. Static .html uploads remain static previews."
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println(artifactHelp)
+		return nil
+	}
+	if len(args) < 1 {
+		return fmt.Errorf("%s", artifactHelp)
+	}
+	fields := map[string]string{"file_type": "missionbase_artifact"}
+	filePath := ""
+	useStdin := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--file", "--path":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a path", args[i])
+			}
+			filePath = args[i+1]
+			i++
+		case "--stdin":
+			useStdin = true
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			fields["title"] = args[i+1]
+			i++
+		case "--description":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description requires a value")
+			}
+			fields["description"] = args[i+1]
+			i++
+		case "--folder":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--folder requires a value")
+			}
+			fields["folder_id"] = args[i+1]
+			i++
+		case "--root":
+			fields["folder_id"] = "root"
+		case "--help", "-h":
+			fmt.Println(artifactHelp)
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes files create-artifact option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(args[0]) == "" {
+		return fmt.Errorf("box id is required")
+	}
+	if strings.TrimSpace(fields["title"]) == "" {
+		return fmt.Errorf("--title is required")
+	}
+	if useStdin == (strings.TrimSpace(filePath) != "") {
+		return fmt.Errorf("provide exactly one of --file PATH or --stdin")
+	}
+	return apiPostArtifactMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, filePath, useStdin)
 }
 
 func boxFileMkdir(args []string) error {
@@ -2533,6 +2608,68 @@ func apiPostMultipart(path string, fields map[string]string, attaches []string, 
 	return nil
 }
 
+func apiPostArtifactMultipart(path string, fields map[string]string, filePath string, useStdin bool) error {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return err
+		}
+	}
+
+	filename := strings.TrimSpace(fields["title"])
+	if filename == "" {
+		filename = "missionbase-artifact"
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes("file"), escapeQuotes(filename)))
+	header.Set("Content-Type", "text/html; charset=utf-8")
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	if useStdin {
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, 100*1024*1024+1))
+		if err != nil {
+			return err
+		}
+		if len(data) > 100*1024*1024 {
+			return fmt.Errorf("artifact stdin is too large (max 100 MB)")
+		}
+		if _, err := part.Write(data); err != nil {
+			return err
+		}
+	} else {
+		file, err := os.Open(filePath)
+		if err != nil {
+			return fmt.Errorf("open artifact file %q: %w", filePath, err)
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil {
+			return fmt.Errorf("stat artifact file %q: %w", filePath, err)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("artifact file %q is a directory", filePath)
+		}
+		if info.Size() > 100*1024*1024 {
+			return fmt.Errorf("artifact file %q is too large (max 100 MB)", filePath)
+		}
+		if _, err := io.Copy(part, file); err != nil {
+			return err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	body, err := apiPostBodyWithContentType(path, buf.Bytes(), writer.FormDataContentType())
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiPostSingleFileMultipart(path string, fields map[string]string, fieldName, filePath string) error {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -2923,6 +3060,8 @@ Commands:
   boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
   boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
                                       Upload a file to Docs & Files
+  boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]
+                                      Create sandboxed interactive HTML with persisted JSON state
   boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]
                                       Create a Docs & Files folder
   boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)
@@ -2955,6 +3094,11 @@ Scheduling:
   user's timezone when no offset is included; include an ISO-8601 offset or Z for an absolute instant.
   Normal agent work/task endpoints keep using the API default scheduled filter, so future scheduled tasks are hidden
   until actionable. Use --scheduled future or --scheduled all on task listing commands when explicitly discovering them.
+
+Artifacts:
+  Missionbase artifacts are sandboxed interactive HTML files. Their JavaScript runs outside the main Missionbase app origin
+  and cannot access app DOM, local storage, auth tokens, or normal Missionbase APIs. Use loadState()/saveState(data) or
+  window.MissionbaseArtifact.loadState()/saveState(data) for one shared persisted JSON state blob. Static .html uploads remain static previews.
 
 Markdown:
   DM bodies, task comment bodies, conversation comment bodies, box discussion bodies, and document bodies are Markdown-capable
