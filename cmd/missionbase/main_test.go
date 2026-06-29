@@ -57,6 +57,50 @@ func TestWorkUsesUserWorkEndpointWithoutAgentHeader(t *testing.T) {
 	}
 }
 
+func TestScratchpadCommandsUseUserScopedEndpoint(t *testing.T) {
+	bodyFile := filepath.Join(t.TempDir(), "scratchpad.md")
+	if err := os.WriteFile(bodyFile, []byte("<p>From file</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/v1/scratchpad":
+			seen["show"] = true
+		case "PATCH /api/v1/scratchpad":
+			seen["edit"] = true
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["scratchpad"] != "<p>From file</p>" {
+				t.Fatalf("scratchpad payload = %q", payload["scratchpad"])
+			}
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{"scratchpad":{"plain_text":"ok"}}`))
+	}))
+	defer server.Close()
+
+	setUserEnv(t, server.URL)
+	if err := run([]string{"scratchpad", "show"}); err != nil {
+		t.Fatalf("run scratchpad show: %v", err)
+	}
+	if err := run([]string{"scratchpad", "edit", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run scratchpad edit: %v", err)
+	}
+	for _, key := range []string{"show", "edit"} {
+		if !seen[key] {
+			t.Fatalf("%s request was not seen", key)
+		}
+	}
+}
+
 func TestUserModeIgnoresAgentDirectoryConfigAndHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {

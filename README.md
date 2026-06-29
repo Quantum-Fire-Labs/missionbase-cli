@@ -36,6 +36,9 @@ missionbase auth set-token YOUR_USER_TOKEN
 missionbase auth status
 missionbase me
 missionbase work
+missionbase scratchpad show
+missionbase scratchpad update --body TEXT
+missionbase scratchpad edit --body-file PATH
 missionbase teams
 missionbase boxes
 missionbase tasks assigned
@@ -43,7 +46,7 @@ missionbase tasks assigned
 
 The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
 
-The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, teams, users, boxes, tasks, task feeds, conversations, standalone box discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/comment, conversation comments, and box discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
+The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, scratchpad show/update, teams, users, boxes, tasks, task feeds, conversations, standalone box discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/comment, conversation comments, and box discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
 
 Credentials are stored at:
 
@@ -61,6 +64,8 @@ missionbase-agent use test
 missionbase-agent auth status
 missionbase-agent me
 missionbase-agent work [--next|--next-task]
+missionbase-agent scratchpad show --user USER
+missionbase-agent scratchpad edit --user USER --body-file PATH
 missionbase-agent listen --once
 missionbase-agent dm list
 missionbase-agent members
@@ -120,6 +125,9 @@ missionbase auth status
 missionbase auth set-token <token> [--base-url URL]
 missionbase me
 missionbase work
+missionbase scratchpad show
+missionbase scratchpad update --body TEXT
+missionbase scratchpad edit --body-file PATH
 missionbase teams
 missionbase users lookup <query-or-mention> [--team <team-id>]
 missionbase team show <team-id>
@@ -142,6 +150,10 @@ missionbase boxes files download <box-id> <file-id> --output PATH [--version VER
 missionbase boxes task-statuses <box-id>
 missionbase boxes statuses <box-id>
 missionbase notes search <query> [--team <team-id>]
+missionbase scratchpad show
+missionbase scratchpad fetch
+missionbase scratchpad update --body TEXT
+missionbase scratchpad edit --body-file PATH
 missionbase sidebar pins
 missionbase sidebar pin --type box_file --id <box-file-id>
 missionbase sidebar unpin --type box_file --id <box-file-id>
@@ -176,6 +188,8 @@ missionbase-agent auth set-token <team-token> [--base-url URL] [--agent slug]
 missionbase-agent use <agent-slug> [--base-url URL]
 missionbase-agent me
 missionbase-agent work [--next|--next-task]
+missionbase-agent scratchpad show --user USER
+missionbase-agent scratchpad edit --user USER --body-file PATH
 missionbase-agent listen [--timeout N] [--offset ID] [--once]
 missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
