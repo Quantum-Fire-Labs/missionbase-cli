@@ -17,6 +17,7 @@ import (
 
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/textbody"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/update"
 )
 
@@ -110,7 +111,7 @@ func scratchpad(args []string) error {
 		if err != nil {
 			return err
 		}
-		return apiPatchJSON("/api/v1/scratchpad", map[string]string{"user_id": user, "scratchpad": body})
+		return apiPatchJSON("/api/v1/scratchpad", map[string]string{"user_id": user, "scratchpad": textbody.Normalize(body)})
 	default:
 		return fmt.Errorf("unknown scratchpad command %q", args[0])
 	}
