@@ -13,7 +13,7 @@ import (
 
 func TestScratchpadCommandsUseUserContext(t *testing.T) {
 	bodyFile := filepath.Join(t.TempDir(), "scratchpad.md")
-	if err := os.WriteFile(bodyFile, []byte("<p>Agent file</p>"), 0o600); err != nil {
+	if err := os.WriteFile(bodyFile, []byte("# Agent file\\n\\n- Item"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -34,7 +34,7 @@ func TestScratchpadCommandsUseUserContext(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			if payload["user_id"] != "@DanielLemky" || payload["scratchpad"] != "<p>Agent file</p>" {
+			if payload["user_id"] != "@DanielLemky" || payload["scratchpad"] != "# Agent file\n\n- Item" {
 				t.Fatalf("payload = %#v", payload)
 			}
 		default:
