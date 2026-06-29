@@ -11,6 +11,60 @@ import (
 	"testing"
 )
 
+func TestScratchpadCommandsUseUserContext(t *testing.T) {
+	bodyFile := filepath.Join(t.TempDir(), "scratchpad.md")
+	if err := os.WriteFile(bodyFile, []byte("<p>Agent file</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/v1/scratchpad":
+			seen["show"] = true
+			if got := r.URL.Query().Get("user_id"); got != "@DanielLemky" {
+				t.Fatalf("user_id query = %q, want @DanielLemky", got)
+			}
+		case "PATCH /api/v1/scratchpad":
+			seen["edit"] = true
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["user_id"] != "@DanielLemky" || payload["scratchpad"] != "<p>Agent file</p>" {
+				t.Fatalf("payload = %#v", payload)
+			}
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"scratchpad":{"plain_text":"ok"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"scratchpad", "show", "--user", "@DanielLemky"}); err != nil {
+		t.Fatalf("run scratchpad show: %v", err)
+	}
+	if err := run([]string{"scratchpad", "edit", "--user", "@DanielLemky", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run scratchpad edit: %v", err)
+	}
+	for _, key := range []string{"show", "edit"} {
+		if !seen[key] {
+			t.Fatalf("%s request was not seen", key)
+		}
+	}
+}
+
+func TestScratchpadAgentRejectsInlineBody(t *testing.T) {
+	if err := run([]string{"scratchpad", "edit", "--user", "1", "--body", "hello"}); err == nil || !strings.Contains(err.Error(), "use --body-file PATH") {
+		t.Fatalf("err = %v, want body-file rejection", err)
+	}
+}
+
 func TestTasksUserDueBuildsTaskListQuery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

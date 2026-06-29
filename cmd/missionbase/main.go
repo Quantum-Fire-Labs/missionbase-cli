@@ -62,6 +62,8 @@ func run(args []string) error {
 			return nil
 		}
 		return apiGet("/api/v1/users/work")
+	case "scratchpad":
+		return scratchpad(args[1:])
 	case "teams":
 		return teams(args[1:])
 	case "users":
@@ -145,6 +147,64 @@ func auth(args []string) error {
 	}
 
 	return nil
+}
+
+func scratchpad(args []string) error {
+	if len(args) == 0 || isHelp(args[0]) {
+		fmt.Println("usage: missionbase scratchpad <show|fetch|update|edit> [--body TEXT | --body-file PATH]")
+		return nil
+	}
+
+	switch args[0] {
+	case "show", "fetch":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: missionbase scratchpad show")
+		}
+		return apiGet("/api/v1/scratchpad")
+	case "update", "edit":
+		body, err := parseScratchpadBody(args[1:], "missionbase scratchpad "+args[0])
+		if err != nil {
+			return err
+		}
+		return apiPatchJSON("/api/v1/scratchpad", map[string]string{"scratchpad": textbody.Normalize(body)})
+	default:
+		return fmt.Errorf("unknown scratchpad command %q", args[0])
+	}
+}
+
+func parseScratchpadBody(args []string, usagePrefix string) (string, error) {
+	body := ""
+	bodySet := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--body", "--content", "--markdown", "--text":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("%s requires a value", args[i])
+			}
+			body = args[i+1]
+			bodySet = true
+			i++
+		case "--body-file", "--content-file", "--markdown-file", "--text-file", "--file":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("%s requires a value", args[i])
+			}
+			content, err := os.ReadFile(args[i+1])
+			if err != nil {
+				return "", fmt.Errorf("read body file %q: %w", args[i+1], err)
+			}
+			body = string(content)
+			bodySet = true
+			i++
+		case "--help", "-h":
+			return "", fmt.Errorf("usage: %s --body TEXT | --body-file PATH", usagePrefix)
+		default:
+			return "", fmt.Errorf("unknown scratchpad option %q", args[i])
+		}
+	}
+	if !bodySet {
+		return "", fmt.Errorf("--body is required")
+	}
+	return body, nil
 }
 
 func sidebar(args []string) error {
@@ -1774,6 +1834,9 @@ Commands:
                                       Save a personal/user API token
   me                                  Show the current user
   work                                Show current user work overview
+  scratchpad show                     Show current user's scratchpad
+  scratchpad update --body TEXT       Update current user's scratchpad
+  scratchpad edit --body-file PATH    Update current user's scratchpad from a file
   teams                               List teams visible to the current user
   users lookup <query-or-mention> [--team <team-id>]
                                       Look up users or resolve a team @mention
@@ -1800,6 +1863,8 @@ Commands:
   boxes statuses <box-id>             Alias for boxes task-statuses
   boxes task-statuses <box-id>        List configured task statuses for a box
   notes search <query> [--team ID]    Search your notes
+  scratchpad show|fetch               Show current user's scratchpad
+  scratchpad update|edit --body TEXT  Update current user's scratchpad
   sidebar pins                         List pinned sidebar pages for the current user
   sidebar pin --type box_file --id ID  Pin a supported page to the current user's sidebar
   sidebar unpin --type box_file --id ID

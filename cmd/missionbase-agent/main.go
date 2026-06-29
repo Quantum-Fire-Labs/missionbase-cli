@@ -54,6 +54,8 @@ func run(args []string) error {
 		return apiGet("/api/v1/agent/me")
 	case "work":
 		return work(args[1:])
+	case "scratchpad":
+		return scratchpad(args[1:])
 	case "listen":
 		return listen(args[1:])
 	case "dm":
@@ -86,6 +88,94 @@ func run(args []string) error {
 	}
 
 	return nil
+}
+
+func scratchpad(args []string) error {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		fmt.Println("usage: missionbase-agent scratchpad <show|fetch|update|edit> --user USER [--body-file PATH]")
+		return nil
+	}
+
+	switch args[0] {
+	case "show", "fetch":
+		user, err := parseScratchpadUser(args[1:])
+		if err != nil {
+			return err
+		}
+		query := url.Values{}
+		query.Set("user_id", user)
+		return apiGet("/api/v1/scratchpad?" + query.Encode())
+	case "update", "edit":
+		user, body, err := parseAgentScratchpadUpdateArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		return apiPatchJSON("/api/v1/scratchpad", map[string]string{"user_id": user, "scratchpad": body})
+	default:
+		return fmt.Errorf("unknown scratchpad command %q", args[0])
+	}
+}
+
+func parseScratchpadUser(args []string) (string, error) {
+	user := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--user", "--user-id":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("%s requires a value", args[i])
+			}
+			user = args[i+1]
+			i++
+		case "--help", "-h":
+			return "", fmt.Errorf("usage: missionbase-agent scratchpad show --user USER")
+		default:
+			return "", fmt.Errorf("unknown scratchpad option %q", args[i])
+		}
+	}
+	if user == "" {
+		return "", fmt.Errorf("--user is required")
+	}
+	return user, nil
+}
+
+func parseAgentScratchpadUpdateArgs(args []string) (string, string, error) {
+	user := ""
+	body := ""
+	bodySet := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--user", "--user-id":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("%s requires a value", args[i])
+			}
+			user = args[i+1]
+			i++
+		case "--body", "--content", "--message", "--text", "--body-stdin", "--content-stdin", "--message-stdin", "--text-stdin":
+			return "", "", fmt.Errorf("%s is not supported; use --body-file PATH", args[i])
+		case "--body-file", "--content-file", "--message-file", "--text-file", "--file":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("%s requires a value", args[i])
+			}
+			content, err := os.ReadFile(args[i+1])
+			if err != nil {
+				return "", "", fmt.Errorf("read body file %q: %w", args[i+1], err)
+			}
+			body = string(content)
+			bodySet = true
+			i++
+		case "--help", "-h":
+			return "", "", fmt.Errorf("usage: missionbase-agent scratchpad edit --user USER --body-file PATH")
+		default:
+			return "", "", fmt.Errorf("unknown scratchpad option %q", args[i])
+		}
+	}
+	if user == "" {
+		return "", "", fmt.Errorf("--user is required")
+	}
+	if !bodySet {
+		return "", "", fmt.Errorf("--body-file is required")
+	}
+	return user, body, nil
 }
 
 func tasks(args []string) error {
@@ -2990,6 +3080,9 @@ Commands:
   me                                  Show the current agent
   work [--next|--next-task]           Show the next actionable assigned task
                                       With --next, return only the next assigned task
+  scratchpad show --user USER         Show a team member's scratchpad
+  scratchpad edit --user USER --body-file PATH
+                                      Update a team member's scratchpad from a file
   listen [--timeout N] [--offset ID] [--once]
                                       Long-poll for agent updates
   dm list [--limit N]                 List agent direct messages
