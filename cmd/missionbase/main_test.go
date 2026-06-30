@@ -658,7 +658,7 @@ func TestTaskCreatePostsJSON(t *testing.T) {
 			t.Fatalf("content type = %q", got)
 		}
 		body, _ := io.ReadAll(r.Body)
-		for _, want := range []string{`"title":"Write"`, `"box_id":"2"`, `"description":"line1\nline2"`} {
+		for _, want := range []string{`"title":"Write"`, `"box_id":"2"`, `"body":"line1\nline2"`} {
 			if !strings.Contains(string(body), want) {
 				t.Fatalf("body missing %s: %s", want, body)
 			}
@@ -667,7 +667,7 @@ func TestTaskCreatePostsJSON(t *testing.T) {
 	}))
 	defer server.Close()
 	setUserEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "Write", "--box", "2", "--description", `line1\nline2`}); err != nil {
+	if err := run([]string{"task", "create", "--title", "Write", "--box", "2", "--body", `line1\nline2`}); err != nil {
 		t.Fatalf("run task create: %v", err)
 	}
 }

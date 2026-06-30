@@ -986,7 +986,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|feed|comments> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|feed|comments> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -1447,11 +1447,11 @@ func taskCreate(args []string) error {
 	var attaches, blobs []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--title", "--description", "--box", "--deadline", "--status", "--task-status-id", "--assign-user":
+		case "--title", "--body", "--box", "--deadline", "--status", "--task-status-id", "--assign-user":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			key := map[string]string{"--title": "title", "--description": "description", "--box": "box_id", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id"}[args[i]]
+			key := map[string]string{"--title": "title", "--body": "body", "--box": "box_id", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--attach":
@@ -1467,7 +1467,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -1481,27 +1481,27 @@ func taskCreate(args []string) error {
 			return fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
 		}
 	}
-	payload["description"] = textbody.Normalize(payload["description"])
+	payload["body"] = textbody.Normalize(payload["body"])
 	return apiWrite("POST", "/api/v1/tasks", payload, attaches, blobs)
 }
 
 func taskUpdate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]")
+		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]")
 	}
 	taskID := args[0]
 	payload := map[string]string{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--title", "--description", "--box", "--status", "--task-status-id":
+		case "--title", "--box", "--status", "--task-status-id":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			key := map[string]string{"--title": "title", "--description": "description", "--box": "box_id", "--status": "status", "--task-status-id": "task_status_id"}[args[i]]
+			key := map[string]string{"--title": "title", "--box": "box_id", "--status": "status", "--task-status-id": "task_status_id"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]")
+			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task update option %q", args[i])
@@ -1510,7 +1510,6 @@ func taskUpdate(args []string) error {
 	if len(payload) == 0 {
 		return fmt.Errorf("at least one update field is required")
 	}
-	payload["description"] = textbody.Normalize(payload["description"])
 	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(taskID), payload)
 }
 
@@ -1877,9 +1876,9 @@ Commands:
       [--page N] [--per-page N]
   tasks visible                       List tasks visible to the current user
       [--page N] [--per-page N]
-  task create --title TITLE [--box ID] [--description TEXT]
+  task create --title TITLE [--box ID] [--body TEXT]
                                       Create a task
-  task update <task-id> [--title TITLE] [--description TEXT] [--box ID]
+  task update <task-id> [--title TITLE] [--box ID]
                                       Update a task
   task status <task-id> <status>      Set a task status
   task complete <task-id>             Mark a task complete as the current user

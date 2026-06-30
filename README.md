@@ -161,8 +161,8 @@ missionbase document show <document-id> [--format markdown|html|plain-text]
 missionbase document update <document-id> [--title TITLE] --body TEXT
 missionbase tasks assigned [--page N] [--per-page N]
 missionbase tasks visible [--page N] [--per-page N]
-missionbase task create --title TITLE [--box ID] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-missionbase task update <task-id> [--title TITLE] [--description TEXT] [--box ID] [--status STATUS] [--task-status-id ID]
+missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]
 missionbase task status <task-id> <status>
 missionbase task complete <task-id>
 missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
@@ -206,8 +206,7 @@ missionbase-agent document edit <document-id> [--title "New title"] --body-file 
 missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
 missionbase-agent task show <task-id>
-missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--description-file /tmp/description.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
-missionbase-agent task update <task-id> --description-file /tmp/description.md
+missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
 missionbase-agent task update <task-id> --scheduled-at DATETIME
@@ -262,7 +261,7 @@ Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar p
 
 Task comment, conversation comment, box discussion create, document, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
-Agent-authored posting bodies are file-only: use `--body-file PATH` for DM bodies, task comments, conversation comments, box discussion bodies, and document bodies. Task creation descriptions use `--description-file PATH`. Inline body/description flags and stdin body input (`--body-stdin` or `--body-file -`) are intentionally unsupported for these write flows so Markdown, backticks, and shell-sensitive content are read from disk instead of passing through fragile shell quoting or piped interactive flows.
+Agent-authored posting bodies are file-only: use `--body-file PATH` for DM bodies, task comments, conversation comments, box discussion bodies, and document bodies. Task creation opening messages use `--body-file PATH`. Inline body flags and stdin body input (`--body-stdin` or `--body-file -`) are intentionally unsupported for these write flows so Markdown, backticks, and shell-sensitive content are read from disk instead of passing through fragile shell quoting or piped interactive flows.
 
 Recommended workflow:
 
@@ -298,7 +297,7 @@ Task create/comment and conversation comment accept repeated `--attach PATH` fla
 Examples:
 
 ```bash
-missionbase-agent task create --box 2 --title "Investigate screenshot" --description-file /tmp/description.md --attach /tmp/screenshot.png
+missionbase-agent task create --box 2 --title "Investigate screenshot" --body-file /tmp/body.md --attach /tmp/screenshot.png
 missionbase users lookup Daniel --team 2
 missionbase task assign 123 --user @DanielLemky --team 2
 missionbase task participants add 123 --user 42

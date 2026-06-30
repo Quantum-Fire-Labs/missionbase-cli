@@ -1162,9 +1162,9 @@ func TestTaskCommentPostsMultipartAttachment(t *testing.T) {
 	}
 }
 
-func TestTaskCreateReadsMarkdownDescriptionFile(t *testing.T) {
+func TestTaskCreateReadsMarkdownBodyFile(t *testing.T) {
 	want := "## Details\n\n- Preserved `context: \"modal\"`\n\n```text\nliteral `ticks` and \"quotes\"\n```\n"
-	descriptionFile := writeTextFile(t, "description.md", want)
+	bodyFile := writeTextFile(t, "body.md", want)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/tasks" {
@@ -1174,8 +1174,8 @@ func TestTaskCreateReadsMarkdownDescriptionFile(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["description"] != want {
-			t.Fatalf("description = %q, want %q", payload["description"], want)
+		if payload["body"] != want {
+			t.Fatalf("body = %q, want %q", payload["body"], want)
 		}
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"task":{"id":986}}`))
@@ -1183,8 +1183,8 @@ func TestTaskCreateReadsMarkdownDescriptionFile(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "With description", "--box", "2", "--assign-agent", "missionbase-dev", "--description-file", descriptionFile}); err != nil {
-		t.Fatalf("run task create with description file: %v", err)
+	if err := run([]string{"task", "create", "--title", "With body", "--box", "2", "--assign-agent", "missionbase-dev", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task create with body file: %v", err)
 	}
 }
 
@@ -1379,61 +1379,6 @@ func TestTaskUpdateNoScheduledAtPatchesNullScheduledAt(t *testing.T) {
 	}
 }
 
-func TestTaskUpdateReadsMarkdownDescriptionFile(t *testing.T) {
-	descriptionFile := writeTextFile(t, "description.md", "# Updated description\n\n- Multiline **Markdown**\n- Preserved `code`\n")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch {
-			t.Fatalf("method = %s, want PATCH", r.Method)
-		}
-		if r.URL.Path != "/api/v1/tasks/123" {
-			t.Fatalf("path = %s, want /api/v1/tasks/123", r.URL.Path)
-		}
-		var payload map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		want := "# Updated description\n\n- Multiline **Markdown**\n- Preserved `code`\n"
-		if payload["description"] != want {
-			t.Fatalf("description = %#v, want %#v", payload["description"], want)
-		}
-		if _, ok := payload["deadline"]; ok {
-			t.Fatalf("deadline unexpectedly present: %#v", payload)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task":{"id":123,"description":"updated"}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "update", "123", "--description-file", descriptionFile}); err != nil {
-		t.Fatalf("run task update --description-file: %v", err)
-	}
-}
-
-func TestTaskUpdateCanPatchDescriptionAndSchedulingTogether(t *testing.T) {
-	descriptionFile := writeTextFile(t, "description.md", "Updated body\n")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if payload["description"] != "Updated body\n" {
-			t.Fatalf("description = %#v, want updated body", payload["description"])
-		}
-		if payload["scheduled_at"] != "2026-07-15 09:30" {
-			t.Fatalf("scheduled_at = %#v, want datetime", payload["scheduled_at"])
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task":{"id":123}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "edit", "123", "--description-file", descriptionFile, "--scheduled-at", "2026-07-15 09:30"}); err != nil {
-		t.Fatalf("run task edit --description-file --scheduled-at: %v", err)
-	}
-}
-
 func TestTaskUpdateRejectsInvalidDeadline(t *testing.T) {
 	if err := run([]string{"task", "update", "123", "--deadline", "not-a-date"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
 		t.Fatalf("err = %v, want invalid deadline error", err)
@@ -1456,7 +1401,7 @@ func TestTaskHelpDocumentsDeadlineAndSchedulingOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--description-file PATH", "Update task description", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task deadline", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}
@@ -1489,12 +1434,12 @@ func TestTaskCreateRejectsBothAgentAndUserAssignment(t *testing.T) {
 	}
 }
 
-func TestTaskCreateRejectsInlineDescriptionAndStdin(t *testing.T) {
-	if err := run([]string{"task", "create", "--title", "Inline", "--box", "2", "--assign-agent", "missionbase-dev", "--description", "inline"}); err == nil || !strings.Contains(err.Error(), "--description is not supported") {
-		t.Fatalf("err = %v, want inline description unsupported", err)
+func TestTaskCreateRejectsInlineBodyAndStdin(t *testing.T) {
+	if err := run([]string{"task", "create", "--title", "Inline", "--box", "2", "--assign-agent", "missionbase-dev", "--body", "inline"}); err == nil || !strings.Contains(err.Error(), "--body is not supported") {
+		t.Fatalf("err = %v, want inline body unsupported", err)
 	}
-	if err := run([]string{"task", "create", "--title", "Stdin", "--box", "2", "--assign-agent", "missionbase-dev", "--description-stdin"}); err == nil || !strings.Contains(err.Error(), "--description-stdin is not supported") {
-		t.Fatalf("err = %v, want description stdin unsupported", err)
+	if err := run([]string{"task", "create", "--title", "Stdin", "--box", "2", "--assign-agent", "missionbase-dev", "--body-stdin"}); err == nil || !strings.Contains(err.Error(), "--body-stdin is not supported") {
+		t.Fatalf("err = %v, want body stdin unsupported", err)
 	}
 }
 
