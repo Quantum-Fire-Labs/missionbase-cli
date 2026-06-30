@@ -94,7 +94,7 @@ def clean_name(value):
     return value[:97] + "..." if len(value) > 100 else value
 
 def conversation_id(conversation):
-    for key in ("id", "conversation_id", "feed_id", "participant_id"):
+    for key in ("discussion_id", "id", "conversation_id", "participant_id", "feed_id"):
         value = conversation.get(key)
         if value is not None:
             return value

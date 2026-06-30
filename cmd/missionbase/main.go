@@ -952,7 +952,7 @@ func tasks(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase task <create|update|status|complete|comment|assign|unassign|participants|show|feed|comments> ...")
+		return fmt.Errorf("usage: missionbase task <create|update|status|complete|message|assign|unassign|participants|show|messages> ...")
 	}
 	switch args[0] {
 	case "create":
@@ -963,8 +963,8 @@ func task(args []string) error {
 		return taskStatus(args[1:])
 	case "complete":
 		return taskComplete(args[1:])
-	case "comment", "reply", "create-comment":
-		return taskComment(args[1:])
+	case "message", "reply", "create-message", "comment", "create-comment":
+		return taskMessage(args[1:])
 	case "assign":
 		return taskAssign(args[1:])
 	case "unassign":
@@ -976,7 +976,7 @@ func task(args []string) error {
 			return fmt.Errorf("usage: missionbase task show <task-id>")
 		}
 		return apiGet("/api/v1/tasks/" + url.PathEscape(args[1]))
-	case "feed", "comments":
+	case "messages", "feed", "comments":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase task %s <task-id> [--limit N]", args[0])
 		}
@@ -986,7 +986,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|feed|comments> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|messages> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -1215,11 +1215,11 @@ func conversation(args []string) error {
 		return fmt.Errorf("usage: missionbase conversation <show|comment> ...")
 	}
 	switch args[0] {
-	case "comment", "reply", "create-comment":
-		return conversationComment(args[1:])
+	case "message", "reply", "create-message", "comment", "create-comment":
+		return conversationMessage(args[1:])
 	case "show":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: missionbase conversation show <feed-id> [--limit N]")
+			return fmt.Errorf("usage: missionbase conversation show <discussion-id> [--limit N]")
 		}
 		path, err := appendLimit("/api/v1/conversations/"+url.PathEscape(args[1]), args[2:])
 		if err != nil {
@@ -1227,7 +1227,7 @@ func conversation(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase conversation show <feed-id> [--limit N]\n       missionbase conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		fmt.Println("usage: missionbase conversation show <discussion-id> [--limit N]\n       missionbase conversation message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 		return nil
 	default:
 		return fmt.Errorf("unknown conversation command %q", args[0])
@@ -1534,12 +1534,12 @@ func taskComplete(args []string) error {
 	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(args[0])+"/complete", map[string]any{"acting_as_user_id": userID})
 }
 
-func taskComment(args []string) error {
+func taskMessage(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase task comment <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
 	taskID := args[0]
-	payload, attaches, blobs, err := parseCommentArgs(args[1:], "task comment")
+	payload, attaches, blobs, err := parseCommentArgs(args[1:], "task message")
 	if err != nil {
 		return err
 	}
@@ -1549,19 +1549,19 @@ func taskComment(args []string) error {
 	return apiWrite("POST", "/api/v1/tasks/"+url.PathEscape(taskID)+"/comments", payload, attaches, blobs)
 }
 
-func conversationComment(args []string) error {
+func conversationMessage(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase conversation comment <feed-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase conversation message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
-	feedID := args[0]
-	payload, attaches, blobs, err := parseCommentArgs(args[1:], "conversation comment")
+	discussionID := args[0]
+	payload, attaches, blobs, err := parseCommentArgs(args[1:], "conversation message")
 	if err != nil {
 		return err
 	}
 	if payload == nil {
 		return nil
 	}
-	return apiWrite("POST", "/api/v1/conversations/"+url.PathEscape(feedID)+"/comments", payload, attaches, blobs)
+	return apiWrite("POST", "/api/v1/conversations/"+url.PathEscape(discussionID)+"/comments", payload, attaches, blobs)
 }
 
 func parseCommentArgs(args []string, name string) (map[string]string, []string, []string, error) {
@@ -1573,7 +1573,7 @@ func parseCommentArgs(args []string, name string) (map[string]string, []string, 
 			if i+1 >= len(args) {
 				return nil, nil, nil, fmt.Errorf("%s requires a value", args[i])
 			}
-			payload["comment"] = args[i+1]
+			payload["message"] = args[i+1]
 			i++
 		case "--attach":
 			if i+1 >= len(args) {
@@ -1594,8 +1594,8 @@ func parseCommentArgs(args []string, name string) (map[string]string, []string, 
 			return nil, nil, nil, fmt.Errorf("unknown %s option %q", name, args[i])
 		}
 	}
-	payload["comment"] = textbody.Normalize(payload["comment"])
-	if strings.TrimSpace(payload["comment"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
+	payload["message"] = textbody.Normalize(payload["message"])
+	if strings.TrimSpace(payload["message"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
 		return nil, nil, nil, fmt.Errorf("--body or at least one attachment is required")
 	}
 	return payload, attaches, blobs, nil
@@ -1882,7 +1882,7 @@ Commands:
                                       Update a task
   task status <task-id> <status>      Set a task status
   task complete <task-id>             Mark a task complete as the current user
-  task comment <task-id> --body TEXT  Add a task comment
+  task message <task-id> --body TEXT  Add a task discussion message
   task assign <task-id> --user ID|@mention [--team ID]
                                       Assign a task to a user
   task unassign <task-id> --user ID|@mention [--team ID]
@@ -1891,14 +1891,14 @@ Commands:
   task participants add <task-id> --user ID|@mention [--team ID]
                                       Add a user task participant
   task show <task-id>                 Show a task
-  task feed <task-id> [--limit N]     Show a task feed and comments
-  task comments <task-id> [--limit N] Alias for task feed
+  task messages <task-id> [--limit N] Show task discussion messages
+  task comments <task-id> [--limit N] Legacy alias for task messages
   conversations [--page N] [--per-page N]
                                       List conversations visible to the current user
-  conversation show <feed-id> [--limit N]
-                                      Show a conversation/feed
-  conversation comment <feed-id> --body TEXT
-                                      Add a conversation comment
+  conversation show <discussion-id> [--limit N]
+                                      Show a conversation/discussion
+  conversation message <discussion-id> --body TEXT
+                                      Add a conversation message
   get /api/path                       GET an API path and print JSON
   post /api/path --json JSON          Raw POST as the signed-in user
   patch /api/path --json JSON         Raw PATCH as the signed-in user

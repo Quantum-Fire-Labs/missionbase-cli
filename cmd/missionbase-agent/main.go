@@ -769,13 +769,13 @@ func agentBoxes(args []string) error {
 
 func conversation(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent conversation <show|comment> ...")
+		return fmt.Errorf("usage: missionbase-agent conversation <show|message> ...")
 	}
 
 	switch args[0] {
 	case "show":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: missionbase-agent conversation show <feed-id> [--limit N]")
+			return fmt.Errorf("usage: missionbase-agent conversation show <discussion-id> [--limit N]")
 		}
 		path := "/api/v1/conversations/" + url.PathEscape(args[1])
 		path, err := appendLimit(path, args[2:])
@@ -783,18 +783,18 @@ func conversation(args []string) error {
 			return err
 		}
 		return apiGet(path)
-	case "comment", "create-comment", "reply":
-		return conversationComment(args[1:])
+	case "message", "create-message", "comment", "create-comment", "reply":
+		return conversationMessage(args[1:])
 	default:
 		return fmt.Errorf("unknown conversation command %q", args[0])
 	}
 }
 
-func conversationComment(args []string) error {
+func conversationMessage(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent conversation comment <feed-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase-agent conversation message <discussion-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
-	feedID := args[0]
+	discussionID := args[0]
 	payload := map[string]string{}
 	var attaches, blobs []string
 
@@ -810,7 +810,7 @@ func conversationComment(args []string) error {
 			if err != nil {
 				return err
 			}
-			payload["comment"] = body
+			payload["message"] = body
 			i++
 		case "--attach":
 			if i+1 >= len(args) {
@@ -825,18 +825,18 @@ func conversationComment(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent conversation comment <feed-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent conversation message <discussion-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
-			return fmt.Errorf("unknown conversation comment option %q", args[i])
+			return fmt.Errorf("unknown conversation message option %q", args[i])
 		}
 	}
 
-	payload["comment"] = normalizeAgentAuthoredBody(payload["comment"])
-	if strings.TrimSpace(payload["comment"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
+	payload["message"] = normalizeAgentAuthoredBody(payload["message"])
+	if strings.TrimSpace(payload["message"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
 		return fmt.Errorf("--body or at least one attachment is required")
 	}
-	path := "/api/v1/conversations/" + url.PathEscape(feedID) + "/comments"
+	path := "/api/v1/conversations/" + url.PathEscape(discussionID) + "/comments"
 	if len(attaches) > 0 || len(blobs) > 0 {
 		return apiPostMultipart(path, payload, attaches, blobs)
 	}
@@ -1940,7 +1940,7 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task <feed|comments> <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -1951,8 +1951,8 @@ func task(args []string) error {
 		return apiGet("/api/v1/tasks/" + url.PathEscape(args[1]))
 	case "create":
 		return taskCreate(args[1:])
-	case "comment", "create-comment", "reply":
-		return taskComment(args[1:])
+	case "message", "create-message", "comment", "create-comment", "reply":
+		return taskMessage(args[1:])
 	case "update", "edit":
 		return taskUpdate(args[1:])
 	case "assign":
@@ -1965,7 +1965,7 @@ func task(args []string) error {
 		return taskMove(args[1:])
 	case "complete":
 		return taskComplete(args[1:])
-	case "feed", "comments":
+	case "messages", "feed", "comments":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent task %s <task-id> [--limit N]", args[0])
 		}
@@ -2170,9 +2170,9 @@ func taskUnassignAgent(taskID, slug string) error {
 	return apiDelete(path)
 }
 
-func taskComment(args []string) error {
+func taskMessage(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
 	taskID := args[0]
 	payload := map[string]string{}
@@ -2190,7 +2190,7 @@ func taskComment(args []string) error {
 			if err != nil {
 				return err
 			}
-			payload["comment"] = body
+			payload["message"] = body
 			i++
 		case "--attach":
 			if i+1 >= len(args) {
@@ -2205,15 +2205,15 @@ func taskComment(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task comment <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
-			return fmt.Errorf("unknown task comment option %q", args[i])
+			return fmt.Errorf("unknown task message option %q", args[i])
 		}
 	}
 
-	payload["comment"] = normalizeAgentAuthoredBody(payload["comment"])
-	if strings.TrimSpace(payload["comment"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
+	payload["message"] = normalizeAgentAuthoredBody(payload["message"])
+	if strings.TrimSpace(payload["message"]) == "" && len(attaches) == 0 && len(blobs) == 0 {
 		return fmt.Errorf("--body or at least one attachment is required")
 	}
 	if len(attaches) > 0 || len(blobs) > 0 {
@@ -3115,24 +3115,24 @@ Commands:
   task unassign <task-id> --agent slug
                                       Remove an agent assignment from a task
   task unassign <task-id> --self      Remove the current agent from a task
-  task comment <task-id> --body-file PATH
+  task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-                                      Post a Markdown-capable comment to a task conversation/feed
+                                      Post a Markdown-capable message to a task discussion
   task status <task-id> <status>      Set status (server validates box-specific statuses)
   task move <task-id> --box BOX_ID    Move a task to another accessible box
   task complete <task-id>             Mark a task complete
-  task feed <task-id> [--limit N]     Show a task feed and comments
-  task comments <task-id> [--limit N] Show a task feed and comments
+  task messages <task-id> [--limit N] Show task discussion messages
+  task comments <task-id> [--limit N] Legacy alias for task messages
   task participants list <task-id>    List task participants
   task participants add <task-id> --user ID|@mention
                                       Add a user participant to a task
   task participants add <task-id> --agent slug
                                       Add an agent participant to a task
-  conversation show <feed-id> [--limit N]
-                                      Show a conversation/feed
-  conversation comment <feed-id> --body-file PATH
+  conversation show <discussion-id> [--limit N]
+                                      Show a discussion conversation
+  conversation message <discussion-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-                                      Post a Markdown-capable reply to a conversation/feed
+                                      Post a Markdown-capable reply to a discussion conversation
   workspace get --chat-id CHAT_ID     Get the chat workspace as Markdown JSON
   workspace create --chat-id CHAT_ID [--title TITLE]
       [--file PATH|--markdown TEXT]   Create/open a temporary chat workspace
@@ -3193,7 +3193,7 @@ Artifacts:
   window.MissionbaseArtifact.loadState()/saveState(data) for one shared persisted JSON state blob. Static .html uploads remain static previews.
 
 Markdown:
-  DM bodies, task comment bodies, conversation comment bodies, box discussion bodies, and document bodies are Markdown-capable
+  DM bodies, task message bodies, conversation message bodies, box discussion bodies, and document bodies are Markdown-capable
   by default. Missionbase renders headings, emphasis, links, lists, blockquotes, and fenced code blocks as
   sanitized rich text while preserving ordinary plain-text messages. Accidental escaped newline sequences
   (\\n, \\r, \\r\\n) are normalized to real line breaks outside quoted/backticked code contexts.

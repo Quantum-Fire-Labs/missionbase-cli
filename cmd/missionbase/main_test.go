@@ -217,8 +217,8 @@ func TestReadOnlyCommandDispatchRepresentativeEndpoints(t *testing.T) {
 		{"tasks assigned", []string{"tasks", "assigned", "--page", "1"}, "/api/v1/tasks/assigned"},
 		{"tasks visible", []string{"tasks", "visible", "--per-page", "5"}, "/api/v1/tasks"},
 		{"task show", []string{"task", "show", "99"}, "/api/v1/tasks/99"},
-		{"task feed", []string{"task", "feed", "99", "--limit", "7"}, "/api/v1/tasks/99/comments"},
-		{"task comments", []string{"task", "comments", "99"}, "/api/v1/tasks/99/comments"},
+		{"task messages", []string{"task", "messages", "99", "--limit", "7"}, "/api/v1/tasks/99/comments"},
+		{"task comments legacy alias", []string{"task", "comments", "99"}, "/api/v1/tasks/99/comments"},
 		{"conversations", []string{"conversations", "--page", "2"}, "/api/v1/conversations"},
 		{"conversation show", []string{"conversation", "show", "abc", "--limit", "6"}, "/api/v1/conversations/abc"},
 	}
@@ -614,7 +614,7 @@ func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
 
 func TestHelpShowsUserWorkflowCommands(t *testing.T) {
 	stdout := captureStdout(t, func() { _ = run([]string{"--help"}) })
-	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "boxes documents create <box-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task feed <task-id>", "conversations", "conversation show <feed-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {
+	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "boxes documents create <box-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task messages <task-id>", "conversations", "conversation show <discussion-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q:\n%s", want, stdout)
 		}
@@ -697,7 +697,7 @@ func TestTaskCompletePatchesCompleteEndpoint(t *testing.T) {
 	}
 }
 
-func TestTaskCommentUsesMultipartWithAttachment(t *testing.T) {
+func TestTaskMessageUsesMultipartWithAttachment(t *testing.T) {
 	png := filepath.Join(t.TempDir(), "image.png")
 	if err := os.WriteFile(png, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}, 0o600); err != nil {
 		t.Fatal(err)
@@ -712,8 +712,8 @@ func TestTaskCommentUsesMultipartWithAttachment(t *testing.T) {
 		if err := r.ParseMultipartForm(6 << 20); err != nil {
 			t.Fatalf("ParseMultipartForm: %v", err)
 		}
-		if got := r.FormValue("comment"); got != "hello\nthere" {
-			t.Fatalf("comment = %q", got)
+		if got := r.FormValue("message"); got != "hello\nthere" {
+			t.Fatalf("message = %q", got)
 		}
 		if got := r.FormValue("attachment_blobs[]"); got != "signed-1" {
 			t.Fatalf("blob = %q", got)
@@ -725,12 +725,12 @@ func TestTaskCommentUsesMultipartWithAttachment(t *testing.T) {
 	}))
 	defer server.Close()
 	setUserEnv(t, server.URL)
-	if err := run([]string{"task", "comment", "123", "--body", `hello\nthere`, "--attach", png, "--attach-blob", "signed-1"}); err != nil {
-		t.Fatalf("run task comment: %v", err)
+	if err := run([]string{"task", "message", "123", "--body", `hello\nthere`, "--attach", png, "--attach-blob", "signed-1"}); err != nil {
+		t.Fatalf("run task message: %v", err)
 	}
 }
 
-func TestConversationCommentPostsJSON(t *testing.T) {
+func TestConversationMessagePostsJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/conversations/feed-1/comments" {
 			t.Fatalf("%s %s", r.Method, r.URL.Path)
@@ -739,14 +739,14 @@ func TestConversationCommentPostsJSON(t *testing.T) {
 			t.Fatalf("content type = %q", got)
 		}
 		body, _ := io.ReadAll(r.Body)
-		if !strings.Contains(string(body), `"comment":"hi"`) {
+		if !strings.Contains(string(body), `"message":"hi"`) {
 			t.Fatalf("body = %s", body)
 		}
 		_, _ = w.Write([]byte(`{"comment":{"id":10}}`))
 	}))
 	defer server.Close()
 	setUserEnv(t, server.URL)
-	if err := run([]string{"conversation", "comment", "feed-1", "--message", "hi"}); err != nil {
-		t.Fatalf("run conversation comment: %v", err)
+	if err := run([]string{"conversation", "message", "feed-1", "--message", "hi"}); err != nil {
+		t.Fatalf("run conversation message: %v", err)
 	}
 }
