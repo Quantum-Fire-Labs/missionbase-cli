@@ -913,8 +913,8 @@ func TestConversationCommentPostsComment(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["comment"] != "General conversation reply" {
-			t.Fatalf("comment payload = %q, want General conversation reply", payload["comment"])
+		if payload["message"] != "General conversation reply" {
+			t.Fatalf("message payload = %q, want General conversation reply", payload["message"])
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -925,14 +925,14 @@ func TestConversationCommentPostsComment(t *testing.T) {
 
 	bodyFile := writeTextFile(t, "conversation.md", "General conversation reply")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"conversation", "comment", "456", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run conversation comment: %v", err)
+	if err := run([]string{"conversation", "message", "456", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run conversation message: %v", err)
 	}
 }
 
 func TestConversationCommentRejectsBlankBody(t *testing.T) {
 	bodyFile := writeTextFile(t, "blank.md", "   ")
-	if err := run([]string{"conversation", "comment", "456", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--body or at least one attachment") {
+	if err := run([]string{"conversation", "message", "456", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--body or at least one attachment") {
 		t.Fatalf("err = %v, want blank body error", err)
 	}
 }
@@ -949,8 +949,8 @@ func TestConversationCommentPostsMultipartAttachment(t *testing.T) {
 		if err := r.ParseMultipartForm(6 * 1024 * 1024); err != nil {
 			t.Fatalf("parse multipart: %v", err)
 		}
-		if got := r.FormValue("comment"); got != "See attached" {
-			t.Fatalf("comment = %q, want See attached", got)
+		if got := r.FormValue("message"); got != "See attached" {
+			t.Fatalf("message = %q, want See attached", got)
 		}
 		if len(r.MultipartForm.File["attachments[]"]) != 1 {
 			t.Fatalf("attachments count = %d, want 1", len(r.MultipartForm.File["attachments[]"]))
@@ -983,8 +983,8 @@ func TestTaskCommentPostsComment(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["comment"] != "Done and documented" {
-			t.Fatalf("comment payload = %q, want Done and documented", payload["comment"])
+		if payload["message"] != "Done and documented" {
+			t.Fatalf("message payload = %q, want Done and documented", payload["message"])
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -995,8 +995,8 @@ func TestTaskCommentPostsComment(t *testing.T) {
 
 	bodyFile := writeTextFile(t, "comment.md", "Done and documented")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "comment", "123", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run task comment: %v", err)
+	if err := run([]string{"task", "message", "123", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task message: %v", err)
 	}
 }
 
@@ -1006,8 +1006,8 @@ func TestTaskCommentNormalizesEscapedNewlines(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["comment"] != "Done\n\n- documented" {
-			t.Fatalf("comment payload = %q, want normalized newlines", payload["comment"])
+		if payload["message"] != "Done\n\n- documented" {
+			t.Fatalf("message payload = %q, want normalized newlines", payload["message"])
 		}
 
 		w.WriteHeader(http.StatusCreated)
@@ -1017,8 +1017,8 @@ func TestTaskCommentNormalizesEscapedNewlines(t *testing.T) {
 
 	bodyFile := writeTextFile(t, "comment.md", `Done\n\n- documented`)
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "comment", "123", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run task comment: %v", err)
+	if err := run([]string{"task", "message", "123", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task message: %v", err)
 	}
 }
 
@@ -1031,8 +1031,8 @@ func TestTaskCommentPreservesMarkdownInlineAndFencedCode(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["comment"] != want {
-			t.Fatalf("comment payload = %q, want %q", payload["comment"], want)
+		if payload["message"] != want {
+			t.Fatalf("message payload = %q, want %q", payload["message"], want)
 		}
 
 		w.WriteHeader(http.StatusCreated)
@@ -1042,8 +1042,8 @@ func TestTaskCommentPreservesMarkdownInlineAndFencedCode(t *testing.T) {
 
 	bodyFile := writeTextFile(t, "comment.md", body)
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "comment", "123", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run task comment: %v", err)
+	if err := run([]string{"task", "message", "123", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task message: %v", err)
 	}
 }
 
@@ -1059,8 +1059,8 @@ func TestTaskCommentReadsMarkdownBodyFile(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["comment"] != want {
-			t.Fatalf("comment payload = %q, want %q", payload["comment"], want)
+		if payload["message"] != want {
+			t.Fatalf("message payload = %q, want %q", payload["message"], want)
 		}
 
 		w.WriteHeader(http.StatusCreated)
@@ -1069,20 +1069,20 @@ func TestTaskCommentReadsMarkdownBodyFile(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "comment", "123", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run task comment with body file: %v", err)
+	if err := run([]string{"task", "message", "123", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task message with body file: %v", err)
 	}
 }
 
 func TestConversationCommentRejectsBodyStdin(t *testing.T) {
-	err := run([]string{"conversation", "comment", "456", "--body-stdin"})
+	err := run([]string{"conversation", "message", "456", "--body-stdin"})
 	if err == nil || !strings.Contains(err.Error(), "--body-stdin is not supported") {
 		t.Fatalf("err = %v, want body stdin unsupported", err)
 	}
 }
 
 func TestBodyFileDashRejectsStdinAlias(t *testing.T) {
-	err := run([]string{"task", "comment", "123", "--body-file", "-"})
+	err := run([]string{"task", "message", "123", "--body-file", "-"})
 	if err == nil || !strings.Contains(err.Error(), "stdin body input is not supported") {
 		t.Fatalf("err = %v, want stdin body input unsupported", err)
 	}
@@ -1101,8 +1101,8 @@ func TestTaskCommentSupportsAliasAndMessageFlag(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["comment"] != "Alias body" {
-			t.Fatalf("comment payload = %q, want Alias body", payload["comment"])
+		if payload["message"] != "Alias body" {
+			t.Fatalf("message payload = %q, want Alias body", payload["message"])
 		}
 
 		w.WriteHeader(http.StatusCreated)
@@ -1119,13 +1119,13 @@ func TestTaskCommentSupportsAliasAndMessageFlag(t *testing.T) {
 
 func TestTaskCommentRejectsBlankBody(t *testing.T) {
 	bodyFile := writeTextFile(t, "blank.md", "   ")
-	if err := run([]string{"task", "comment", "123", "--body-file", bodyFile}); err == nil {
+	if err := run([]string{"task", "message", "123", "--body-file", bodyFile}); err == nil {
 		t.Fatal("expected blank comment body error")
 	}
 }
 
 func TestTaskCommentRejectsInlineBody(t *testing.T) {
-	err := run([]string{"task", "comment", "123", "--body", "inline"})
+	err := run([]string{"task", "message", "123", "--body", "inline"})
 	if err == nil || !strings.Contains(err.Error(), "--body is not supported") {
 		t.Fatalf("err = %v, want inline body unsupported", err)
 	}
@@ -1140,8 +1140,8 @@ func TestTaskCommentPostsMultipartAttachment(t *testing.T) {
 		if err := r.ParseMultipartForm(6 * 1024 * 1024); err != nil {
 			t.Fatalf("parse multipart: %v", err)
 		}
-		if got := r.FormValue("comment"); got != "See screenshot" {
-			t.Fatalf("comment = %q, want See screenshot", got)
+		if got := r.FormValue("message"); got != "See screenshot" {
+			t.Fatalf("message = %q, want See screenshot", got)
 		}
 		files := r.MultipartForm.File["attachments[]"]
 		if len(files) != 1 {
@@ -1157,8 +1157,8 @@ func TestTaskCommentPostsMultipartAttachment(t *testing.T) {
 
 	bodyFile := writeTextFile(t, "comment.md", "See screenshot")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "comment", "123", "--body-file", bodyFile, "--attach", attachment}); err != nil {
-		t.Fatalf("run task comment with attachment: %v", err)
+	if err := run([]string{"task", "message", "123", "--body-file", bodyFile, "--attach", attachment}); err != nil {
+		t.Fatalf("run task message with attachment: %v", err)
 	}
 }
 
@@ -1757,7 +1757,7 @@ func TestAttachmentRejectsUnsupportedType(t *testing.T) {
 	if err := os.WriteFile(path, []byte("plain text"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := run([]string{"task", "comment", "123", "--attach", path}); err == nil || !strings.Contains(err.Error(), "unsupported attachment type") {
+	if err := run([]string{"task", "message", "123", "--attach", path}); err == nil || !strings.Contains(err.Error(), "unsupported attachment type") {
 		t.Fatalf("err = %v, want unsupported attachment type", err)
 	}
 }
