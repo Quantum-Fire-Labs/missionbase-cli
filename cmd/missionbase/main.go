@@ -1016,7 +1016,7 @@ func task(args []string) error {
 			return fmt.Errorf("usage: missionbase task show <task-id>")
 		}
 		return apiGet("/api/v1/tasks/" + url.PathEscape(args[1]))
-	case "messages", "feed", "comments":
+	case "messages", "comments":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase task %s <task-id> [--limit N]", args[0])
 		}
@@ -1938,7 +1938,7 @@ Commands:
       [--page N] [--per-page N]
   boxes documents create <box-id> --title TITLE --body TEXT
                                       Create a document in a box
-  boxes files <box-id>                List/search Docs & Files entries
+  boxes files <box-id>                List/search Docs & Files items
       [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
   boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
   boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]

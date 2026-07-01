@@ -523,7 +523,7 @@ func TestUsageErrors(t *testing.T) {
 		{"team", "show"},
 		{"boxes", "tasks"},
 		{"boxes", "tasks", "1", "--status-category", "later"},
-		{"task", "feed"},
+		{"task", "messages"},
 		{"conversations", "--page"},
 		{"conversation", "show"},
 	}

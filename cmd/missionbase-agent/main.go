@@ -2055,7 +2055,7 @@ func task(args []string) error {
 		return taskMove(args[1:])
 	case "complete":
 		return taskComplete(args[1:])
-	case "messages", "feed", "comments":
+	case "messages", "comments":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent task %s <task-id> [--limit N]", args[0])
 		}
