@@ -69,6 +69,8 @@ func run(args []string) error {
 		return tasks(args[1:])
 	case "task":
 		return task(args[1:])
+	case "discussion":
+		return discussion(args[1:])
 	case "conversation":
 		return conversation(args[1:])
 	case "workspace":
@@ -767,15 +769,15 @@ func agentBoxes(args []string) error {
 	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/boxes", body)
 }
 
-func conversation(args []string) error {
+func discussion(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent conversation <show|message> ...")
+		return fmt.Errorf("usage: missionbase-agent discussion <show|message> ...")
 	}
 
 	switch args[0] {
 	case "show":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: missionbase-agent conversation show <discussion-id> [--limit N]")
+			return fmt.Errorf("usage: missionbase-agent discussion show <discussion-id> [--limit N]")
 		}
 		path := "/api/v1/conversations/" + url.PathEscape(args[1])
 		path, err := appendLimit(path, args[2:])
@@ -784,21 +786,33 @@ func conversation(args []string) error {
 		}
 		return apiGet(path)
 	case "message", "create-message", "comment", "create-comment", "reply":
-		return conversationMessage(args[1:])
+		return discussionMessage(args[1:], "discussion message")
 	default:
-		return fmt.Errorf("unknown conversation command %q", args[0])
+		return fmt.Errorf("unknown discussion command %q", args[0])
 	}
 }
 
-func conversationMessage(args []string) error {
+func conversation(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent conversation <show|message> ... (deprecated; use discussion <show|message>)")
+	}
+	return discussion(args)
+}
+
+func discussionMessage(args []string, commandName string) error {
+	usage := "usage: missionbase-agent " + commandName + " <discussion-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]"
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent conversation message <discussion-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("%s", usage)
 	}
 	discussionID := args[0]
+	return postDiscussionMessage(discussionID, args[1:], usage, commandName)
+}
+
+func postDiscussionMessage(discussionID string, args []string, usage string, commandName string) error {
 	payload := map[string]string{}
 	var attaches, blobs []string
 
-	for i := 1; i < len(args); i++ {
+	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--body", "--comment", "--message", "--text", "--body-stdin", "--comment-stdin", "--message-stdin", "--text-stdin":
 			return fmt.Errorf("%s is not supported; use --body-file PATH", args[i])
@@ -825,10 +839,10 @@ func conversationMessage(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent conversation message <discussion-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println(usage)
 			return nil
 		default:
-			return fmt.Errorf("unknown conversation message option %q", args[i])
+			return fmt.Errorf("unknown %s option %q", commandName, args[i])
 		}
 	}
 
@@ -849,18 +863,20 @@ func conversationMessage(args []string) error {
 
 func document(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document message <document-id> --body-file PATH [--attach PATH]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
 	}
 
 	switch args[0] {
 	case "show", "fetch", "get":
 		return documentFetch(args[1:])
+	case "message", "comment", "reply":
+		return documentMessage(args[1:])
 	case "create":
 		return documentCreate(args[1:])
 	case "edit", "update":
 		return documentEdit(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document fetch <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document show 77\n  missionbase-agent document fetch 77\n  missionbase-agent document show 77 --format markdown\n  missionbase-agent document show 77 --format html\n  missionbase-agent document show 77 --format plain-text\n  missionbase-agent document create --box 2 --title Runbook --body-file /tmp/runbook.md --folder 67")
+		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document message <document-id> --body-file PATH [--attach PATH]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document show 77\n  missionbase-agent document message 77 --body-file /tmp/reply.md\n  missionbase-agent document show 77 --format markdown\n  missionbase-agent document show 77 --format html\n  missionbase-agent document show 77 --format plain-text\n  missionbase-agent document create --box 2 --title Runbook --body-file /tmp/runbook.md --folder 67")
 		return nil
 	default:
 		return fmt.Errorf("unknown document command %q", args[0])
@@ -921,6 +937,41 @@ func documentFetch(args []string) error {
 		fmt.Fprintf(os.Stderr, "Document URL: %s\n", response.Document.URL)
 	}
 	return nil
+}
+
+func documentMessage(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase-agent document message <document-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+	}
+	documentID := strings.TrimSpace(args[0])
+	if documentID == "" {
+		return fmt.Errorf("document id is required")
+	}
+	discussionID, err := documentDiscussionID(documentID)
+	if err != nil {
+		return err
+	}
+	return postDiscussionMessage(discussionID, args[1:], "usage: missionbase-agent document message <document-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]", "document message")
+}
+
+func documentDiscussionID(documentID string) (string, error) {
+	body, err := apiGetBody("/api/v1/documents/" + url.PathEscape(documentID) + "?format=plain-text")
+	if err != nil {
+		return "", err
+	}
+	var response struct {
+		Document struct {
+			DiscussionID any `json:"discussion_id"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", err
+	}
+	discussionID := fmt.Sprint(response.Document.DiscussionID)
+	if discussionID == "" || discussionID == "<nil>" {
+		return "", fmt.Errorf("document %s does not have a discussion_id", documentID)
+	}
+	return discussionID, nil
 }
 
 func normalizeDocumentFetchFormat(format string) string {
@@ -1377,6 +1428,8 @@ func boxFiles(args []string) error {
 		return boxFileVersions(args[1:])
 	case "upload-version", "new-version":
 		return boxFileUploadVersion(args[1:])
+	case "message", "comment", "reply":
+		return boxFileMessage(args[1:])
 	case "download", "fetch":
 		return boxFileDownload(args[1:])
 	case "--help", "-h":
@@ -1393,6 +1446,7 @@ func boxFilesUsage() string {
 		"       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
 		"       missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]\n" +
 		"       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
+		"       missionbase-agent boxes files message <box-id> <file-id> --body-file PATH [--attach PATH]\n" +
 		"       missionbase-agent boxes files versions <box-id> <file-id>\n" +
 		"       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n" +
 		"       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]\n\n" +
@@ -1465,6 +1519,42 @@ func boxFileShow(args []string) error {
 		return fmt.Errorf("usage: missionbase-agent boxes files show <box-id> <file-id>")
 	}
 	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
+}
+
+func boxFileMessage(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase-agent boxes files message <box-id> <file-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+	}
+	boxID := strings.TrimSpace(args[0])
+	fileID := strings.TrimSpace(args[1])
+	if boxID == "" || fileID == "" {
+		return fmt.Errorf("box id and file id are required")
+	}
+	discussionID, err := boxFileDiscussionID(boxID, fileID)
+	if err != nil {
+		return err
+	}
+	return postDiscussionMessage(discussionID, args[2:], "usage: missionbase-agent boxes files message <box-id> <file-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]", "boxes files message")
+}
+
+func boxFileDiscussionID(boxID string, fileID string) (string, error) {
+	body, err := apiGetBody("/api/v1/boxes/" + url.PathEscape(boxID) + "/files/" + url.PathEscape(fileID))
+	if err != nil {
+		return "", err
+	}
+	var response struct {
+		File struct {
+			DiscussionID any `json:"discussion_id"`
+		} `json:"file"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", err
+	}
+	discussionID := fmt.Sprint(response.File.DiscussionID)
+	if discussionID == "" || discussionID == "<nil>" {
+		return "", fmt.Errorf("file %s does not have a discussion_id", fileID)
+	}
+	return discussionID, nil
 }
 
 func boxFileUpload(args []string) error {
@@ -3088,6 +3178,8 @@ Commands:
                                       Print a document body (default: markdown)
   document fetch <document-id> [--format markdown|html|plain-text]
                                       Compatibility alias for document show
+  document message <document-id> --body-file PATH [--attach PATH]
+                                      Post a Markdown-capable message to a document discussion
   document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]
                                       Create a box document from a Markdown/plain-text file
   document edit <document-id> [--title TITLE] --body-file PATH
@@ -3128,11 +3220,12 @@ Commands:
                                       Add a user participant to a task
   task participants add <task-id> --agent slug
                                       Add an agent participant to a task
-  conversation show <discussion-id> [--limit N]
-                                      Show a discussion conversation
-  conversation message <discussion-id> --body-file PATH
+  discussion show <discussion-id> [--limit N]
+                                      Show a discussion by canonical discussion id
+  discussion message <discussion-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-                                      Post a Markdown-capable reply to a discussion conversation
+                                      Post a Markdown-capable reply by canonical discussion id
+  conversation show/message           Deprecated aliases for discussion show/message
   workspace get --chat-id CHAT_ID     Get the chat workspace as Markdown JSON
   workspace create --chat-id CHAT_ID [--title TITLE]
       [--file PATH|--markdown TEXT]   Create/open a temporary chat workspace
@@ -3161,6 +3254,8 @@ Commands:
   boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
       [--folder FOLDER_ID|--root]
                                       Update uploaded file metadata or placement
+  boxes files message <box-id> <file-id> --body-file PATH [--attach PATH]
+                                      Post a Markdown-capable message to a file/document discussion
   boxes files versions <box-id> <file-id>
                                       List uploaded file versions
   boxes files upload-version <box-id> <file-id> --file PATH
@@ -3193,7 +3288,7 @@ Artifacts:
   window.MissionbaseArtifact.loadState()/saveState(data) for one shared persisted JSON state blob. Static .html uploads remain static previews.
 
 Markdown:
-  DM bodies, task message bodies, conversation message bodies, box discussion bodies, and document bodies are Markdown-capable
+  DM bodies, task/discussion/document/file message bodies, box discussion bodies, and document bodies are Markdown-capable
   by default. Missionbase renders headings, emphasis, links, lists, blockquotes, and fenced code blocks as
   sanitized rich text while preserving ordinary plain-text messages. Accidental escaped newline sequences
   (\\n, \\r, \\r\\n) are normalized to real line breaks outside quoted/backticked code contexts.

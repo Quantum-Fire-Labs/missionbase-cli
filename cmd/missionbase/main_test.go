@@ -220,7 +220,8 @@ func TestReadOnlyCommandDispatchRepresentativeEndpoints(t *testing.T) {
 		{"task messages", []string{"task", "messages", "99", "--limit", "7"}, "/api/v1/tasks/99/comments"},
 		{"task comments legacy alias", []string{"task", "comments", "99"}, "/api/v1/tasks/99/comments"},
 		{"conversations", []string{"conversations", "--page", "2"}, "/api/v1/conversations"},
-		{"conversation show", []string{"conversation", "show", "abc", "--limit", "6"}, "/api/v1/conversations/abc"},
+		{"discussion show", []string{"discussion", "show", "abc", "--limit", "6"}, "/api/v1/conversations/abc"},
+		{"conversation show deprecated alias", []string{"conversation", "show", "abc", "--limit", "6"}, "/api/v1/conversations/abc"},
 	}
 
 	for _, tt := range tests {
@@ -614,7 +615,7 @@ func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
 
 func TestHelpShowsUserWorkflowCommands(t *testing.T) {
 	stdout := captureStdout(t, func() { _ = run([]string{"--help"}) })
-	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "boxes documents create <box-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task messages <task-id>", "conversations", "conversation show <discussion-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {
+	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "boxes tasks <box-id>", "boxes documents create <box-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task messages <task-id>", "conversations", "discussion show <discussion-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q:\n%s", want, stdout)
 		}
@@ -746,7 +747,7 @@ func TestConversationMessagePostsJSON(t *testing.T) {
 	}))
 	defer server.Close()
 	setUserEnv(t, server.URL)
-	if err := run([]string{"conversation", "message", "1", "--message", "hi"}); err != nil {
-		t.Fatalf("run conversation message: %v", err)
+	if err := run([]string{"discussion", "message", "1", "--message", "hi"}); err != nil {
+		t.Fatalf("run discussion message: %v", err)
 	}
 }

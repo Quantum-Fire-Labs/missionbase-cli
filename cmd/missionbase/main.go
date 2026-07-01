@@ -80,6 +80,8 @@ func run(args []string) error {
 		return task(args[1:])
 	case "conversations":
 		return conversations(args[1:])
+	case "discussion":
+		return discussion(args[1:])
 	case "conversation":
 		return conversation(args[1:])
 	case "notes":
@@ -587,7 +589,7 @@ func boxDocumentsCreate(args []string) error {
 
 func boxFiles(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files message <box-id> <file-id> --body TEXT [--attach PATH]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	switch args[0] {
 	case "list", "search":
@@ -602,6 +604,8 @@ func boxFiles(args []string) error {
 		return boxFileMove(args[1:])
 	case "update", "edit":
 		return boxFileUpdate(args[1:])
+	case "message", "comment", "reply":
+		return boxFileMessage(args[1:])
 	case "versions", "version-list":
 		return boxFileVersions(args[1:])
 	case "upload-version", "new-version":
@@ -609,7 +613,7 @@ func boxFiles(args []string) error {
 	case "download", "fetch":
 		return boxFileDownload(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files message <box-id> <file-id> --body TEXT [--attach PATH]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
 		return nil
 	default:
 		return boxFilesList(args)
@@ -678,6 +682,42 @@ func boxFileShow(args []string) error {
 		return fmt.Errorf("usage: missionbase boxes files show <box-id> <file-id>")
 	}
 	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
+}
+
+func boxFileMessage(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: missionbase boxes files message <box-id> <file-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+	}
+	boxID := strings.TrimSpace(args[0])
+	fileID := strings.TrimSpace(args[1])
+	if boxID == "" || fileID == "" {
+		return fmt.Errorf("box id and file id are required")
+	}
+	discussionID, err := boxFileDiscussionID(boxID, fileID)
+	if err != nil {
+		return err
+	}
+	return postDiscussionMessage(discussionID, args[2:], "boxes files message")
+}
+
+func boxFileDiscussionID(boxID string, fileID string) (string, error) {
+	body, err := apiGetBody("/api/v1/boxes/" + url.PathEscape(boxID) + "/files/" + url.PathEscape(fileID))
+	if err != nil {
+		return "", err
+	}
+	var response struct {
+		File struct {
+			DiscussionID any `json:"discussion_id"`
+		} `json:"file"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", err
+	}
+	discussionID := fmt.Sprint(response.File.DiscussionID)
+	if discussionID == "" || discussionID == "<nil>" {
+		return "", fmt.Errorf("file %s does not have a discussion_id", fileID)
+	}
+	return discussionID, nil
 }
 
 func boxFileUpload(args []string) error {
@@ -1210,16 +1250,16 @@ func conversations(args []string) error {
 	return apiGet(withQuery("/api/v1/conversations", values))
 }
 
-func conversation(args []string) error {
+func discussion(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase conversation <show|comment> ...")
+		return fmt.Errorf("usage: missionbase discussion <show|message> ...")
 	}
 	switch args[0] {
 	case "message", "reply", "create-message", "comment", "create-comment":
-		return conversationMessage(args[1:])
+		return discussionMessage(args[1:], "discussion message")
 	case "show":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: missionbase conversation show <discussion-id> [--limit N]")
+			return fmt.Errorf("usage: missionbase discussion show <discussion-id> [--limit N]")
 		}
 		path, err := appendLimit("/api/v1/conversations/"+url.PathEscape(args[1]), args[2:])
 		if err != nil {
@@ -1227,11 +1267,18 @@ func conversation(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase conversation show <discussion-id> [--limit N]\n       missionbase conversation message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		fmt.Println("usage: missionbase discussion show <discussion-id> [--limit N]\n       missionbase discussion message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 		return nil
 	default:
-		return fmt.Errorf("unknown conversation command %q", args[0])
+		return fmt.Errorf("unknown discussion command %q", args[0])
 	}
+}
+
+func conversation(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase conversation <show|message> ... (deprecated; use discussion <show|message>)")
+	}
+	return discussion(args)
 }
 
 func notes(args []string) error {
@@ -1275,15 +1322,17 @@ func notesSearch(args []string) error {
 
 func document(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase document <show|update> ...")
+		return fmt.Errorf("usage: missionbase document <show|message|update> ...")
 	}
 	switch args[0] {
 	case "show":
 		return documentShow(args[1:])
+	case "message", "comment", "reply":
+		return documentMessage(args[1:])
 	case "update", "edit":
 		return documentUpdate(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase document show <document-id> [--format markdown|html|plain-text]\n       missionbase document update <document-id> [--title TITLE] --body TEXT")
+		fmt.Println("usage: missionbase document show <document-id> [--format markdown|html|plain-text]\n       missionbase document message <document-id> --body TEXT [--attach PATH]\n       missionbase document update <document-id> [--title TITLE] --body TEXT")
 		return nil
 	default:
 		return fmt.Errorf("unknown document command %q", args[0])
@@ -1316,6 +1365,41 @@ func documentShow(args []string) error {
 		}
 	}
 	return apiGet(withQuery("/api/v1/documents/"+url.PathEscape(documentID), values))
+}
+
+func documentMessage(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase document message <document-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+	}
+	documentID := strings.TrimSpace(args[0])
+	if documentID == "" {
+		return fmt.Errorf("document id is required")
+	}
+	discussionID, err := documentDiscussionID(documentID)
+	if err != nil {
+		return err
+	}
+	return postDiscussionMessage(discussionID, args[1:], "document message")
+}
+
+func documentDiscussionID(documentID string) (string, error) {
+	body, err := apiGetBody("/api/v1/documents/" + url.PathEscape(documentID) + "?format=plain-text")
+	if err != nil {
+		return "", err
+	}
+	var response struct {
+		Document struct {
+			DiscussionID any `json:"discussion_id"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", err
+	}
+	discussionID := fmt.Sprint(response.Document.DiscussionID)
+	if discussionID == "" || discussionID == "<nil>" {
+		return "", fmt.Errorf("document %s does not have a discussion_id", documentID)
+	}
+	return discussionID, nil
 }
 
 func documentUpdate(args []string) error {
@@ -1549,12 +1633,16 @@ func taskMessage(args []string) error {
 	return apiWrite("POST", "/api/v1/tasks/"+url.PathEscape(taskID)+"/comments", payload, attaches, blobs)
 }
 
-func conversationMessage(args []string) error {
+func discussionMessage(args []string, commandName string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase conversation message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase %s <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]", commandName)
 	}
 	discussionID := args[0]
-	payload, attaches, blobs, err := parseCommentArgs(args[1:], "conversation message")
+	return postDiscussionMessage(discussionID, args[1:], commandName)
+}
+
+func postDiscussionMessage(discussionID string, args []string, commandName string) error {
+	payload, attaches, blobs, err := parseCommentArgs(args, commandName)
 	if err != nil {
 		return err
 	}
@@ -1870,6 +1958,8 @@ Commands:
                                       Unpin a supported page from the current user's sidebar
   document show <document-id> [--format markdown|html|plain-text]
                                       Show a document
+  document message <document-id> --body TEXT [--attach PATH]
+                                      Add a document discussion message
   document update <document-id> [--title TITLE] --body TEXT
                                       Update a document
   tasks assigned                      List tasks assigned to the current user
@@ -1895,10 +1985,11 @@ Commands:
   task comments <task-id> [--limit N] Legacy alias for task messages
   conversations [--page N] [--per-page N]
                                       List conversations visible to the current user
-  conversation show <discussion-id> [--limit N]
-                                      Show a conversation/discussion
-  conversation message <discussion-id> --body TEXT
-                                      Add a conversation message
+  discussion show <discussion-id> [--limit N]
+                                      Show a discussion by canonical discussion id
+  discussion message <discussion-id> --body TEXT
+                                      Add a discussion message by canonical discussion id
+  conversation show/message           Deprecated aliases for discussion show/message
   get /api/path                       GET an API path and print JSON
   post /api/path --json JSON          Raw POST as the signed-in user
   patch /api/path --json JSON         Raw PATCH as the signed-in user
