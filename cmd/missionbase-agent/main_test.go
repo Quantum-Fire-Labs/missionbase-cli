@@ -923,16 +923,16 @@ func TestConversationCommentPostsComment(t *testing.T) {
 	}))
 	defer server.Close()
 
-	bodyFile := writeTextFile(t, "conversation.md", "General conversation reply")
+	bodyFile := writeTextFile(t, "discussion.md", "General conversation reply")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"conversation", "message", "456", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run conversation message: %v", err)
+	if err := run([]string{"discussion", "message", "456", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run discussion message: %v", err)
 	}
 }
 
 func TestConversationCommentRejectsBlankBody(t *testing.T) {
 	bodyFile := writeTextFile(t, "blank.md", "   ")
-	if err := run([]string{"conversation", "message", "456", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--body or at least one attachment") {
+	if err := run([]string{"discussion", "message", "456", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--body or at least one attachment") {
 		t.Fatalf("err = %v, want blank body error", err)
 	}
 }
@@ -960,10 +960,10 @@ func TestConversationCommentPostsMultipartAttachment(t *testing.T) {
 	}))
 	defer server.Close()
 
-	bodyFile := writeTextFile(t, "conversation.md", "See attached")
+	bodyFile := writeTextFile(t, "discussion.md", "See attached")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"conversation", "reply", "456", "--body-file", bodyFile, "--attach", attachment}); err != nil {
-		t.Fatalf("run conversation reply with attachment: %v", err)
+	if err := run([]string{"discussion", "reply", "456", "--body-file", bodyFile, "--attach", attachment}); err != nil {
+		t.Fatalf("run discussion reply with attachment: %v", err)
 	}
 }
 
@@ -1075,7 +1075,7 @@ func TestTaskCommentReadsMarkdownBodyFile(t *testing.T) {
 }
 
 func TestConversationCommentRejectsBodyStdin(t *testing.T) {
-	err := run([]string{"conversation", "message", "456", "--body-stdin"})
+	err := run([]string{"discussion", "message", "456", "--body-stdin"})
 	if err == nil || !strings.Contains(err.Error(), "--body-stdin is not supported") {
 		t.Fatalf("err = %v, want body stdin unsupported", err)
 	}

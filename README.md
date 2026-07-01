@@ -46,7 +46,7 @@ missionbase tasks assigned
 
 The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
 
-The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, scratchpad show/update, teams, users, boxes, tasks, task discussion messages, conversations, standalone box discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/message, conversation messages, and box discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
+The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, scratchpad show/update, teams, users, boxes, tasks, task discussion messages, conversations, standalone box discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/message, discussion/document/file messages, and box discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
 
 Credentials are stored at:
 
@@ -144,6 +144,7 @@ missionbase boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]
 missionbase boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)
 missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
 missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
+missionbase boxes files message <box-id> <file-id> --body TEXT [--attach PATH]
 missionbase boxes files versions <box-id> <file-id>
 missionbase boxes files upload-version <box-id> <file-id> --file PATH
 missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
@@ -158,6 +159,7 @@ missionbase sidebar pins
 missionbase sidebar pin --type box_file --id <box-file-id>
 missionbase sidebar unpin --type box_file --id <box-file-id>
 missionbase document show <document-id> [--format markdown|html|plain-text]
+missionbase document message <document-id> --body TEXT [--attach PATH]
 missionbase document update <document-id> [--title TITLE] --body TEXT
 missionbase tasks assigned [--page N] [--per-page N]
 missionbase tasks visible [--page N] [--per-page N]
@@ -174,8 +176,9 @@ missionbase task show <task-id>
 missionbase task messages <task-id> [--limit N]
 missionbase task comments <task-id> [--limit N] # compatibility alias
 missionbase conversations [--page N] [--per-page N]
-missionbase conversation show <discussion-id> [--limit N]
-missionbase conversation message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+missionbase discussion show <discussion-id> [--limit N]
+missionbase discussion message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+missionbase conversation show/message ... # deprecated aliases for discussion show/message
 missionbase get /api/v1/users/me
 missionbase post /api/path --json JSON
 missionbase patch /api/path --json JSON
@@ -201,6 +204,7 @@ missionbase-agent agent restore fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
 missionbase-agent document show <document-id> [--format markdown|html|plain-text]
 missionbase-agent document fetch <document-id> [--format markdown|html|plain-text] # compatibility alias
+missionbase-agent document message <document-id> --body-file /tmp/reply.md [--attach /path/to/image.png]
 missionbase-agent document create --box <box-id> --title "Doc title" --body-file /tmp/document.md [--folder FOLDER_ID|--root]
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
 missionbase-agent tasks
@@ -225,8 +229,9 @@ missionbase-agent task comments <task-id> [--limit N] # compatibility alias
 missionbase-agent task participants list <task-id>
 missionbase-agent task participants add <task-id> --user <user-id-or-mention>
 missionbase-agent task participants add <task-id> --agent <agent-slug>
-missionbase-agent conversation show <discussion-id> [--limit N]
-missionbase-agent conversation message <discussion-id> --body-file /tmp/body.md [--attach /path/to/image.png]
+missionbase-agent discussion show <discussion-id> [--limit N]
+missionbase-agent discussion message <discussion-id> --body-file /tmp/body.md [--attach /path/to/image.png]
+missionbase-agent conversation show/message ... # deprecated aliases for discussion show/message
 missionbase-agent members [--box ID]
 missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--scheduled actionable|future|all] [--page N] [--per-page N]
 missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
@@ -237,6 +242,7 @@ missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|-
 missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)
 missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
 missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
+missionbase-agent boxes files message <box-id> <file-id> --body-file /tmp/reply.md [--attach /path/to/image.png]
 missionbase-agent boxes files versions <box-id> <file-id>
 missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH
 missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
@@ -251,17 +257,17 @@ missionbase-agent update
 
 User CLI read and write commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only, `missionbase work` calls `/api/v1/users/work` to return the current user, assigned/open tasks, unread discussion conversations, unread direct-message conversations, and inbox-oriented metadata, user/mention lookup uses `/api/v1/users/lookup` and `/api/v1/teams/:team_id/members`, and assignment/participant writes use user-acting task endpoints. The user CLI never calls agent-only member endpoints, never supports `--agent` assignment/participants, and agent identity and agent-management workflows remain exclusive to `missionbase-agent`; human DM unread state is exposed only through the user work overview JSON.
 
-User CLI write commands use JSON requests when no attachments are present and multipart requests when repeated `--attach PATH` or `--attach-blob SIGNED_ID_OR_SGID` flags are used. Local attachments are limited to PNG, JPEG, GIF, and WEBP images up to 5 MB. User-authored task descriptions, messages, conversation messages, and box discussion bodies are Markdown-capable and normalize accidental escaped newline sequences outside quoted/code contexts. Message body aliases `--body`, `--comment`, `--message`, and `--text` are supported.
+User CLI write commands use JSON requests when no attachments are present and multipart requests when repeated `--attach PATH` or `--attach-blob SIGNED_ID_OR_SGID` flags are used. Local attachments are limited to PNG, JPEG, GIF, and WEBP images up to 5 MB. User-authored task descriptions, task/discussion/document/file messages, and box discussion bodies are Markdown-capable and normalize accidental escaped newline sequences outside quoted/code contexts. Message body aliases `--body`, `--comment`, `--message`, and `--text` are supported.
 
 Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar pins`, `missionbase sidebar pin --type box_file --id ID`, and `missionbase sidebar unpin --type box_file --id ID` always act as the signed-in user and do not accept a target user. `missionbase-agent sidebar pins --user ID|@mention`, `missionbase-agent sidebar pin --user ID|@mention --type box_file --id ID`, and `missionbase-agent sidebar unpin --user ID|@mention --type box_file --id ID` use agent authentication and permissions to manage a specific user's pins. The initial supported item type is `box_file`, where `ID` is the BoxFile/Docs & Files entry id.
 
 `missionbase users lookup <query>` calls user lookup directly. `missionbase users lookup @mention --team <team-id>` resolves a team member mention. Task assignment and participant commands accept numeric user ids directly; when resolving `@mention`, pass `--team` or let the CLI derive the team from the task when the task response includes box/team context. If team context cannot be inferred, the CLI asks for `--team` or a numeric user id.
 
-`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches unified BoxFile-backed Docs & Files entries with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, folder parent/path/children metadata, filter/sort, and pagination metadata. Use `--folder-id FOLDER_ID` (or legacy `--folder FOLDER_ID`) or `--root` to scope listings/uploads, `--recursive` to search across folders, `mkdir` to create folders, and `mv`/`update --folder|--root` to move docs/files/folders. `show ...` prints one BoxFile/document/folder entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file/folder metadata, and `download ... --output PATH` writes an uploaded file to disk (folders are rejected by the API). User-facing `missionbase boxes files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document show ...` prints a document body and reports the document URL when the API response includes one; `document fetch` remains a compatibility alias; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL and any backing BoxFile metadata returned by the API; pass `--folder FOLDER_ID` or `--root` to place the document in a folder or at the box root. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task show ...` prints full task working context from `/api/v1/tasks/:id`. `missionbase-agent task message ...` posts a message/reply to the task conversation discussion. `missionbase-agent conversation message ...` posts a reply to any readable discussion conversation, including task conversations and standalone discussions.
+`missionbase-agent boxes discussions ...` lists standalone box discussions only; it does not include task conversations. `missionbase-agent boxes discussions create ...` creates a standalone box discussion/post and prints the created discussion JSON. `missionbase-agent boxes files ...` lists/searches unified BoxFile-backed Docs & Files entries with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, folder parent/path/children metadata, filter/sort, and pagination metadata. Use `--folder-id FOLDER_ID` (or legacy `--folder FOLDER_ID`) or `--root` to scope listings/uploads, `--recursive` to search across folders, `mkdir` to create folders, and `mv`/`update --folder|--root` to move docs/files/folders. `show ...` prints one BoxFile/document/folder entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file/folder metadata, and `download ... --output PATH` writes an uploaded file to disk (folders are rejected by the API). User-facing `missionbase boxes files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document show ...` prints a document body and reports the document URL when the API response includes one; `document fetch` remains a compatibility alias; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a box document and prints the created document JSON, including its URL and any backing BoxFile metadata returned by the API; pass `--folder FOLDER_ID` or `--root` to place the document in a folder or at the box root. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task show ...` prints full task working context from `/api/v1/tasks/:id`. `missionbase-agent task message ...` posts a message/reply to the task discussion. `missionbase-agent discussion message ...` posts by canonical discussion id, while `document message ...` and `boxes files message ...` resolve their canonical document/file ids to the backing discussion before posting. `missionbase-agent conversation show/message` remains only as a deprecated alias for `discussion show/message`.
 
-Task message, conversation message, box discussion create, document, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
+Task, discussion, document, file, box discussion create, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
-Agent-authored posting bodies are file-only: use `--body-file PATH` for DM bodies, task messages, conversation messages, box discussion bodies, and document bodies. Task creation opening messages use `--body-file PATH`. Inline body flags and stdin body input (`--body-stdin` or `--body-file -`) are intentionally unsupported for these write flows so Markdown, backticks, and shell-sensitive content are read from disk instead of passing through fragile shell quoting or piped interactive flows.
+Agent-authored posting bodies are file-only: use `--body-file PATH` for DM bodies, task messages, discussion/document/file messages, box discussion bodies, and document bodies. Task creation opening messages use `--body-file PATH`. Inline body flags and stdin body input (`--body-stdin` or `--body-file -`) are intentionally unsupported for these write flows so Markdown, backticks, and shell-sensitive content are read from disk instead of passing through fragile shell quoting or piped interactive flows.
 
 Recommended workflow:
 
@@ -292,7 +298,7 @@ When file content accidentally contains escaped newline sequences (`\n`, `\r`, o
 
 `missionbase-agent boxes task-statuses <box-id>` (alias: `boxes statuses`) prints all configured task statuses for an agent-accessible box as JSON, including custom and archived statuses. Each status includes `id`, `key`, `name`, `category`, `position`, `color`, `default_open`, `primary_done`, `primary_canceled`, and `archived`.
 
-Task create/message and conversation message accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, WEBP, HEIC, and HEIF images up to 5 MB each. Attachments are appended inline to the task description or message rich text so they are visible in the Missionbase UI.
+Task create/message and discussion/document/file message accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, WEBP, HEIC, and HEIF images up to 5 MB each. Attachments are appended inline to the task description or message rich text so they are visible in the Missionbase UI.
 
 Examples:
 
@@ -318,7 +324,7 @@ missionbase-agent document show 789 --format html
 missionbase-agent document fetch 789 --format plain-text
 missionbase-agent document create --box 2 --title "Runbook" --body-file /tmp/runbook.md --folder 42
 missionbase-agent document edit 789 --title "Updated runbook" --body-file /tmp/runbook-v2.md
-missionbase-agent conversation message 456 --body-file /tmp/reply.md --attach /tmp/context.png
+missionbase-agent discussion message 456 --body-file /tmp/reply.md --attach /tmp/context.png
 missionbase-agent task message 123 --body-file /tmp/findings.md
 missionbase-agent task message 123 --body-file /tmp/comment.md --attach-blob "<signed-id-or-sgid>"
 ```
@@ -378,18 +384,18 @@ missionbase-agent dm send --chat 42 --body-file /tmp/reply.md
 
 ### Rich text and attachments
 
-`missionbase-agent` prints the Missionbase API JSON response as-is for read commands. `missionbase-agent work` returns the next actionable assigned task as full task context, or a structured empty response (`{"has_work":false,"task":null}`). Conversations, mentions, and DMs are wake-up/read flows driven by `listen`, `conversation show`, and `dm show`, not by `work`. Task descriptions, task discussion messages, full conversation messages, and DM messages include backwards-compatible plain text fields plus rich text fields when the server provides them:
+`missionbase-agent` prints the Missionbase API JSON response as-is for read commands. `missionbase-agent work` returns the next actionable assigned task as full task context, or a structured empty response (`{"has_work":false,"task":null}`). Discussions, mentions, and DMs are wake-up/read flows driven by `listen`, `discussion show`, and `dm show`, not by `work`. Task descriptions, task discussion messages, full conversation messages, and DM messages include backwards-compatible plain text fields plus rich text fields when the server provides them:
 
 - `description`, `body`, or `content`: existing plain text or HTML-compatible field, depending on the command.
 - `description_html`, `body_html`, or `content_html`: rendered rich-text HTML.
 - `description_rich_text`, `body_rich_text`, or `content_rich_text`: object with `plain_text`, `html`, and `attachments`.
 - `attachments`: convenience copy of the rich-text attachment list. File/image attachments include `filename`, `content_type`, `byte_size`, `image`, and a relative download `url` where supported.
 
-Use `missionbase-agent task show <task-id>`, `missionbase-agent conversation show <discussion-id>`, `missionbase-agent task messages <task-id>`, `missionbase-agent document show <document-id>`, and `missionbase-agent dm show <chat-id>` to inspect this rich content. Agents should use the plain text fields for prompt context and consult the `attachments` arrays to discover files/images that may need separate handling.
+Use `missionbase-agent task show <task-id>`, `missionbase-agent discussion show <discussion-id>`, `missionbase-agent task messages <task-id>`, `missionbase-agent document show <document-id>`, and `missionbase-agent dm show <chat-id>` to inspect this rich content. Agents should use the plain text fields for prompt context and consult the `attachments` arrays to discover files/images that may need separate handling.
 
 ### Other agent commands
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `task move <task-id> --box <box-id>` moves a task to another accessible box and relies on the server to remap the task status safely for the destination box; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status-category`, `--task-status-ids`, legacy `--status`, `--page`, and `--per-page` to refine results. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `conversation show/message` remains the generic discussion conversation surface for task conversations and standalone discussions. `missionbase-agent boxes files <box-id>` lists and searches unified box files/documents as JSON; use `--query`, `--filter`, `--sort`, `--folder-id`, `--root`, `--recursive`, `--page`, and `--per-page` to filter or paginate, plus `show`, `mkdir`, `mv`, `upload`, `update`, `versions`, `upload-version`, and `download` subcommands for file/folder workflows. Box/task API responses include `task_statuses`/`task_status_id`, `status_label`, `status_category`, `task_status_position`, and `status_color` so clients can discover and display allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `task move <task-id> --box <box-id>` moves a task to another accessible box and relies on the server to remap the task status safely for the destination box; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status-category`, `--task-status-ids`, legacy `--status`, `--page`, and `--per-page` to refine results. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `discussion show/message` is the generic canonical-id surface for standalone discussions and other readable discussion threads (`conversation show/message` is deprecated). `missionbase-agent boxes files <box-id>` lists and searches unified box files/documents as JSON; use `--query`, `--filter`, `--sort`, `--folder-id`, `--root`, `--recursive`, `--page`, and `--per-page` to filter or paginate, plus `show`, `mkdir`, `mv`, `upload`, `update`, `versions`, `upload-version`, and `download` subcommands for file/folder workflows. Box/task API responses include `task_statuses`/`task_status_id`, `status_label`, `status_category`, `task_status_position`, and `status_color` so clients can discover and display allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Agent check helper
 
