@@ -94,7 +94,7 @@ def clean_name(value):
     return value[:97] + "..." if len(value) > 100 else value
 
 def conversation_id(conversation):
-    for key in ("discussion_id", "id", "conversation_id", "participant_id", "feed_id"):
+    for key in ("discussion_id", "id", "conversation_id", "participant_id"):
         value = conversation.get(key)
         if value is not None:
             return value
@@ -124,7 +124,9 @@ if actionable:
     elif conversations:
         conversation = conversations[0]
         task = conversation.get("task") if isinstance(conversation.get("task"), dict) else None
-        task_id = task.get("id") if task else (conversation.get("feedable_id") if conversation.get("feedable_type") == "Task" else None)
+        resource_type = conversation.get("resource_type")
+        resource_id = conversation.get("resource_id")
+        task_id = task.get("id") if task else (resource_id if resource_type == "Task" else None)
         conv_id = conversation_id(conversation)
         if task_id is not None and task_assigned_to_current_agent(task or {"id": task_id}):
             session_id = f"missionbase-task-{task_id}"
