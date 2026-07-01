@@ -732,7 +732,7 @@ func TestTaskMessageUsesMultipartWithAttachment(t *testing.T) {
 
 func TestConversationMessagePostsJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/conversations/feed-1/comments" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/conversations/1/comments" {
 			t.Fatalf("%s %s", r.Method, r.URL.Path)
 		}
 		if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
@@ -746,7 +746,7 @@ func TestConversationMessagePostsJSON(t *testing.T) {
 	}))
 	defer server.Close()
 	setUserEnv(t, server.URL)
-	if err := run([]string{"conversation", "message", "feed-1", "--message", "hi"}); err != nil {
+	if err := run([]string{"conversation", "message", "1", "--message", "hi"}); err != nil {
 		t.Fatalf("run conversation message: %v", err)
 	}
 }

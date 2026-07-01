@@ -351,7 +351,7 @@ func TestBoxesDiscussionsGetsStandaloneDiscussions(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"discussions":[{"id":7,"title":"Standalone","feed_id":77}],"meta":{"total":1}}`))
+		_, _ = w.Write([]byte(`{"discussions":[{"id":7,"title":"Standalone"}],"meta":{"total":1}}`))
 	}))
 	defer server.Close()
 
@@ -688,7 +688,7 @@ func TestBoxesDiscussionsCreatePostsDiscussion(t *testing.T) {
 			t.Fatalf("body = %q, want real multiline body", got)
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"discussion":{"id":8,"title":"Planning","feed_id":88,"box_id":2}}`))
+		_, _ = w.Write([]byte(`{"discussion":{"id":8,"title":"Planning","box_id":2}}`))
 	}))
 	defer server.Close()
 
@@ -919,7 +919,7 @@ func TestConversationCommentPostsComment(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"comment":{"id":654,"feed_id":456,"body":"General conversation reply"}}`))
+		_, _ = w.Write([]byte(`{"comment":{"id":654,"body":"General conversation reply"}}`))
 	}))
 	defer server.Close()
 
@@ -940,8 +940,8 @@ func TestConversationCommentRejectsBlankBody(t *testing.T) {
 func TestConversationCommentPostsMultipartAttachment(t *testing.T) {
 	attachment := writePNG(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/conversations/feed-456/comments" {
-			t.Fatalf("path = %s, want /api/v1/conversations/feed-456/comments", r.URL.Path)
+		if r.URL.Path != "/api/v1/conversations/456/comments" {
+			t.Fatalf("path = %s, want /api/v1/conversations/456/comments", r.URL.Path)
 		}
 		if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "multipart/form-data;") {
 			t.Fatalf("content-type = %q, want multipart/form-data", got)
@@ -962,7 +962,7 @@ func TestConversationCommentPostsMultipartAttachment(t *testing.T) {
 
 	bodyFile := writeTextFile(t, "conversation.md", "See attached")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"conversation", "reply", "feed-456", "--body-file", bodyFile, "--attach", attachment}); err != nil {
+	if err := run([]string{"conversation", "reply", "456", "--body-file", bodyFile, "--attach", attachment}); err != nil {
 		t.Fatalf("run conversation reply with attachment: %v", err)
 	}
 }
