@@ -930,6 +930,32 @@ func TestConversationCommentPostsComment(t *testing.T) {
 	}
 }
 
+func TestDiscussionConvertPostsPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/conversations/456/task_conversion" {
+			t.Fatalf("%s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if payload["title"] != "Converted" || payload["description"] != "Body" || payload["assign_to_agent_slug"] != "missionbase-dev" {
+			t.Fatalf("payload = %#v", payload)
+		}
+		_, _ = w.Write([]byte(`{"task":{"id":99}}`))
+	}))
+	defer server.Close()
+
+	bodyFile := writeTextFile(t, "description.md", "Body")
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"discussion", "convert", "456", "--title", "Converted", "--description-file", bodyFile, "--assign-agent", "missionbase-dev"}); err != nil {
+		t.Fatalf("run discussion convert: %v", err)
+	}
+}
+
 func TestConversationCommentRejectsBlankBody(t *testing.T) {
 	bodyFile := writeTextFile(t, "blank.md", "   ")
 	if err := run([]string{"discussion", "message", "456", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--body or at least one attachment") {

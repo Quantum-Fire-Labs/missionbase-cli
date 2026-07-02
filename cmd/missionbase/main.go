@@ -1257,6 +1257,8 @@ func discussion(args []string) error {
 	switch args[0] {
 	case "message", "reply", "create-message", "comment", "create-comment":
 		return discussionMessage(args[1:], "discussion message")
+	case "convert", "convert-to-task", "task":
+		return discussionConvert(args[1:])
 	case "show":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase discussion show <discussion-id> [--limit N]")
@@ -1267,7 +1269,7 @@ func discussion(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase discussion show <discussion-id> [--limit N]\n       missionbase discussion message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		fmt.Println("usage: missionbase discussion show <discussion-id> [--limit N]\n       missionbase discussion message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
 		return nil
 	default:
 		return fmt.Errorf("unknown discussion command %q", args[0])
@@ -1639,6 +1641,37 @@ func discussionMessage(args []string, commandName string) error {
 	}
 	discussionID := args[0]
 	return postDiscussionMessage(discussionID, args[1:], commandName)
+}
+
+func discussionConvert(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
+	}
+	discussionID := args[0]
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title", "--description", "--body", "--deadline", "--status", "--task-status-id", "--assign-user", "--assign-agent":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			key := map[string]string{"--title": "title", "--description": "description", "--body": "description", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
+			payload[key] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("usage: missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
+			return nil
+		default:
+			return fmt.Errorf("unknown discussion convert option %q", args[i])
+		}
+	}
+	if payload["deadline"] != "" {
+		if _, err := time.Parse("2006-01-02", payload["deadline"]); err != nil {
+			return fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
+		}
+	}
+	payload["description"] = textbody.Normalize(payload["description"])
+	return apiPostJSON("/api/v1/conversations/"+url.PathEscape(discussionID)+"/task_conversion", payload)
 }
 
 func postDiscussionMessage(discussionID string, args []string, commandName string) error {
