@@ -1861,6 +1861,109 @@ func TestSidebarCommandsUseAgentEndpointWithTargetUser(t *testing.T) {
 	}
 }
 
+func TestActivityCommandBuildsBoxQueryAndPrintsSummary(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/boxes/2/activity_events" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.String())
+		}
+		query := r.URL.Query()
+		wants := map[string]string{
+			"since":        "2026-07-01T00:00:00Z",
+			"until":        "2026-07-02T00:00:00Z",
+			"actor":        "Agent:2",
+			"subject_type": "Task",
+			"subject_id":   "2902",
+			"action":       "task.updated",
+			"cursor":       "99",
+			"limit":        "5",
+		}
+		for key, want := range wants {
+			if got := query.Get(key); got != want {
+				t.Fatalf("query %s = %q, want %q (raw %s)", key, got, want, r.URL.RawQuery)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"activity_events":[{"id":100,"actor":{"type":"Agent","id":2,"name":"MissionbaseDev"},"scope":{"box":{"type":"Box","id":2,"name":"Missionbase"}},"subject":{"type":"Task","id":2902,"name":"Expose activity logging"},"action":"task.updated","timestamp":"2026-07-02T17:00:00Z","summary":"MissionbaseDev updated task 2902","source":"agent","metadata":{"field":"status"},"route":{"url":"https://dash.missionbase.app/tasks/2902"}}],"next_cursor":100}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	stdout := captureStdout(t, func() {
+		if err := run([]string{"activity", "box", "2", "--since", "2026-07-01T00:00:00Z", "--until", "2026-07-02T00:00:00Z", "--actor", "Agent:2", "--subject-type", "Task", "--subject-id", "2902", "--action", "task.updated", "--cursor", "99", "--limit", "5"}); err != nil {
+			t.Fatalf("run activity box: %v", err)
+		}
+	})
+	for _, want := range []string{"2026-07-02T17:00:00Z", "Box #2 Missionbase", "Agent #2 MissionbaseDev", "task.updated", "Task #2902 Expose activity logging", "MissionbaseDev updated task 2902", "metadata:", "Next cursor: 100"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q in:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestBoxesActivityAliasAndJSONOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/boxes/2/activity_events" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.String())
+		}
+		if got := r.URL.Query().Get("limit"); got != "1" {
+			t.Fatalf("limit = %q, want 1", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"activity_events":[],"next_cursor":null}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	stdout := captureStdout(t, func() {
+		if err := run([]string{"boxes", "activity", "2", "--limit", "1", "--json"}); err != nil {
+			t.Fatalf("run boxes activity: %v", err)
+		}
+	})
+	if !strings.Contains(stdout, `"activity_events":[]`) {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestActivityTeamDurationBuildsTeamEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/teams/7/activity_events" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.String())
+		}
+		if r.URL.Query().Get("since") == "" {
+			t.Fatalf("since missing from duration query: %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"activity_events":[],"next_cursor":null}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	stdout := captureStdout(t, func() {
+		if err := run([]string{"activity", "team", "7", "--duration", "24h"}); err != nil {
+			t.Fatalf("run activity team: %v", err)
+		}
+	})
+	if !strings.Contains(stdout, "No activity events found.") {
+		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestActivityHelpMentionsJSONAndFilters(t *testing.T) {
+	stdout := captureStdout(t, func() {
+		if err := run([]string{"activity", "--help"}); err != nil {
+			t.Fatalf("run activity help: %v", err)
+		}
+	})
+	for _, want := range []string{"missionbase-agent activity <box|team> <id>", "--since TIME", "--cursor ID", "--json"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("help missing %q in:\n%s", want, stdout)
+		}
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	original := os.Stdout

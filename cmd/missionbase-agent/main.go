@@ -81,6 +81,8 @@ func run(args []string) error {
 		return sidebar(args[1:])
 	case "boxes":
 		return boxes(args[1:])
+	case "activity":
+		return activity(args[1:])
 	case "get":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent get /api/path")
@@ -1340,7 +1342,7 @@ func readWorkspaceStdinIfPiped() ([]byte, error) {
 
 func boxes(args []string) error {
 	if len(args) == 0 {
-		fmt.Println("usage: missionbase-agent boxes <tasks|discussions|statuses|task-statuses>")
+		fmt.Println("usage: missionbase-agent boxes <tasks|discussions|activity|files|statuses|task-statuses>")
 		return nil
 	}
 
@@ -1351,11 +1353,238 @@ func boxes(args []string) error {
 		return boxDiscussions(args[1:])
 	case "files":
 		return boxFiles(args[1:])
+	case "activity", "activity-events":
+		return scopedActivity("box", args[1:])
 	case "statuses", "task-statuses":
 		return boxTaskStatuses(args[1:])
 	default:
 		return fmt.Errorf("unknown boxes command %q", args[0])
 	}
+}
+
+type activityResponse struct {
+	ActivityEvents []activityEvent `json:"activity_events"`
+	NextCursor     any             `json:"next_cursor"`
+}
+
+type activityEvent struct {
+	ID        any            `json:"id"`
+	Actor     *activityRef   `json:"actor"`
+	Scope     activityScope  `json:"scope"`
+	Subject   *activityRef   `json:"subject"`
+	Action    string         `json:"action"`
+	Timestamp string         `json:"timestamp"`
+	Summary   string         `json:"summary"`
+	Source    string         `json:"source"`
+	Metadata  map[string]any `json:"metadata"`
+	Route     map[string]any `json:"route"`
+}
+
+type activityScope struct {
+	Box  *activityRef `json:"box"`
+	Team *activityRef `json:"team"`
+}
+
+type activityRef struct {
+	Type string `json:"type"`
+	ID   any    `json:"id"`
+	Name string `json:"name"`
+}
+
+func activity(args []string) error {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		fmt.Println(activityUsage())
+		return nil
+	}
+
+	switch args[0] {
+	case "box", "boxes":
+		return scopedActivity("box", args[1:])
+	case "team", "teams":
+		return scopedActivity("team", args[1:])
+	default:
+		return fmt.Errorf("unknown activity scope %q", args[0])
+	}
+}
+
+func scopedActivity(scope string, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("%s", activityUsage())
+	}
+	if args[0] == "--help" || args[0] == "-h" {
+		fmt.Println(activityUsage())
+		return nil
+	}
+
+	scopeID := strings.TrimSpace(args[0])
+	if scopeID == "" {
+		return fmt.Errorf("%s id is required", scope)
+	}
+
+	values := url.Values{}
+	jsonOutput := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--since", "--from", "--start-time", "--occurred-after":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			values.Set("since", args[i+1])
+			i++
+		case "--until", "--to", "--end-time", "--occurred-before":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			values.Set("until", args[i+1])
+			i++
+		case "--duration", "--last":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a duration value", args[i])
+			}
+			d, err := time.ParseDuration(args[i+1])
+			if err != nil {
+				return fmt.Errorf("invalid duration %q: %w", args[i+1], err)
+			}
+			values.Set("since", time.Now().UTC().Add(-d).Format(time.RFC3339))
+			i++
+		case "--actor":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--actor requires a value")
+			}
+			values.Set("actor", args[i+1])
+			i++
+		case "--actor-type":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--actor-type requires a value")
+			}
+			values.Set("actor_type", args[i+1])
+			i++
+		case "--actor-id":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--actor-id requires a value")
+			}
+			values.Set("actor_id", args[i+1])
+			i++
+		case "--subject-type":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--subject-type requires a value")
+			}
+			values.Set("subject_type", args[i+1])
+			i++
+		case "--subject-id":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--subject-id requires a value")
+			}
+			values.Set("subject_id", args[i+1])
+			i++
+		case "--action":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--action requires a value")
+			}
+			values.Set("action", args[i+1])
+			i++
+		case "--cursor":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--cursor requires a value")
+			}
+			values.Set("cursor", args[i+1])
+			i++
+		case "--limit", "--per-page":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			values.Set("limit", args[i+1])
+			i++
+		case "--json":
+			jsonOutput = true
+		case "--help", "-h":
+			fmt.Println(activityUsage())
+			return nil
+		default:
+			return fmt.Errorf("unknown activity option %q", args[i])
+		}
+	}
+
+	pathScope := "boxes"
+	if scope == "team" {
+		pathScope = "teams"
+	}
+	path := withQuery("/api/v1/"+pathScope+"/"+url.PathEscape(scopeID)+"/activity_events", values)
+	body, err := apiGetBody(path)
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		fmt.Println(string(body))
+		return nil
+	}
+	return printActivitySummary(body)
+}
+
+func activityUsage() string {
+	return "usage: missionbase-agent activity <box|team> <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID|--actor-type TYPE --actor-id ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]\n       missionbase-agent boxes activity <box-id> [same filters]"
+}
+
+func printActivitySummary(body []byte) error {
+	var response activityResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return err
+	}
+	if len(response.ActivityEvents) == 0 {
+		fmt.Println("No activity events found.")
+	} else {
+		for _, event := range response.ActivityEvents {
+			fmt.Printf("%s | %s | %s | %s | %s | %s\n", event.Timestamp, formatActivityScope(event.Scope), formatActivityRef(event.Actor), event.Action, formatActivityRef(event.Subject), event.Summary)
+			if event.Source != "" {
+				fmt.Printf("  source: %s\n", event.Source)
+			}
+			if len(event.Route) > 0 {
+				fmt.Printf("  route: %s\n", compactJSON(event.Route))
+			}
+			if len(event.Metadata) > 0 {
+				fmt.Printf("  metadata: %s\n", compactJSON(event.Metadata))
+			}
+		}
+	}
+	if response.NextCursor != nil {
+		fmt.Printf("Next cursor: %v\n", response.NextCursor)
+	}
+	return nil
+}
+
+func formatActivityScope(scope activityScope) string {
+	if scope.Box != nil && scope.Team != nil {
+		return formatActivityRef(scope.Box) + ", " + formatActivityRef(scope.Team)
+	}
+	if scope.Box != nil {
+		return formatActivityRef(scope.Box)
+	}
+	if scope.Team != nil {
+		return formatActivityRef(scope.Team)
+	}
+	return "scope unknown"
+}
+
+func formatActivityRef(ref *activityRef) string {
+	if ref == nil {
+		return "none"
+	}
+	label := strings.TrimSpace(ref.Type)
+	if ref.ID != nil {
+		label += " #" + fmt.Sprint(ref.ID)
+	}
+	if strings.TrimSpace(ref.Name) != "" {
+		label += " " + strings.TrimSpace(ref.Name)
+	}
+	return strings.TrimSpace(label)
+}
+
+func compactJSON(value any) string {
+	body, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(body)
 }
 
 func boxDiscussions(args []string) error {
@@ -3278,6 +3507,8 @@ Commands:
   workspace update --chat-id CHAT_ID [--title TITLE]
       [--file PATH|--markdown TEXT]   Replace workspace content from Markdown or stdin
   members [--box ID] [--json]         List group members and mention handles
+  activity <box|team> <id>            Query recent activity events with filters; concise text by default, --json for raw output
+  boxes activity <box-id>             Query recent activity events for an accessible box
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
       [--scheduled actionable|future|all] [--page N] [--per-page N]

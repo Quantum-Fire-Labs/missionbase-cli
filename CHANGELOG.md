@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added agent activity query tooling: `missionbase-agent activity <box|team> <id>` and `missionbase-agent boxes activity <box-id>` support time ranges, duration shortcuts, actor/subject/action filters, cursor pagination, concise default output, and `--json` raw output.
 - Added canonical-id discussion messaging commands (`discussion show/message`) plus document/file message helpers; `conversation show/message` is now documented as a deprecated alias.
 - Added scratchpad fetch/update commands to both CLIs: `missionbase scratchpad show|update|edit` and `missionbase-agent scratchpad show|edit --user USER`.
 - Switched task creation opening text to `body`: `missionbase task create --body TEXT` and `missionbase-agent task create --body-file PATH`; task updates now only change task metadata such as deadline/schedule/status/box/title.
