@@ -787,6 +787,8 @@ func discussion(args []string) error {
 		return apiGet(path)
 	case "message", "create-message", "comment", "create-comment", "reply":
 		return discussionMessage(args[1:], "discussion message")
+	case "convert", "convert-to-task", "task":
+		return discussionConvert(args[1:])
 	default:
 		return fmt.Errorf("unknown discussion command %q", args[0])
 	}
@@ -797,6 +799,50 @@ func conversation(args []string) error {
 		return fmt.Errorf("usage: missionbase-agent conversation <show|message> ... (deprecated; use discussion <show|message>)")
 	}
 	return discussion(args)
+}
+
+func discussionConvert(args []string) error {
+	usage := "usage: missionbase-agent discussion convert <discussion-id> [--title TITLE] [--description-file PATH] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]"
+	if len(args) < 1 {
+		return fmt.Errorf("%s", usage)
+	}
+	discussionID := args[0]
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--title", "--deadline", "--status", "--task-status-id", "--assign-user", "--assign-agent":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			key := map[string]string{"--title": "title", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
+			payload[key] = args[i+1]
+			i++
+		case "--description-file", "--body-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			description, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["description"] = description
+			i++
+		case "--description", "--body", "--description-stdin", "--body-stdin":
+			return fmt.Errorf("%s is not supported; use --description-file PATH", args[i])
+		case "--help", "-h":
+			fmt.Println(usage)
+			return nil
+		default:
+			return fmt.Errorf("unknown discussion convert option %q", args[i])
+		}
+	}
+	if payload["deadline"] != "" {
+		if _, err := time.Parse("2006-01-02", payload["deadline"]); err != nil {
+			return fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
+		}
+	}
+	payload["description"] = textbody.Normalize(payload["description"])
+	return apiPostJSON("/api/v1/conversations/"+url.PathEscape(discussionID)+"/task_conversion", payload)
 }
 
 func discussionMessage(args []string, commandName string) error {
