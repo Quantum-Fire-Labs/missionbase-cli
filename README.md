@@ -202,6 +202,9 @@ missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--titl
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent restore fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
+missionbase-agent agent instructions show fleet-worker
+missionbase-agent agent instructions publish fleet-worker --body-file /tmp/instructions.md [--title "Managed instructions"]
+missionbase-agent agent instructions activate fleet-worker <version-id>
 missionbase-agent document show <document-id> [--format markdown|html|plain-text]
 missionbase-agent document fetch <document-id> [--format markdown|html|plain-text] # compatibility alias
 missionbase-agent document message <document-id> --body-file /tmp/reply.md [--attach /path/to/image.png]
@@ -342,6 +345,8 @@ missionbase-agent task message 123 --body-file /tmp/comment.md --attach-blob "<s
 
 `missionbase-agent agent boxes add ...` adds an agent to one or more boxes and prints JSON with the agent and membership status (`created` or `existing`) for each box. It requires `agents:update` and `boxes:update` permissions.
 
+`missionbase-agent agent instructions show AGENT` reads the active managed instruction version and requires `agents:read`. `agent instructions publish AGENT --body-file PATH [--title TITLE]` publishes and activates a new version, while `agent instructions activate AGENT VERSION_ID` reactivates an existing version; both writes require `agents:update`. Responses include the version id and number, active state, title, and exact content. Publish reads content directly from the required body file without newline normalization so callers can hash-verify the response. These operations do not change agent execution mode or provisioning state.
+
 `missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and box membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks according to each box's configured task-status categories, so hand off or close that work first.
 
 `missionbase-agent agent restore ... --yes` restores/reactivates an archived agent with its existing identity and box memberships so it can be assigned and used for new work again. Restoring does not recreate agent-owned API keys that were revoked during archival; create new credentials if the restored agent needs to authenticate.
@@ -350,6 +355,9 @@ missionbase-agent task message 123 --body-file /tmp/comment.md --attach-blob "<s
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --title "Fleet Architect" --description "Handles fleet tasks"
 missionbase-agent agent boxes add fleet-worker --box 2
 missionbase-agent agent boxes add 42 --box 2 --box 7
+missionbase-agent agent instructions show fleet-worker
+missionbase-agent agent instructions publish fleet-worker --body-file /tmp/instructions.md --title "Chief runner instructions"
+missionbase-agent agent instructions activate fleet-worker 42
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent restore fleet-worker --yes
 ```
