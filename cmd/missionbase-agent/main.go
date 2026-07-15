@@ -609,7 +609,7 @@ func isASCIISpace(ch byte) bool {
 
 func agent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|boxes>")
+		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|boxes|instructions>")
 	}
 
 	switch args[0] {
@@ -621,6 +621,8 @@ func agent(args []string) error {
 		return agentRestore(args[1:])
 	case "boxes":
 		return agentBoxes(args[1:])
+	case "instructions":
+		return agentInstructions(args[1:])
 	default:
 		return fmt.Errorf("unknown agent command %q", args[0])
 	}
@@ -769,6 +771,86 @@ func agentBoxes(args []string) error {
 		return err
 	}
 	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/boxes", body)
+}
+
+func agentInstructions(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent agent instructions <show|publish|activate> ...")
+	}
+
+	switch args[0] {
+	case "show", "active":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: missionbase-agent agent instructions show <agent-id-or-slug>")
+		}
+		return apiGetAllowNoAgent("/api/v1/agents/" + url.PathEscape(args[1]) + "/instruction_versions/active")
+	case "publish":
+		return agentInstructionsPublish(args[1:])
+	case "activate":
+		return agentInstructionsActivate(args[1:])
+	default:
+		return fmt.Errorf("unknown agent instructions command %q", args[0])
+	}
+}
+
+func agentInstructionsPublish(args []string) error {
+	usage := "usage: missionbase-agent agent instructions publish <agent-id-or-slug> --body-file PATH [--title TITLE]"
+	if len(args) == 0 {
+		return fmt.Errorf("%s", usage)
+	}
+	agentID := args[0]
+	payload := map[string]string{}
+	bodySet := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--body-file", "--content-file", "--file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a file path", args[i])
+			}
+			content, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["content"] = content
+			bodySet = true
+			i++
+		case "--body", "--content", "--body-stdin", "--content-stdin":
+			return fmt.Errorf("%s is not supported; use --body-file PATH", args[i])
+		case "--title":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--title requires a value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println(usage)
+			return nil
+		default:
+			return fmt.Errorf("unknown agent instructions publish option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(agentID) == "" {
+		return fmt.Errorf("agent id or slug is required")
+	}
+	if !bodySet {
+		return fmt.Errorf("--body-file is required")
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/instruction_versions", body)
+}
+
+func agentInstructionsActivate(args []string) error {
+	usage := "usage: missionbase-agent agent instructions activate <agent-id-or-slug> <version-id>"
+	if len(args) != 2 {
+		return fmt.Errorf("%s", usage)
+	}
+	if strings.TrimSpace(args[0]) == "" || strings.TrimSpace(args[1]) == "" {
+		return fmt.Errorf("agent id or slug and version id are required")
+	}
+	return apiPatchAllowNoAgent("/api/v1/agents/"+url.PathEscape(args[0])+"/instruction_versions/"+url.PathEscape(args[1])+"/activate", nil)
 }
 
 func discussion(args []string) error {
@@ -3328,6 +3410,15 @@ func apiGet(path string) error {
 	return nil
 }
 
+func apiGetAllowNoAgent(path string) error {
+	body, err := apiGetBodyAllowNoAgent(path)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
 func apiPostBody(path string, requestBody []byte) ([]byte, error) {
 	return apiPostBodyWithContentType(path, requestBody, "application/json")
 }
@@ -3407,6 +3498,15 @@ func apiGetBody(path string) ([]byte, error) {
 	return client.Get(path)
 }
 
+func apiGetBodyAllowNoAgent(path string) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	client := httpclient.New(cfg)
+	return client.Get(path)
+}
+
 func withQuery(path string, values url.Values) string {
 	if encoded := values.Encode(); encoded != "" {
 		return path + "?" + encoded
@@ -3449,6 +3549,12 @@ Commands:
                                       Restore/reactivate an archived agent
   agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
                                       Add an agent to one or more boxes
+  agent instructions show <agent-id-or-slug>
+                                      Show the active managed instruction version
+  agent instructions publish <agent-id-or-slug> --body-file PATH [--title TITLE]
+                                      Publish and activate a managed instruction version
+  agent instructions activate <agent-id-or-slug> <version-id>
+                                      Activate an existing managed instruction version
   document show <document-id> [--format markdown|html|plain-text]
                                       Print a document body (default: markdown)
   document fetch <document-id> [--format markdown|html|plain-text]

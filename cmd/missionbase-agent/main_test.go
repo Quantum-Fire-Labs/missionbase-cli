@@ -314,6 +314,92 @@ func TestAgentBoxesAddRequiresBox(t *testing.T) {
 	}
 }
 
+func TestAgentInstructionsShowGetsActiveVersionWithoutSelectedAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents/fleet-worker/instruction_versions/active" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		_, _ = w.Write([]byte(`{"instruction_version":{"id":12,"version_number":3,"active":true,"title":"Managed","content":"exact\\nbody\\n"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "instructions", "show", "fleet-worker"}); err != nil {
+		t.Fatalf("run agent instructions show: %v", err)
+	}
+}
+
+func TestAgentInstructionsPublishPostsExactBodyFile(t *testing.T) {
+	content := "# Managed\r\n\r\nExact trailing spaces.  \r\n"
+	bodyFile := filepath.Join(t.TempDir(), "instructions.md")
+	if err := os.WriteFile(bodyFile, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents/fleet-worker/instruction_versions" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["title"] != "Chief runner instructions" || payload["content"] != content {
+			t.Fatalf("payload = %#v", payload)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"instruction_version":{"id":12,"version_number":3,"active":true}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "instructions", "publish", "fleet-worker", "--body-file", bodyFile, "--title", "Chief runner instructions"}); err != nil {
+		t.Fatalf("run agent instructions publish: %v", err)
+	}
+}
+
+func TestAgentInstructionsPublishRequiresBodyFile(t *testing.T) {
+	if err := run([]string{"agent", "instructions", "publish", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "--body-file is required") {
+		t.Fatalf("err = %v, want body file required", err)
+	}
+	if err := run([]string{"agent", "instructions", "publish", "fleet-worker", "--body", "inline"}); err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("err = %v, want inline body rejected", err)
+	}
+}
+
+func TestAgentInstructionsActivatePatchesVersionWithoutSelectedAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents/fleet-worker/instruction_versions/12/activate" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
+			t.Fatalf("agent slug header = %q, want empty", got)
+		}
+		_, _ = w.Write([]byte(`{"instruction_version":{"id":12,"version_number":3,"active":true}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "instructions", "activate", "fleet-worker", "12"}); err != nil {
+		t.Fatalf("run agent instructions activate: %v", err)
+	}
+}
+
 func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
