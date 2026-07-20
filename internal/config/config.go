@@ -14,6 +14,7 @@ type Config struct {
 	BaseURL   string `json:"base_url"`
 	Token     string `json:"token"`
 	AgentSlug string `json:"agent_slug,omitempty"`
+	PiHost    string `json:"pi_host,omitempty"`
 }
 
 func LoadUser() (Config, error) {
@@ -173,6 +174,9 @@ func applyUserEnv(cfg *Config) {
 	}
 	if token := os.Getenv("MISSIONBASE_TOKEN"); token != "" {
 		cfg.Token = token
+	}
+	if host := os.Getenv("MISSIONBASE_PI_HOST"); host != "" {
+		cfg.PiHost = host
 	}
 }
 

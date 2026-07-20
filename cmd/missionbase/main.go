@@ -52,6 +52,8 @@ func run(args []string) error {
 		return auth(args[1:])
 	case "me":
 		return apiGet("/api/v1/users/me")
+	case "pi":
+		return piCommand(args[1:])
 	case "work":
 		workArgs := args[1:]
 		if len(workArgs) > 1 || (len(workArgs) == 1 && !isHelp(workArgs[0])) {
@@ -1953,6 +1955,9 @@ Commands:
   auth set-token <token> [--base-url URL]
                                       Save a personal/user API token
   me                                  Show the current user
+  pi [--agent SLUG] [--task ID|--discussion ID] [--host SSH_HOST]
+                                      Open a Missionbase subject in the host-side Pi TUI
+  pi configure --host SSH_HOST        Configure the runner SSH host
   work                                Show current user work overview
   scratchpad show                     Show current user's scratchpad
   scratchpad update --body TEXT       Update current user's scratchpad
