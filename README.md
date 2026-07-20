@@ -62,8 +62,9 @@ the real host-side Pi TUI from the desktop:
 ```bash
 missionbase pi configure --host daniel@agents-host
 missionbase pi
+missionbase pi --team Quantum Fire Labs
 missionbase pi --agent fleet-architect --task 123
-missionbase pi --agent missionbase-dev --discussion 456
+missionbase pi --agent missionbase-dev --discussion 456 --one-shot
 ```
 
 The command keeps one SSH/PTY connection open for the attached session and runs

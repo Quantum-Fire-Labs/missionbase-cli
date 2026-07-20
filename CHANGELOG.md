@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `missionbase pi --team TEAM ...` and `--one-shot` passthrough for the interactive runner launcher.
 - Added managed agent-instruction commands: `missionbase-agent agent instructions show|publish|activate`, with exact body-file content preserved for hash verification.
 - Added agent activity query tooling: `missionbase-agent activity <box|team> <id>` and `missionbase-agent boxes activity <box-id>` support time ranges, duration shortcuts, actor/subject/action filters, cursor pagination, concise default output, and `--json` raw output.
 - Added canonical-id discussion messaging commands (`discussion show/message`) plus document/file message helpers; `conversation show/message` is now documented as a deprecated alias.
