@@ -54,6 +54,24 @@ Credentials are stored at:
 ~/.config/missionbase/credentials
 ```
 
+### Host-side Pi sessions
+
+Configure the SSH destination for the Missionbase runner host once, then open
+the real host-side Pi TUI from the desktop:
+
+```bash
+missionbase pi configure --host daniel@agents-host
+missionbase pi
+missionbase pi --agent fleet-architect --task 123
+missionbase pi --agent missionbase-dev --discussion 456
+```
+
+The command keeps one SSH/PTY connection open for the attached session and runs
+`sudo -n /opt/missionbase-runner/bin/mb-pi` remotely. The runner host retains
+agent credentials, repositories, tools, workspaces, and Pi JSONL sessions. The
+SSH user must have a narrowly scoped passwordless sudo rule for that exact
+launcher; do not grant a general-purpose passwordless root shell.
+
 ## Agent CLI
 
 Create/use a team API key that allows agent acting, then run:
