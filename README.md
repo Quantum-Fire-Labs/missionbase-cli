@@ -16,13 +16,13 @@ There are two binaries with separate auth/config scopes:
 Install both binaries:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Quantum-Fire-Labs/missionbase-cli/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Quantum-Fire-Labs/missionbase-cli/master/scripts/install.sh | bash
 ```
 
 Install only one binary:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Quantum-Fire-Labs/missionbase-cli/main/scripts/install.sh | bash -s -- missionbase-agent
+curl -fsSL https://raw.githubusercontent.com/Quantum-Fire-Labs/missionbase-cli/master/scripts/install.sh | bash -s -- missionbase-agent
 ```
 
 The installer downloads the latest public GitHub release binaries for your OS/architecture and installs them to `~/.local/bin`.
