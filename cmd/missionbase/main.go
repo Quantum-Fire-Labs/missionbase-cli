@@ -40,6 +40,10 @@ func run(args []string) error {
 		printHelp()
 		return nil
 	}
+	if os.Getenv("MISSIONBASE_ACTOR_MODE") == "agent" && !isLocalInformationCommand(args[0]) {
+		slug := os.Getenv("MISSIONBASE_AGENT_SLUG")
+		return fmt.Errorf("this Pi session is locked to Missionbase agent %q; use missionbase-agent instead", slug)
+	}
 
 	switch args[0] {
 	case "help", "--help", "-h":
@@ -1940,6 +1944,10 @@ func isDocumentFormat(value string) bool {
 
 func isHelp(value string) bool {
 	return value == "--help" || value == "-h"
+}
+
+func isLocalInformationCommand(command string) bool {
+	return command == "help" || command == "--help" || command == "-h" || command == "version" || command == "--version" || command == "-v"
 }
 
 func printHelp() {

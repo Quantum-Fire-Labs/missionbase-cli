@@ -118,6 +118,19 @@ Example `.missionbase-agent.json`:
 }
 ```
 
+### Local Pi sessions
+
+List active agents available to the authenticated team token, then launch Pi with an explicit Missionbase agent identity:
+
+```bash
+missionbase-agent pi agents
+missionbase-agent pi agents --json
+missionbase-agent pi --agent missionbase-dev
+missionbase-agent pi --agent fleet-architect -- --model gpt-5.6
+```
+
+The launcher verifies the selected agent with Missionbase before starting Pi, preserves Pi's normal working-directory session and resume behavior, and forwards arguments after `--` to Pi unchanged. Every child `missionbase-agent` command inherits the selected slug. The user-acting `missionbase` CLI refuses API commands inside the launched process so Missionbase writes cannot accidentally be attributed to the signed-in human.
+
 ## Updating
 
 Each binary updates itself:
@@ -208,6 +221,8 @@ missionbase-agent version
 missionbase-agent auth status
 missionbase-agent auth set-token <team-token> [--base-url URL] [--agent slug]
 missionbase-agent use <agent-slug> [--base-url URL]
+missionbase-agent pi agents [--json]
+missionbase-agent pi --agent <agent-slug> [-- PI_ARGS...]
 missionbase-agent me
 missionbase-agent work [--next|--next-task]
 missionbase-agent scratchpad show --user USER

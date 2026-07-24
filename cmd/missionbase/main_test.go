@@ -11,6 +11,20 @@ import (
 	"testing"
 )
 
+func TestAgentActorModeBlocksUserActingCommands(t *testing.T) {
+	t.Setenv("MISSIONBASE_ACTOR_MODE", "agent")
+	t.Setenv("MISSIONBASE_AGENT_SLUG", "missionbase-dev")
+
+	err := run([]string{"me"})
+	if err == nil || !strings.Contains(err.Error(), "locked to Missionbase agent \"missionbase-dev\"") {
+		t.Fatalf("err = %v", err)
+	}
+
+	if err := run([]string{"version"}); err != nil {
+		t.Fatalf("version should remain available: %v", err)
+	}
+}
+
 func TestMeUsesUserEndpointOnly(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

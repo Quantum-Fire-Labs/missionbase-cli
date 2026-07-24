@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `missionbase-agent pi agents` and `missionbase-agent pi --agent SLUG -- ...` for local Pi sessions bound to an explicit Missionbase agent identity, including preflight validation and protection against accidental user-acting CLI calls.
 - Added `missionbase pi --team TEAM ...` and `--one-shot` passthrough for the interactive runner launcher.
 - Added managed agent-instruction commands: `missionbase-agent agent instructions show|publish|activate`, with exact body-file content preserved for hash verification.
 - Added agent activity query tooling: `missionbase-agent activity <box|team> <id>` and `missionbase-agent boxes activity <box-id>` support time ranges, duration shortcuts, actor/subject/action filters, cursor pagination, concise default output, and `--json` raw output.

@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,6 +30,9 @@ var (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitError.ExitCode())
+		}
 		fmt.Fprintf(os.Stderr, "missionbase-agent: %v\n", err)
 		os.Exit(1)
 	}
@@ -51,6 +55,8 @@ func run(args []string) error {
 		return auth(args[1:])
 	case "use":
 		return useAgent(args[1:])
+	case "pi":
+		return pi(args[1:])
 	case "me":
 		return apiGet("/api/v1/agent/me")
 	case "work":
@@ -3527,6 +3533,8 @@ Commands:
   auth set-token <team-token> [--base-url URL] [--agent slug]
                                       Save a team API token
   use <agent-slug> [--base-url URL]   Set the agent for this directory
+  pi agents [--json]                  List agents available for local Pi sessions
+  pi --agent SLUG [-- PI_ARGS...]     Launch local Pi as a Missionbase agent
   me                                  Show the current agent
   work [--next|--next-task]           Show the next actionable assigned task
                                       With --next, return only the next assigned task
