@@ -134,6 +134,8 @@ missionbase-agent pi --agent fleet-architect -- --model gpt-5.6
 
 Use `--continue`/`-c` to open the most recent Pi session for the current working directory, `--resume`/`-r` to open Pi's interactive session chooser, or `--session SESSION`/`-s SESSION` to open a specific session path or ID. Exit any Pi process using that session before reopening it.
 
+After enrolling the computer with the one-time `missionbase-agent connect TOKEN` command from Missionbase, the launcher synchronizes the selected Pi session's complete active transcript. Existing and subsequent visible user, assistant, tool, shell, and summary entries appear in Missionbase. Messages sent from Missionbase are injected as normal Pi user messages and are durably deduplicated across reconnects.
+
 The launcher verifies the selected agent with Missionbase before starting Pi, preserves Pi's normal working-directory session behavior, and forwards arguments after `--` to Pi unchanged. Every child `missionbase-agent` command inherits the selected slug. The user-acting `missionbase` CLI refuses API commands inside the launched process so Missionbase writes cannot accidentally be attributed to the signed-in human.
 
 ## Updating

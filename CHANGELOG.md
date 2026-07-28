@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Replaced the Pi bridge's request/response capture with complete, resumable active-branch transcript synchronization, including existing user, assistant, tool, shell, and summary entries and durable deduplication of remote message injection.
 - Added `missionbase-agent pi agents` and `missionbase-agent pi --agent SLUG -- ...` for local Pi sessions bound to an explicit Missionbase agent identity, including preflight validation and protection against accidental user-acting CLI calls. The launcher accepts `--continue`/`-c` for the current directory's most recent session, `--resume`/`-r` for Pi's interactive session chooser, and `--session SESSION`/`-s SESSION` for a specific session path or ID.
 - Added `missionbase pi --team TEAM ...` and `--one-shot` passthrough for the interactive runner launcher.
 - Added managed agent-instruction commands: `missionbase-agent agent instructions show|publish|activate`, with exact body-file content preserved for hash verification.
