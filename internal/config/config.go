@@ -17,6 +17,12 @@ type Config struct {
 	PiHost    string `json:"pi_host,omitempty"`
 }
 
+type ComputerConfig struct {
+	BaseURL    string `json:"base_url"`
+	ComputerID int    `json:"computer_id"`
+	Credential string `json:"credential"`
+}
+
 func LoadUser() (Config, error) {
 	cfg, err := loadFromPath(CredentialsPath("missionbase"))
 	if err != nil {
@@ -60,6 +66,58 @@ func SaveAgent(cfg Config) error {
 
 func Save(cfg Config) error {
 	return SaveUser(cfg)
+}
+
+func LoadComputer() (ComputerConfig, error) {
+	cfg := ComputerConfig{BaseURL: defaultBaseURL}
+	data, err := os.ReadFile(ComputerCredentialsPath())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return cfg, nil
+		}
+		return cfg, err
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return cfg, err
+	}
+	if cfg.BaseURL == "" {
+		cfg.BaseURL = defaultBaseURL
+	}
+	return cfg, nil
+}
+
+func SaveComputer(cfg ComputerConfig) error {
+	path := ComputerCredentialsPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+func ComputerCredentialsPath() string {
+	if path := os.Getenv("MISSIONBASE_COMPUTER_CREDENTIALS"); path != "" {
+		return path
+	}
+	configHome := os.Getenv("XDG_CONFIG_HOME")
+	if configHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ".missionbase-agent-computer"
+		}
+		configHome = filepath.Join(home, ".config")
+	}
+	return filepath.Join(configHome, "missionbase-agent", "computer")
+}
+
+func ComputerConfigDir() string {
+	return filepath.Dir(ComputerCredentialsPath())
 }
 
 func loadFromPath(path string) (Config, error) {

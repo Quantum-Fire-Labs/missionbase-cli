@@ -53,6 +53,8 @@ func run(args []string) error {
 		return update.Run(update.Options{CurrentVersion: Version, Repo: Repo, BinaryName: "missionbase-agent"}, args[1:])
 	case "auth":
 		return auth(args[1:])
+	case "connect":
+		return connect(args[1:])
 	case "use":
 		return useAgent(args[1:])
 	case "pi":
@@ -3532,6 +3534,8 @@ Commands:
   auth status                         Show auth status
   auth set-token <team-token> [--base-url URL] [--agent slug]
                                       Save a team API token
+  connect TOKEN [--base-url URL] [--name NAME]
+                                      Enroll this personal computer for live Pi sessions
   use <agent-slug> [--base-url URL]   Set the agent for this directory
   pi agents [--json]                  List agents available for local Pi sessions
   pi --agent SLUG [-- PI_ARGS...]     Launch local Pi as a Missionbase agent

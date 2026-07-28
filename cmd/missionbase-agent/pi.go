@@ -1,10 +1,12 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -13,6 +15,9 @@ import (
 )
 
 const piActorMode = "agent"
+
+//go:embed missionbase-bridge.ts
+var missionbaseBridgeSource []byte
 
 type piAgent struct {
 	ID     int    `json:"id"`
@@ -36,6 +41,14 @@ func pi(args []string) error {
 		return err
 	}
 
+	computer, err := config.LoadComputer()
+	if err != nil {
+		return err
+	}
+	if computer.ComputerID == 0 || strings.TrimSpace(computer.Credential) == "" {
+		return fmt.Errorf("computer is not connected; run `missionbase-agent connect TOKEN`")
+	}
+
 	cfg, err := config.LoadAgent()
 	if err != nil {
 		return err
@@ -43,6 +56,7 @@ func pi(args []string) error {
 	if strings.TrimSpace(cfg.Token) == "" {
 		return fmt.Errorf("not authenticated; run `missionbase-agent auth set-token <team-token>`")
 	}
+	cfg.BaseURL = computer.BaseURL
 	cfg.AgentSlug = slug
 
 	agent, err := preflightPiAgent(cfg)
@@ -50,12 +64,22 @@ func pi(args []string) error {
 		return fmt.Errorf("cannot launch Pi as %q: %w", slug, err)
 	}
 
+	extensionPath, err := materializeMissionbaseBridge()
+	if err != nil {
+		return fmt.Errorf("prepare Missionbase Pi bridge: %w", err)
+	}
+
 	systemPrompt := fmt.Sprintf("Your Missionbase identity for this Pi process is agent %q. Use the agent-acting `missionbase-agent` CLI for every Missionbase operation. Do not use the user-acting `missionbase` CLI.", agent.Slug)
-	commandArgs := append([]string{"--append-system-prompt", systemPrompt}, piArgs...)
+	commandArgs := append([]string{"--extension", extensionPath, "--append-system-prompt", systemPrompt}, piArgs...)
 	command := exec.Command("pi", commandArgs...)
 	command.Env = setEnvironment(os.Environ(), map[string]string{
-		"MISSIONBASE_ACTOR_MODE": piActorMode,
-		"MISSIONBASE_AGENT_SLUG": agent.Slug,
+		"MISSIONBASE_ACTOR_MODE":     piActorMode,
+		"MISSIONBASE_COMPUTER_TOKEN": computer.Credential,
+		"MISSIONBASE_COMPUTER_ID":    fmt.Sprint(computer.ComputerID),
+		"MISSIONBASE_BASE_URL":       computer.BaseURL,
+		"MISSIONBASE_AGENT_ID":       fmt.Sprint(agent.ID),
+		"MISSIONBASE_AGENT_SLUG":     agent.Slug,
+		"MISSIONBASE_CLI_VERSION":    Version,
 	})
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
@@ -181,6 +205,21 @@ func piAgents(args []string) error {
 		fmt.Fprintf(writer, "%s\t%s\t%s\n", agent.Slug, agent.Name, agent.Title)
 	}
 	return writer.Flush()
+}
+
+func materializeMissionbaseBridge() (string, error) {
+	directory := config.ComputerConfigDir()
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return "", err
+	}
+	path := filepath.Join(directory, "missionbase-bridge.ts")
+	if err := os.WriteFile(path, missionbaseBridgeSource, 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func setEnvironment(environment []string, values map[string]string) []string {

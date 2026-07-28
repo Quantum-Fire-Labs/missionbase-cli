@@ -114,6 +114,11 @@ set -eu
 {
   printf 'mode=%s\n' "$MISSIONBASE_ACTOR_MODE"
   printf 'slug=%s\n' "$MISSIONBASE_AGENT_SLUG"
+  printf 'agent_id=%s\n' "$MISSIONBASE_AGENT_ID"
+  printf 'computer_id=%s\n' "$MISSIONBASE_COMPUTER_ID"
+  printf 'computer_token=%s\n' "$MISSIONBASE_COMPUTER_TOKEN"
+  printf 'base_url=%s\n' "$MISSIONBASE_BASE_URL"
+  printf 'cli_version=%s\n' "$MISSIONBASE_CLI_VERSION"
   printf 'arg=%s\n' "$@"
 } > "$PI_CAPTURE_PATH"
 `
@@ -123,6 +128,11 @@ set -eu
 
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("PI_CAPTURE_PATH", capturePath)
+	computerCredentials := filepath.Join(t.TempDir(), "computer")
+	if err := os.WriteFile(computerCredentials, []byte(`{"base_url":"`+server.URL+`","computer_id":42,"credential":"computer-secret"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MISSIONBASE_COMPUTER_CREDENTIALS", computerCredentials)
 	t.Setenv("MISSIONBASE_BASE_URL", server.URL)
 	t.Setenv("MISSIONBASE_TOKEN", "team-token")
 	t.Setenv("MISSIONBASE_AGENT_SLUG", "wrong-agent")
@@ -139,6 +149,13 @@ set -eu
 	for _, expected := range []string{
 		"mode=agent",
 		"slug=missionbase-dev",
+		"agent_id=7",
+		"computer_id=42",
+		"computer_token=computer-secret",
+		"base_url=" + server.URL,
+		"cli_version=" + Version,
+		"arg=--extension",
+		"missionbase-bridge.ts",
 		"arg=--append-system-prompt",
 		"identity for this Pi process is agent \"missionbase-dev\"",
 		"arg=--name",
