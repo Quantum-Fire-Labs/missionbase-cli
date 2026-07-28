@@ -78,17 +78,22 @@ func parsePiLaunchArgs(args []string) (string, []string, error) {
 			}
 			slug = args[i+1]
 			i++
-		case "--continue":
+		case "--continue", "-c":
 			if len(sessionArgs) > 0 {
-				return "", nil, fmt.Errorf("--continue and --resume cannot be used together")
+				return "", nil, fmt.Errorf("only one of --continue, --resume, or --session may be used")
 			}
 			sessionArgs = []string{"--continue"}
-		case "--resume":
-			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
-				return "", nil, fmt.Errorf("--resume requires a session path or ID")
+		case "--resume", "-r":
+			if len(sessionArgs) > 0 {
+				return "", nil, fmt.Errorf("only one of --continue, --resume, or --session may be used")
+			}
+			sessionArgs = []string{"--resume"}
+		case "--session", "-s":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" || args[i+1] == "--" {
+				return "", nil, fmt.Errorf("--session requires a session path or ID")
 			}
 			if len(sessionArgs) > 0 {
-				return "", nil, fmt.Errorf("--continue and --resume cannot be used together")
+				return "", nil, fmt.Errorf("only one of --continue, --resume, or --session may be used")
 			}
 			sessionArgs = []string{"--session", args[i+1]}
 			i++
@@ -96,7 +101,7 @@ func parsePiLaunchArgs(args []string) (string, []string, error) {
 			piArgs = append(piArgs, args[i+1:]...)
 			i = len(args)
 		case "--help", "-h":
-			return "", nil, fmt.Errorf("usage: missionbase-agent pi --agent SLUG [--continue | --resume SESSION] [-- PI_ARGS...]")
+			return "", nil, fmt.Errorf("usage: missionbase-agent pi --agent SLUG [--continue | --resume | --session SESSION] [-- PI_ARGS...]")
 		default:
 			return "", nil, fmt.Errorf("unknown pi option %q; put Pi arguments after --", args[i])
 		}
@@ -198,10 +203,11 @@ func setEnvironment(environment []string, values map[string]string) []string {
 func printPiHelp() {
 	fmt.Println(`Usage:
   missionbase-agent pi agents [--json]
-  missionbase-agent pi --agent SLUG [--continue | --resume SESSION] [-- PI_ARGS...]
+  missionbase-agent pi --agent SLUG [--continue | --resume | --session SESSION] [-- PI_ARGS...]
 
 Launches a local Pi process with Missionbase agent identity fixed to SLUG.
---continue opens the most recent session for the current working directory.
---resume opens a specific session path or ID.
+-c, --continue         Open the most recent session for the current working directory.
+-r, --resume           Open Pi's interactive session chooser.
+-s, --session SESSION  Open a specific session path or ID.
 Arguments after -- are forwarded to Pi unchanged.`)
 }

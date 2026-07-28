@@ -43,9 +43,29 @@ func TestParsePiLaunchArgsSupportsSessionSelection(t *testing.T) {
 			want: []string{"--continue"},
 		},
 		{
-			name: "resume specific session",
-			args: []string{"--agent", "chief", "--resume", "019fa64c", "--", "--model", "gpt-5.6"},
+			name: "continue short flag",
+			args: []string{"--agent", "chief", "-c"},
+			want: []string{"--continue"},
+		},
+		{
+			name: "open session chooser",
+			args: []string{"--agent", "chief", "--resume"},
+			want: []string{"--resume"},
+		},
+		{
+			name: "resume short flag",
+			args: []string{"--agent", "chief", "-r"},
+			want: []string{"--resume"},
+		},
+		{
+			name: "open specific session",
+			args: []string{"--agent", "chief", "--session", "019fa64c", "--", "--model", "gpt-5.6"},
 			want: []string{"--session", "019fa64c", "--model", "gpt-5.6"},
+		},
+		{
+			name: "session short flag",
+			args: []string{"--agent", "chief", "-s", "019fa64c"},
+			want: []string{"--session", "019fa64c"},
 		},
 	}
 
@@ -66,10 +86,10 @@ func TestParsePiLaunchArgsSupportsSessionSelection(t *testing.T) {
 }
 
 func TestParsePiLaunchArgsRejectsInvalidSessionSelection(t *testing.T) {
-	if _, _, err := parsePiLaunchArgs([]string{"--agent", "chief", "--resume"}); err == nil || !strings.Contains(err.Error(), "session path or ID") {
-		t.Fatalf("missing resume value error = %v", err)
+	if _, _, err := parsePiLaunchArgs([]string{"--agent", "chief", "--session"}); err == nil || !strings.Contains(err.Error(), "session path or ID") {
+		t.Fatalf("missing session value error = %v", err)
 	}
-	if _, _, err := parsePiLaunchArgs([]string{"--agent", "chief", "--continue", "--resume", "019fa64c"}); err == nil || !strings.Contains(err.Error(), "cannot be used together") {
+	if _, _, err := parsePiLaunchArgs([]string{"--agent", "chief", "--continue", "--resume"}); err == nil || !strings.Contains(err.Error(), "only one") {
 		t.Fatalf("conflicting selection error = %v", err)
 	}
 }
