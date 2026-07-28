@@ -31,6 +31,49 @@ func TestParsePiLaunchArgsRequiresExplicitAgentAndSeparator(t *testing.T) {
 	}
 }
 
+func TestParsePiLaunchArgsSupportsSessionSelection(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "continue most recent session",
+			args: []string{"--agent", "chief", "--continue"},
+			want: []string{"--continue"},
+		},
+		{
+			name: "resume specific session",
+			args: []string{"--agent", "chief", "--resume", "019fa64c", "--", "--model", "gpt-5.6"},
+			want: []string{"--session", "019fa64c", "--model", "gpt-5.6"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			slug, args, err := parsePiLaunchArgs(tt.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if slug != "chief" {
+				t.Fatalf("slug = %q", slug)
+			}
+			if !reflect.DeepEqual(args, tt.want) {
+				t.Fatalf("args = %#v, want %#v", args, tt.want)
+			}
+		})
+	}
+}
+
+func TestParsePiLaunchArgsRejectsInvalidSessionSelection(t *testing.T) {
+	if _, _, err := parsePiLaunchArgs([]string{"--agent", "chief", "--resume"}); err == nil || !strings.Contains(err.Error(), "session path or ID") {
+		t.Fatalf("missing resume value error = %v", err)
+	}
+	if _, _, err := parsePiLaunchArgs([]string{"--agent", "chief", "--continue", "--resume", "019fa64c"}); err == nil || !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("conflicting selection error = %v", err)
+	}
+}
+
 func TestPiPreflightsAgentAndLaunchesWithLockedIdentity(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/agent/me" {

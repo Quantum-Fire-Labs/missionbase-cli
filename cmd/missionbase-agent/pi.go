@@ -67,6 +67,7 @@ func pi(args []string) error {
 
 func parsePiLaunchArgs(args []string) (string, []string, error) {
 	var slug string
+	var sessionArgs []string
 	var piArgs []string
 
 	for i := 0; i < len(args); i++ {
@@ -77,11 +78,25 @@ func parsePiLaunchArgs(args []string) (string, []string, error) {
 			}
 			slug = args[i+1]
 			i++
+		case "--continue":
+			if len(sessionArgs) > 0 {
+				return "", nil, fmt.Errorf("--continue and --resume cannot be used together")
+			}
+			sessionArgs = []string{"--continue"}
+		case "--resume":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return "", nil, fmt.Errorf("--resume requires a session path or ID")
+			}
+			if len(sessionArgs) > 0 {
+				return "", nil, fmt.Errorf("--continue and --resume cannot be used together")
+			}
+			sessionArgs = []string{"--session", args[i+1]}
+			i++
 		case "--":
 			piArgs = append(piArgs, args[i+1:]...)
 			i = len(args)
 		case "--help", "-h":
-			return "", nil, fmt.Errorf("usage: missionbase-agent pi --agent SLUG [-- PI_ARGS...]")
+			return "", nil, fmt.Errorf("usage: missionbase-agent pi --agent SLUG [--continue | --resume SESSION] [-- PI_ARGS...]")
 		default:
 			return "", nil, fmt.Errorf("unknown pi option %q; put Pi arguments after --", args[i])
 		}
@@ -90,7 +105,7 @@ func parsePiLaunchArgs(args []string) (string, []string, error) {
 	if strings.TrimSpace(slug) == "" {
 		return "", nil, fmt.Errorf("--agent is required; run `missionbase-agent pi agents` to list agents")
 	}
-	return slug, piArgs, nil
+	return slug, append(sessionArgs, piArgs...), nil
 }
 
 func preflightPiAgent(cfg config.Config) (piAgent, error) {
@@ -183,8 +198,10 @@ func setEnvironment(environment []string, values map[string]string) []string {
 func printPiHelp() {
 	fmt.Println(`Usage:
   missionbase-agent pi agents [--json]
-  missionbase-agent pi --agent SLUG [-- PI_ARGS...]
+  missionbase-agent pi --agent SLUG [--continue | --resume SESSION] [-- PI_ARGS...]
 
 Launches a local Pi process with Missionbase agent identity fixed to SLUG.
+--continue opens the most recent session for the current working directory.
+--resume opens a specific session path or ID.
 Arguments after -- are forwarded to Pi unchanged.`)
 }
