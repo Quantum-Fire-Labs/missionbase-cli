@@ -66,6 +66,7 @@ export default function missionbaseBridge(pi: ExtensionAPI) {
     `/api/v1/computer/sessions/${encodeURIComponent(externalId)}`;
 
   const currentModel = (ctx: ExtensionContext) => ctx.model?.id ?? "";
+  const currentSessionName = () => pi.getSessionName()?.trim() ?? "";
 
   const register = async (ctx: ExtensionContext, current: BridgeState) => {
     const [repositoryResult, branchResult] = await Promise.all([
@@ -81,6 +82,7 @@ export default function missionbaseBridge(pi: ExtensionAPI) {
           external_id: current.externalId,
           agent_id: agentId,
           cwd: ctx.cwd,
+          session_name: currentSessionName(),
           session_file: ctx.sessionManager.getSessionFile() ?? null,
           repository: basename(repositoryRoot || ctx.cwd),
           branch: branchResult.code === 0 ? branchResult.stdout.trim() : "",
@@ -138,17 +140,24 @@ export default function missionbaseBridge(pi: ExtensionAPI) {
     );
   };
 
-  const poll = async (ctx: ExtensionContext, current: BridgeState) => {
-    if (!current.registered) await register(ctx, current);
-    await syncTranscript(ctx, current);
-    const response = await request(
+  const heartbeat = async (ctx: ExtensionContext, current: BridgeState) =>
+    request(
       sessionPath(current.externalId),
       {
         method: "PATCH",
-        body: JSON.stringify({ status: "active", model: currentModel(ctx) }),
+        body: JSON.stringify({
+          status: "active",
+          model: currentModel(ctx),
+          session_name: currentSessionName(),
+        }),
       },
       current.controller.signal,
     );
+
+  const poll = async (ctx: ExtensionContext, current: BridgeState) => {
+    if (!current.registered) await register(ctx, current);
+    await syncTranscript(ctx, current);
+    const response = await heartbeat(ctx, current);
     const payload = (await response.json()) as PollResponse;
     const message = payload.messages?.find(
       (candidate) => typeof candidate.body === "string" && candidate.body.trim() !== "",
@@ -188,6 +197,19 @@ export default function missionbaseBridge(pi: ExtensionAPI) {
       }
     }
     schedulePoll(ctx, current);
+  });
+
+  pi.on("session_info_changed", async (_event, ctx) => {
+    const current = state;
+    if (!current || current.stopped || !current.registered) return;
+
+    try {
+      await heartbeat(ctx, current);
+    } catch (error) {
+      if (!current.stopped && !current.controller.signal.aborted) {
+        ctx.ui.setStatus(STATUS_KEY, "Missionbase: reconnecting");
+      }
+    }
   });
 
   pi.on("agent_settled", async (_event, ctx) => {

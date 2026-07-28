@@ -97,7 +97,7 @@ func TestMaterializeMissionbaseBridgeUsesComputerConfigDirectoryAndPrivateMode(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"session_start", "session_shutdown", "agent_settled", "sendUserMessage", "/api/v1/computer/sessions", "/transcript", "getBranch", "appendCustomEntry", "missionbase-remote-message", "rev-parse", "--show-toplevel", "basename(repositoryRoot || ctx.cwd)", "MAX_ENTRY_CHARACTERS = 200_000", "delete process.env.MISSIONBASE_COMPUTER_TOKEN"} {
+	for _, expected := range []string{"session_start", "session_shutdown", "session_info_changed", "agent_settled", "sendUserMessage", "getSessionName", "session_name", "/api/v1/computer/sessions", "/transcript", "getBranch", "appendCustomEntry", "missionbase-remote-message", "rev-parse", "--show-toplevel", "basename(repositoryRoot || ctx.cwd)", "MAX_ENTRY_CHARACTERS = 200_000", "delete process.env.MISSIONBASE_COMPUTER_TOKEN"} {
 		if !strings.Contains(string(body), expected) {
 			t.Fatalf("extension missing %q", expected)
 		}
