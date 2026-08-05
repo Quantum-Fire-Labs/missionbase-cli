@@ -1431,12 +1431,14 @@ func readWorkspaceStdinIfPiped() ([]byte, error) {
 }
 
 func boxes(args []string) error {
-	if len(args) == 0 {
-		fmt.Println("usage: missionbase-agent boxes <tasks|discussions|activity|files|statuses|task-statuses>")
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		fmt.Println("usage: missionbase-agent boxes <create|tasks|discussions|activity|files|statuses|task-statuses>")
 		return nil
 	}
 
 	switch args[0] {
+	case "create":
+		return boxCreate(args[1:])
 	case "tasks":
 		return boxTasks(args[1:])
 	case "discussions":
@@ -1450,6 +1452,60 @@ func boxes(args []string) error {
 	default:
 		return fmt.Errorf("unknown boxes command %q", args[0])
 	}
+}
+
+func boxCreate(args []string) error {
+	usage := "usage: missionbase-agent boxes create --name NAME --team TEAM_ID [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]"
+	payload := map[string]string{"ownable_type": "Team"}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--name requires a value")
+			}
+			payload["name"] = args[i+1]
+			i++
+		case "--team", "--team-id":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload["ownable_id"] = args[i+1]
+			i++
+		case "--description-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description-file requires a value")
+			}
+			description, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["description"] = normalizeAgentAuthoredBody(description)
+			i++
+		case "--description":
+			return fmt.Errorf("--description is not supported; use --description-file PATH")
+		case "--kind", "--status", "--visibility":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload[strings.TrimPrefix(args[i], "--")] = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println(usage)
+			return nil
+		default:
+			return fmt.Errorf("unknown boxes create option %q", args[i])
+		}
+	}
+
+	if strings.TrimSpace(payload["name"]) == "" {
+		return fmt.Errorf("--name is required")
+	}
+	if strings.TrimSpace(payload["ownable_id"]) == "" {
+		return fmt.Errorf("--team is required")
+	}
+
+	return apiPostJSON("/api/v1/boxes", payload)
 }
 
 type activityResponse struct {
@@ -3627,6 +3683,9 @@ Commands:
   members [--box ID] [--json]         List group members and mention handles
   activity <box|team> <id>            Query recent activity events with filters; concise text by default, --json for raw output
   boxes activity <box-id>             Query recent activity events for an accessible box
+  boxes create --name NAME --team TEAM_ID
+      [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]
+                                      Create a team-owned box
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
       [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
       [--scheduled actionable|future|all] [--page N] [--per-page N]

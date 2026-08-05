@@ -734,6 +734,17 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	}
 }
 
+func TestBoxesCreateHelp(t *testing.T) {
+	stdout := captureStdout(t, func() {
+		if err := run([]string{"boxes", "create", "--help"}); err != nil {
+			t.Fatalf("run boxes create --help: %v", err)
+		}
+	})
+	if !strings.Contains(stdout, "missionbase-agent boxes create --name NAME --team TEAM_ID") {
+		t.Fatalf("help missing boxes create usage:\n%s", stdout)
+	}
+}
+
 func TestBoxesFilesRequiresBoxIDAndOptionValues(t *testing.T) {
 	if err := run([]string{"boxes", "files"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes files <box-id>") {
 		t.Fatalf("err = %v, want usage error", err)
@@ -743,6 +754,53 @@ func TestBoxesFilesRequiresBoxIDAndOptionValues(t *testing.T) {
 	}
 	if err := run([]string{"boxes", "files", "2", "--folder-id"}); err == nil || !strings.Contains(err.Error(), "--folder-id requires a value") {
 		t.Fatalf("err = %v, want folder-id value error", err)
+	}
+}
+
+func TestBoxesCreatePostsTeamBox(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/boxes" {
+			t.Fatalf("path = %s, want /api/v1/boxes", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		for key, want := range map[string]string{
+			"name": "Delivery", "ownable_type": "Team", "ownable_id": "42",
+			"description": "Line 1\nLine 2", "kind": "project", "status": "in_progress", "visibility": "team",
+		} {
+			if got := payload[key]; got != want {
+				t.Fatalf("%s = %q, want %q", key, got, want)
+			}
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"box":{"id":8,"name":"Delivery"}}`))
+	}))
+	defer server.Close()
+
+	descriptionFile := writeTextFile(t, "description.md", `Line 1\nLine 2`)
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"boxes", "create", "--name", "Delivery", "--team", "42", "--description-file", descriptionFile, "--kind", "project", "--status", "in_progress", "--visibility", "team"}); err != nil {
+		t.Fatalf("run boxes create: %v", err)
+	}
+}
+
+func TestBoxesCreateValidatesRequiredOptions(t *testing.T) {
+	if err := run([]string{"boxes", "create", "--team", "42"}); err == nil || !strings.Contains(err.Error(), "--name is required") {
+		t.Fatalf("err = %v, want name required", err)
+	}
+	if err := run([]string{"boxes", "create", "--name", "Delivery"}); err == nil || !strings.Contains(err.Error(), "--team is required") {
+		t.Fatalf("err = %v, want team required", err)
+	}
+	if err := run([]string{"boxes", "create", "--name", "Delivery", "--team", "42", "--description", "inline"}); err == nil || !strings.Contains(err.Error(), "use --description-file PATH") {
+		t.Fatalf("err = %v, want description-file guidance", err)
 	}
 }
 

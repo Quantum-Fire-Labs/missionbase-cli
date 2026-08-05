@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `missionbase-agent boxes create --name NAME --team TEAM_ID` for creating team-owned boxes, with optional Markdown description, kind, status, and visibility.
 - Reported native Pi session names on registration, heartbeat, and `/name` changes so Missionbase can distinguish sessions by their human-readable names.
 - Replaced the Pi bridge's request/response capture with complete, resumable active-branch transcript synchronization, including existing user, assistant, tool, shell, and summary entries and durable deduplication of remote message injection.
 - Added `missionbase-agent pi agents` and `missionbase-agent pi --agent SLUG -- ...` for local Pi sessions bound to an explicit Missionbase agent identity, including preflight validation and protection against accidental user-acting CLI calls. The launcher accepts `--continue`/`-c` for the current directory's most recent session, `--resume`/`-r` for Pi's interactive session chooser, and `--session SESSION`/`-s SESSION` for a specific session path or ID.
