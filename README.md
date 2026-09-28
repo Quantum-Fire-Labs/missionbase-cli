@@ -215,6 +215,7 @@ missionbase week show --team TEAM_ID [--starts-on YYYY-MM-DD]
 missionbase week add TASK_ID --team TEAM_ID --starts-on YYYY-MM-DD
 missionbase week remove PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD
 missionbase week order PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD [--after-task TASK_ID]
+missionbase today # signed-in user's current day in their time zone
 missionbase day show --date YYYY-MM-DD
 missionbase day add TASK_ID --date YYYY-MM-DD
 missionbase day remove PLACEMENT_ID --date YYYY-MM-DD
@@ -232,7 +233,7 @@ missionbase patch /api/path --json JSON
 missionbase delete /api/path
 missionbase update
 
-Planning commands above act only as the authenticated user. Week dates must be Mondays; a week can be any date. `show` gives each task's `placement_id` for `remove` and `order`. Without `--after-task`, `order` moves a task to the first position. Day commands always use the signed-in user's own day. Agent credentials cannot use these user CLI commands, and an agent-locked Pi session remains blocked by `MISSIONBASE_ACTOR_MODE=agent`.
+Planning commands above act only as the authenticated user. Week dates must be Mondays; a week can be any date. `show` gives each task's `placement_id` for `remove` and `order`. Without `--after-task`, `order` moves a task to the first position. `today` gets the signed-in user's current date from the server in the user's time zone. Day commands always use the signed-in user's own day. Agent credentials cannot use these user CLI commands, and an agent-locked Pi session remains blocked by `MISSIONBASE_ACTOR_MODE=agent`.
 
 missionbase-agent version
 missionbase-agent auth status

@@ -86,6 +86,11 @@ func run(args []string) error {
 		return week(args[1:])
 	case "day":
 		return day(args[1:])
+	case "today":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: missionbase today")
+		}
+		return apiGet("/api/v1/days")
 	case "task":
 		return task(args[1:])
 	case "conversations":
@@ -2038,6 +2043,7 @@ Commands:
                                       Remove a task from the selected week
   week order PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD [--after-task TASK_ID]
                                       Move to the first position, or after a task
+  today                               Show the signed-in user's current day
   day show --date YYYY-MM-DD          Show the signed-in user's day
   day add TASK_ID --date YYYY-MM-DD   Place an accessible task on your day
   day remove PLACEMENT_ID --date YYYY-MM-DD

@@ -33,6 +33,7 @@ func TestUserPlanningCommandsCallScopedEndpoints(t *testing.T) {
 	setUserEnv(t, server.URL)
 
 	commands := [][]string{
+		{"today"},
 		{"week", "show", "--team", "9", "--starts-on", "2026-08-03"},
 		{"week", "add", "42", "--team", "9", "--starts-on", "2026-08-03"},
 		{"week", "order", "17", "--team", "9", "--starts-on", "2026-08-03", "--after-task", "42"},
@@ -48,6 +49,7 @@ func TestUserPlanningCommandsCallScopedEndpoints(t *testing.T) {
 		}
 	}
 	want := []string{
+		"GET /api/v1/days",
 		"GET /api/v1/weeks?starts_on=2026-08-03&team_id=9",
 		"POST /api/v1/weeks/2026-08-03/placements?team_id=9",
 		"PATCH /api/v1/weeks/2026-08-03/placements/17?team_id=9",
@@ -64,6 +66,7 @@ func TestUserPlanningCommandsCallScopedEndpoints(t *testing.T) {
 
 func TestPlanningCommandsRejectInvalidDatesAndUserCLILock(t *testing.T) {
 	for _, command := range [][]string{
+		{"today", "--date", "2026-08-05"},
 		{"week", "add", "42", "--team", "9", "--starts-on", "2026-08-04"},
 		{"day", "show", "--date", "2026-02-30"},
 		{"week", "show", "--starts-on", "2026-08-03"},
@@ -74,7 +77,9 @@ func TestPlanningCommandsRejectInvalidDatesAndUserCLILock(t *testing.T) {
 		}
 	}
 	t.Setenv("MISSIONBASE_ACTOR_MODE", "agent")
-	if err := run([]string{"day", "show", "--date", "2026-08-05"}); err == nil || !strings.Contains(err.Error(), "locked") {
-		t.Fatalf("agent actor mode must reject user planning: %v", err)
+	for _, command := range [][]string{{"today"}, {"day", "show", "--date", "2026-08-05"}} {
+		if err := run(command); err == nil || !strings.Contains(err.Error(), "locked") {
+			t.Fatalf("agent actor mode must reject %v: %v", command, err)
+		}
 	}
 }
