@@ -82,6 +82,15 @@ func run(args []string) error {
 		return box(args[1:])
 	case "tasks":
 		return tasks(args[1:])
+	case "week":
+		return week(args[1:])
+	case "day":
+		return day(args[1:])
+	case "today":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: missionbase today")
+		}
+		return apiGet("/api/v1/days")
 	case "task":
 		return task(args[1:])
 	case "conversations":
@@ -2026,6 +2035,21 @@ Commands:
   task participants list <task-id>    List task participants
   task participants add <task-id> --user ID|@mention [--team ID]
                                       Add a user task participant
+  week show --team TEAM_ID [--starts-on YYYY-MM-DD]
+                                      Show a team week (defaults to current Monday)
+  week add TASK_ID --team TEAM_ID --starts-on YYYY-MM-DD
+                                      Place a task in any selected team week
+  week remove PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD
+                                      Remove a task from the selected week
+  week order PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD [--after-task TASK_ID]
+                                      Move to the first position, or after a task
+  today                               Show the signed-in user's current day
+  day show --date YYYY-MM-DD          Show the signed-in user's day
+  day add TASK_ID --date YYYY-MM-DD   Place an accessible task on your day
+  day remove PLACEMENT_ID --date YYYY-MM-DD
+                                      Remove a task from your day
+  day order PLACEMENT_ID --date YYYY-MM-DD [--after-task TASK_ID]
+                                      Move to the first position, or after a task
   task show <task-id>                 Show a task
   task messages <task-id> [--limit N] Show task discussion messages
   task comments <task-id> [--limit N] Legacy alias for task messages

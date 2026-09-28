@@ -11,6 +11,27 @@ import (
 	"testing"
 )
 
+func TestWeekShowGetsAccessibleWeek(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/weeks" || r.URL.Query().Get("starts_on") != "2026-08-03" {
+			t.Errorf("request = %s %s", r.Method, r.URL.String())
+		}
+		if r.Header.Get("X-Missionbase-Agent-Slug") != "missionbase-dev" {
+			t.Errorf("agent header = %q", r.Header.Get("X-Missionbase-Agent-Slug"))
+		}
+		_, _ = w.Write([]byte(`{"week":{"tasks":[]}}`))
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+
+	if err := run([]string{"week", "show", "--starts-on", "2026-08-03"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"week", "show", "--starts-on", "2026-08-04"}); err == nil {
+		t.Fatal("expected non-Monday date to fail")
+	}
+}
+
 func TestScratchpadCommandsUseUserContext(t *testing.T) {
 	bodyFile := filepath.Join(t.TempDir(), "scratchpad.md")
 	if err := os.WriteFile(bodyFile, []byte("# Agent file\\n\\n- Item"), 0o600); err != nil {
