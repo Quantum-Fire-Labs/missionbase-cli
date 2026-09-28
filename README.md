@@ -211,6 +211,14 @@ missionbase task assign <task-id> --user <user-id-or-mention> [--team <team-id>]
 missionbase task unassign <task-id> --user <user-id-or-mention> [--team <team-id>]
 missionbase task participants list <task-id>
 missionbase task participants add <task-id> --user <user-id-or-mention> [--team <team-id>]
+missionbase week show --team TEAM_ID [--starts-on YYYY-MM-DD]
+missionbase week add TASK_ID --team TEAM_ID --starts-on YYYY-MM-DD
+missionbase week remove PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD
+missionbase week order PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD [--after-task TASK_ID]
+missionbase day show --date YYYY-MM-DD
+missionbase day add TASK_ID --date YYYY-MM-DD
+missionbase day remove PLACEMENT_ID --date YYYY-MM-DD
+missionbase day order PLACEMENT_ID --date YYYY-MM-DD [--after-task TASK_ID]
 missionbase task show <task-id>
 missionbase task messages <task-id> [--limit N]
 missionbase task comments <task-id> [--limit N] # compatibility alias
@@ -223,6 +231,8 @@ missionbase post /api/path --json JSON
 missionbase patch /api/path --json JSON
 missionbase delete /api/path
 missionbase update
+
+Planning commands above act only as the authenticated user. Week dates must be Mondays; a week can be any date. `show` gives each task's `placement_id` for `remove` and `order`. Without `--after-task`, `order` moves a task to the first position. Day commands always use the signed-in user's own day. Agent credentials cannot use these user CLI commands, and an agent-locked Pi session remains blocked by `MISSIONBASE_ACTOR_MODE=agent`.
 
 missionbase-agent version
 missionbase-agent auth status
@@ -253,7 +263,7 @@ missionbase-agent document create --box <box-id> --title "Doc title" --body-file
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
 missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
-missionbase-agent week show [--starts-on YYYY-MM-DD] # Monday; defaults to current week
+missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaults to current week
 missionbase-agent task show <task-id>
 missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
