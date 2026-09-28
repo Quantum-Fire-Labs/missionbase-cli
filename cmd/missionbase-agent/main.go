@@ -75,6 +75,8 @@ func run(args []string) error {
 		return document(args[1:])
 	case "tasks":
 		return tasks(args[1:])
+	case "week":
+		return week(args[1:])
 	case "task":
 		return task(args[1:])
 	case "discussion":
@@ -2449,6 +2451,28 @@ func membersBody(path string, filtered bool) ([]byte, error) {
 	return body, nil
 }
 
+func week(args []string) error {
+	usage := "usage: missionbase-agent week show [--starts-on YYYY-MM-DD (Monday)]"
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println(usage)
+		return nil
+	}
+	if len(args) == 0 || args[0] != "show" {
+		return fmt.Errorf("%s", usage)
+	}
+	if len(args) == 1 {
+		return apiGet("/api/v1/weeks")
+	}
+	if len(args) != 3 || args[1] != "--starts-on" {
+		return fmt.Errorf("%s", usage)
+	}
+	date, err := time.Parse("2006-01-02", args[2])
+	if err != nil || date.Format("2006-01-02") != args[2] || date.Weekday() != time.Monday {
+		return fmt.Errorf("--starts-on must be a Monday in YYYY-MM-DD format")
+	}
+	return apiGet("/api/v1/weeks?starts_on=" + url.QueryEscape(args[2]))
+}
+
 func task(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
@@ -3640,6 +3664,7 @@ Commands:
                                       Show open tasks assigned to a target user
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
+  week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
   task show <task-id>                  Show full task working context
   task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
       [--assign-agent slug | --assign-user ID|@mention]
