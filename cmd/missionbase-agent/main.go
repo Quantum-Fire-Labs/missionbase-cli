@@ -619,7 +619,7 @@ func isASCIISpace(ch byte) bool {
 
 func agent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|boxes|instructions>")
+		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|boxes|image|instructions>")
 	}
 
 	switch args[0] {
@@ -631,6 +631,8 @@ func agent(args []string) error {
 		return agentRestore(args[1:])
 	case "boxes":
 		return agentBoxes(args[1:])
+	case "image":
+		return agentImage(args[1:])
 	case "instructions":
 		return agentInstructions(args[1:])
 	default:
@@ -640,6 +642,7 @@ func agent(args []string) error {
 
 func agentCreate(args []string) error {
 	payload := map[string]string{}
+	imagePath := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--name":
@@ -666,8 +669,14 @@ func agentCreate(args []string) error {
 			}
 			payload["description"] = args[i+1]
 			i++
+		case "--image":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--image requires a file path")
+			}
+			imagePath = args[i+1]
+			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT]")
+			fmt.Println("usage: missionbase-agent agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT] [--image PATH]")
 			return nil
 		default:
 			return fmt.Errorf("unknown agent create option %q", args[i])
@@ -679,6 +688,9 @@ func agentCreate(args []string) error {
 	}
 	if strings.TrimSpace(payload["slug"]) == "" {
 		return fmt.Errorf("--slug is required")
+	}
+	if imagePath != "" {
+		return apiProfileImageMultipartAllowNoAgent(http.MethodPost, "/api/v1/agents", payload, imagePath)
 	}
 
 	body, err := json.Marshal(payload)
@@ -781,6 +793,83 @@ func agentBoxes(args []string) error {
 		return err
 	}
 	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/boxes", body)
+}
+
+func agentImage(args []string) error {
+	setUsage := "usage: missionbase-agent agent image set <agent-id-or-slug> --file PATH"
+	clearUsage := "usage: missionbase-agent agent image clear <agent-id-or-slug> --yes"
+	if len(args) == 0 {
+		return fmt.Errorf("usage: missionbase-agent agent image <set|clear> <agent-id-or-slug> ...")
+	}
+
+	switch args[0] {
+	case "set":
+		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+			if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+				fmt.Println(setUsage)
+				return nil
+			}
+			return fmt.Errorf("%s", setUsage)
+		}
+		agentID := args[1]
+		filePath := ""
+		for i := 2; i < len(args); i++ {
+			switch args[i] {
+			case "--file", "--image":
+				if i+1 >= len(args) {
+					return fmt.Errorf("%s requires a file path", args[i])
+				}
+				filePath = args[i+1]
+				i++
+			case "--help", "-h":
+				fmt.Println(setUsage)
+				return nil
+			default:
+				return fmt.Errorf("unknown agent image set option %q", args[i])
+			}
+		}
+		if strings.TrimSpace(agentID) == "" {
+			return fmt.Errorf("agent id or slug is required")
+		}
+		if filePath == "" {
+			return fmt.Errorf("--file is required")
+		}
+		return apiProfileImageMultipartAllowNoAgent(http.MethodPatch, "/api/v1/agents/"+url.PathEscape(agentID)+"/profile_image", nil, filePath)
+	case "clear", "remove":
+		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+			if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+				fmt.Println(clearUsage)
+				return nil
+			}
+			return fmt.Errorf("%s", clearUsage)
+		}
+		agentID := args[1]
+		confirmed := false
+		for i := 2; i < len(args); i++ {
+			switch args[i] {
+			case "--yes", "-y":
+				confirmed = true
+			case "--help", "-h":
+				fmt.Println(clearUsage)
+				return nil
+			default:
+				return fmt.Errorf("unknown agent image clear option %q", args[i])
+			}
+		}
+		if strings.TrimSpace(agentID) == "" {
+			return fmt.Errorf("agent id or slug is required")
+		}
+		if !confirmed {
+			return fmt.Errorf("--yes is required to clear an agent profile image")
+		}
+		return apiDeleteAllowNoAgent("/api/v1/agents/" + url.PathEscape(agentID) + "/profile_image")
+	case "--help", "-h":
+		fmt.Println(setUsage)
+		fmt.Println(clearUsage)
+		return nil
+	default:
+		return fmt.Errorf("unknown agent image command %q", args[0])
+	}
 }
 
 func agentInstructions(args []string) error {
@@ -3352,6 +3441,82 @@ func addMultipartFile(writer *multipart.Writer, fieldName, path string) error {
 	return err
 }
 
+// apiProfileImageMultipartAllowNoAgent sends fields plus a validated
+// profile_image file. It sends the agent header when one is configured, so an
+// agent can change its own image, but does not require it.
+func apiProfileImageMultipartAllowNoAgent(method, path string, fields map[string]string, imagePath string) error {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return err
+		}
+	}
+	if err := addMultipartProfileImage(writer, imagePath); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return err
+	}
+	client := httpclient.New(cfg)
+	var body []byte
+	if method == http.MethodPost {
+		body, err = client.PostWithContentType(path, buf.Bytes(), writer.FormDataContentType())
+	} else {
+		body, err = client.PatchWithContentType(path, buf.Bytes(), writer.FormDataContentType())
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
+func addMultipartProfileImage(writer *multipart.Writer, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open image %q: %w", path, err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat image %q: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("image %q is a directory", path)
+	}
+	if info.Size() > 5*1024*1024 {
+		return fmt.Errorf("image %q is too large (max 5 MB)", path)
+	}
+	peek := make([]byte, 512)
+	n, err := file.Read(peek)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("read image %q: %w", path, err)
+	}
+	contentType := http.DetectContentType(peek[:n])
+	switch contentType {
+	case "image/png", "image/jpeg", "image/webp":
+	default:
+		return fmt.Errorf("unsupported profile image type %q for %q (allowed: PNG, JPEG, WEBP)", contentType, path)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="profile_image"; filename="%s"`, escapeQuotes(filepath.Base(path))))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, file)
+	return err
+}
+
 func apiPostMultipartBody(path string, fields map[string]string, attaches []string, blobs []string) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -3633,14 +3798,20 @@ Commands:
                                       Start/send a DM to a user or agent
   dm send --chat <chat-id> --body-file PATH
                                       Reply in an existing DM chat
-  agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT]
+  agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT] [--image PATH]
                                       Create an agent on the authenticated team
+                                      With --image, also set its profile image (PNG, JPEG, WEBP; max 5 MB)
   agent archive <agent-id-or-slug> --yes
                                       Archive/deactivate an agent safely
   agent restore <agent-id-or-slug> --yes
                                       Restore/reactivate an archived agent
   agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
                                       Add an agent to one or more boxes
+  agent image set <agent-id-or-slug> --file PATH
+                                      Set an agent profile image (PNG, JPEG, WEBP; max 5 MB)
+                                      The server resizes it to fit 500x500 and stores it as JPEG
+  agent image clear <agent-id-or-slug> --yes
+                                      Remove an agent profile image
   agent instructions show <agent-id-or-slug>
                                       Show the active managed instruction version
   agent instructions publish <agent-id-or-slug> --body-file PATH [--title TITLE]

@@ -250,7 +250,9 @@ missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
 missionbase-agent dm send --to <handle> --body-file /tmp/body.md
 missionbase-agent dm send --chat <chat-id> --body-file /tmp/body.md
-missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--title "Fleet Architect"] [--description "Handles fleet tasks"]
+missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--title "Fleet Architect"] [--description "Handles fleet tasks"] [--image avatar.png]
+missionbase-agent agent image set fleet-worker --file avatar.png
+missionbase-agent agent image clear fleet-worker --yes
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent restore fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box <box-id> [--box <box-id>]
@@ -399,6 +401,8 @@ missionbase-agent task message 123 --body-file /tmp/comment.md --attach-blob "<s
 
 `missionbase-agent agent create ...` creates a new agent on the authenticated team and prints the created agent JSON, including its id and slug. It requires a team API key with `agents:create` permission; invalid or duplicate slugs are returned as API validation errors.
 
+`agent create --image PATH` also uploads a profile image for the new agent. `missionbase-agent agent image set AGENT --file PATH` sets or replaces an agent's profile image, and `agent image clear AGENT --yes` removes it (clearing an agent with no image succeeds with `"removed": false`). Images must be PNG, JPEG, or WEBP and at most 5 MB; the CLI checks the file contents before uploading and the server checks them again. The server resizes images to fit within 500×500 and stores them as JPEG, like user avatars, so transparency is not kept. An agent can change its own image when its slug is selected; changing another agent's image requires `agents:update`. Both commands print the updated agent JSON, and the new `profile_image_url` also appears in `me` and `pi agents --json`.
+
 `missionbase-agent agent boxes add ...` adds an agent to one or more boxes and prints JSON with the agent and membership status (`created` or `existing`) for each box. It requires `agents:update` and `boxes:update` permissions.
 
 `missionbase-agent agent instructions show AGENT` reads the active managed instruction version and requires `agents:read`. `agent instructions publish AGENT --body-file PATH [--title TITLE]` publishes and activates a new version, while `agent instructions activate AGENT VERSION_ID` reactivates an existing version; both writes require `agents:update`. Responses include the version id and number, active state, title, and exact content. Publish reads content directly from the required body file without newline normalization so callers can hash-verify the response. These operations do not change agent execution mode or provisioning state.
@@ -409,6 +413,8 @@ missionbase-agent task message 123 --body-file /tmp/comment.md --attach-blob "<s
 
 ```bash
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --title "Fleet Architect" --description "Handles fleet tasks"
+missionbase-agent agent image set fleet-worker --file ./fleet-worker.webp
+missionbase-agent agent image clear fleet-worker --yes
 missionbase-agent agent boxes add fleet-worker --box 2
 missionbase-agent agent boxes add 42 --box 2 --box 7
 missionbase-agent agent instructions show fleet-worker

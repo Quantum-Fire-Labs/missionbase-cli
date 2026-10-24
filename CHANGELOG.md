@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `missionbase-agent agent image set AGENT --file PATH`, `agent image clear AGENT --yes`, and `agent create --image PATH` for agent profile images (PNG, JPEG, WEBP; max 5 MB; the server stores them as JPEG resized to fit within 500×500).
 - Added `missionbase-agent boxes create --name NAME --team TEAM_ID` for creating team-owned boxes, with optional Markdown description, kind, status, and visibility.
 - Reported native Pi session names on registration, heartbeat, and `/name` changes so Missionbase can distinguish sessions by their human-readable names.
 - Replaced the Pi bridge's request/response capture with complete, resumable active-branch transcript synchronization, including existing user, assistant, tool, shell, and summary entries and durable deduplication of remote message injection.

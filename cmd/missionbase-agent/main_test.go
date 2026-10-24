@@ -243,6 +243,110 @@ func TestAgentCreateRequiresNameAndSlug(t *testing.T) {
 	}
 }
 
+func writeTestPNG(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "avatar.png")
+	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89")
+	if err := os.WriteFile(path, png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestAgentImageSetUploadsProfileImageWithSelectedAgent(t *testing.T) {
+	imagePath := writeTestPNG(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents/missionbase-dev/profile_image" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
+			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
+		}
+		file, header, err := r.FormFile("profile_image")
+		if err != nil {
+			t.Fatalf("profile_image form file: %v", err)
+		}
+		defer file.Close()
+		if header.Filename != "avatar.png" || header.Header.Get("Content-Type") != "image/png" {
+			t.Fatalf("file header = %q %q", header.Filename, header.Header.Get("Content-Type"))
+		}
+		_, _ = w.Write([]byte(`{"operation":"set_profile_image","agent":{"slug":"missionbase-dev","profile_image_url":"https://example.test/a.png"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"agent", "image", "set", "missionbase-dev", "--file", imagePath}); err != nil {
+		t.Fatalf("run agent image set: %v", err)
+	}
+}
+
+func TestAgentImageSetRejectsUnsupportedTypesBeforeUpload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "avatar.gif")
+	if err := os.WriteFile(path, []byte("GIF89a\x01\x00\x01\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	err := run([]string{"agent", "image", "set", "missionbase-dev", "--file", path})
+	if err == nil || !strings.Contains(err.Error(), `unsupported profile image type "image/gif"`) {
+		t.Fatalf("err = %v, want unsupported type", err)
+	}
+	if err := run([]string{"agent", "image", "set", "missionbase-dev"}); err == nil || !strings.Contains(err.Error(), "--file is required") {
+		t.Fatalf("err = %v, want --file required", err)
+	}
+}
+
+func TestAgentImageClearDeletesWhenConfirmed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/agents/fleet-worker/profile_image" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"operation":"clear_profile_image","removed":true,"agent":{"slug":"fleet-worker","profile_image_url":null}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "image", "clear", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "--yes is required") {
+		t.Fatalf("err = %v, want --yes required", err)
+	}
+	if err := run([]string{"agent", "image", "clear", "fleet-worker", "--yes"}); err != nil {
+		t.Fatalf("run agent image clear: %v", err)
+	}
+}
+
+func TestAgentCreateWithImageSendsMultipart(t *testing.T) {
+	imagePath := writeTestPNG(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/agents" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if r.FormValue("name") != "Fleet Worker" || r.FormValue("slug") != "fleet-worker" {
+			t.Fatalf("form = %#v", r.MultipartForm.Value)
+		}
+		if _, _, err := r.FormFile("profile_image"); err != nil {
+			t.Fatalf("profile_image form file: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"agent":{"id":42,"slug":"fleet-worker"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnvNoSlug(t, server.URL)
+	if err := run([]string{"agent", "create", "--name", "Fleet Worker", "--slug", "fleet-worker", "--image", imagePath}); err != nil {
+		t.Fatalf("run agent create --image: %v", err)
+	}
+}
+
 func TestAgentArchiveDeletesWithoutSelectedAgentWhenConfirmed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
