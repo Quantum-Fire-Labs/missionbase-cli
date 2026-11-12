@@ -15,6 +15,9 @@ type Config struct {
 	Token     string `json:"token"`
 	AgentSlug string `json:"agent_slug,omitempty"`
 	PiHost    string `json:"pi_host,omitempty"`
+	// DefaultProject is this machine's fallback project (box id) for agent
+	// commands that resolve "here". Only read from the agent credentials file.
+	DefaultProject string `json:"default_project,omitempty"`
 }
 
 type ComputerConfig struct {
@@ -62,6 +65,19 @@ func SaveUser(cfg Config) error {
 
 func SaveAgent(cfg Config) error {
 	return SaveToPath(cfg, CredentialsPath("missionbase-agent"))
+}
+
+// SetAgentDefaultProject stores (or, with an empty value, clears) the machine's
+// default project in the agent credentials file. It edits the file as stored,
+// so environment overrides and directory config are never written into it.
+func SetAgentDefaultProject(value string) (string, error) {
+	path := CredentialsPath("missionbase-agent")
+	cfg, err := loadFromPath(path)
+	if err != nil {
+		return path, err
+	}
+	cfg.DefaultProject = value
+	return path, SaveToPath(cfg, path)
 }
 
 func Save(cfg Config) error {

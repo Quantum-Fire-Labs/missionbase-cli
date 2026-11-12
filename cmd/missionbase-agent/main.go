@@ -34,7 +34,7 @@ func main() {
 			os.Exit(exitError.ExitCode())
 		}
 		fmt.Fprintf(os.Stderr, "missionbase-agent: %v\n", err)
-		os.Exit(1)
+		os.Exit(exitCodeFor(err))
 	}
 }
 
@@ -75,6 +75,8 @@ func run(args []string) error {
 		return document(args[1:])
 	case "tasks":
 		return tasks(args[1:])
+	case "project":
+		return projectCommand(args[1:])
 	case "week":
 		return week(args[1:])
 	case "task":
@@ -196,6 +198,12 @@ func parseAgentScratchpadUpdateArgs(args []string) (string, string, error) {
 func tasks(args []string) error {
 	if len(args) == 0 {
 		return apiGet("/api/v1/agent/tasks")
+	}
+	switch args[0] {
+	case "ls", "list":
+		return tasksLs(args[1:])
+	case "changes":
+		return tasksChanges(args[1:])
 	}
 
 	due := ""
@@ -341,6 +349,9 @@ func auth(args []string) error {
 			fmt.Printf("Agent slug: %s\n", cfg.AgentSlug)
 		} else {
 			fmt.Println("Agent slug: not set")
+		}
+		if cfg.DefaultProject != "" {
+			fmt.Printf("Default project: %s\n", cfg.DefaultProject)
 		}
 		fmt.Printf("Credentials: %s\n", config.CredentialsPath("missionbase-agent"))
 		if path, ok := config.LocalAgentConfigPath(); ok {
@@ -2589,6 +2600,14 @@ func task(args []string) error {
 		return taskMove(args[1:])
 	case "complete":
 		return taskComplete(args[1:])
+	case "start":
+		return taskStart(args[1:])
+	case "stop":
+		return taskStop(args[1:])
+	case "attention":
+		return taskAttention(args[1:])
+	case "next":
+		return taskNext(args[1:])
 	case "messages", "comments":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent task %s <task-id> [--limit N]", args[0])
@@ -3886,6 +3905,31 @@ Commands:
                                       Add a user participant to a task
   task participants add <task-id> --agent slug
                                       Add an agent participant to a task
+
+Agent work (text output by default; --json for scripts and the Herdr panel):
+  task start <task-id> [--terminal [machine/]tN] [--force] [--json]
+                                      Start work: assign yourself and record where it runs
+                                      (default terminal: $HC_TERMINAL_ID on this machine)
+  task stop <task-id> [--reason done|manual|reopened|reassigned|terminal_gone|agent_exited] [--json]
+                                      Stop your running work (default reason: manual); stays assigned
+  task attention <task-id> "reason" [--json]
+  task attention <task-id> --body-file PATH [--json]
+                                      Set Needs Attention; the reason is posted as a task comment
+  task attention clear <task-id> [--json]
+                                      Clear Needs Attention (back to In Progress)
+  task next [--cwd DIR | --project ID] [--json]
+                                      Next open task here that is free or yours and not running
+  tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]
+                                      List this project's tasks (open by default), or every project with --all
+  tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
+                                      Tasks changed since a cursor, plus deletions and the next cursor
+  project [show] [--cwd DIR | --project ID] [--json]
+                                      Show which project "here" resolves to
+  project default [ID | --clear]      Show, set or clear this machine's default project
+  Project resolution: --project, then the nearest .missionbase/project.json (box_id) from --cwd or
+  the current folder, then the machine default. Exit codes: 3 = HTTP 409 conflict, 4 = hc missing
+  or could not resolve the terminal, 5 = no project resolved, 1 = any other error.
+
   discussion show <discussion-id> [--limit N]
                                       Show a discussion by canonical discussion id
   discussion message <discussion-id> --body-file PATH

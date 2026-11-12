@@ -106,7 +106,20 @@ func (c Client) do(method, path string, body []byte, contentType string) ([]byte
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%s %s failed: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return nil, &HTTPError{Method: method, Path: path, StatusCode: resp.StatusCode, Body: respBody}
 	}
 	return respBody, nil
+}
+
+// HTTPError is a non-2xx API response. Callers can inspect StatusCode and Body
+// (the standard {"error": {...}} envelope) with errors.As.
+type HTTPError struct {
+	Method     string
+	Path       string
+	StatusCode int
+	Body       []byte
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("%s %s failed: HTTP %d: %s", e.Method, e.Path, e.StatusCode, strings.TrimSpace(string(e.Body)))
 }
