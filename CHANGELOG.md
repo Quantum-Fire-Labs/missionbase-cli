@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `missionbase-agent task update <task-id> --body-file PATH` to replace a task description (sent as `body`, like `task create --body-file`), and `--title` to rename a task.
 - Added `missionbase-agent agent image set AGENT --file PATH`, `agent image clear AGENT --yes`, and `agent create --image PATH` for agent profile images (PNG, JPEG, WEBP; max 5 MB; the server stores them as JPEG resized to fit within 500×500).
 - Added `missionbase-agent boxes create --name NAME --team TEAM_ID` for creating team-owned boxes, with optional Markdown description, kind, status, and visibility.
 - Reported native Pi session names on registration, heartbeat, and `/name` changes so Missionbase can distinguish sessions by their human-readable names.

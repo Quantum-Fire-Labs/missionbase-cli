@@ -1725,7 +1725,7 @@ func TestTaskHelpDocumentsDeadlineAndSchedulingOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--body-file PATH", "Update task title, deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}
@@ -2350,4 +2350,44 @@ func setAgentEnvNoSlug(t *testing.T, baseURL string) {
 		t.Fatalf("write agent config: %v", err)
 	}
 	t.Setenv("MISSIONBASE_AGENT_CONFIG", configPath)
+}
+
+func TestTaskUpdateBodyFilePatchesBodyLikeTaskCreate(t *testing.T) {
+	want := "## Details\n\n- Preserved `context: \"modal\"`\n\n```text\nliteral `ticks`\n```\n"
+	bodyFile := writeTextFile(t, "description.md", want)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/tasks/123" {
+			t.Fatalf("request = %s %s, want PATCH /api/v1/tasks/123", r.Method, r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if len(payload) != 2 || payload["body"] != want || payload["title"] != "Renamed" {
+			t.Fatalf("payload = %#v, want body and title", payload)
+		}
+		_, _ = w.Write([]byte(`{"task":{"id":123}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "update", "123", "--title", "Renamed", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task update body file: %v", err)
+	}
+}
+
+func TestTaskUpdateBodyFileRejectsInlineStdinAndEmptyBodies(t *testing.T) {
+	empty := writeTextFile(t, "empty.md", "  \n")
+	cases := map[string][]string{
+		"is not supported; use --body-file PATH": {"task", "update", "1", "--body", "x"},
+		"stdin body input is not supported":      {"task", "update", "1", "--body-file", "-"},
+		"is empty":                               {"task", "update", "1", "--body-file", empty},
+		"--body-file requires a file path":       {"task", "update", "1", "--body-file"},
+	}
+	for want, args := range cases {
+		if err := run(args); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("run %v: err = %v, want %q", args, err, want)
+		}
+	}
 }

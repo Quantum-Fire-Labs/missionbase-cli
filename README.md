@@ -270,6 +270,7 @@ missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaul
 missionbase-agent task show <task-id>
 missionbase-agent task create --title "Task title" --box <box-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
 missionbase-agent task update <task-id> --title "New task title"
+missionbase-agent task update <task-id> --body-file /tmp/description.md # replaces the task description
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
 missionbase-agent task update <task-id> --scheduled-at DATETIME
@@ -333,7 +334,7 @@ Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar p
 
 Task, discussion, document, file, box discussion create, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
-Agent-authored posting bodies are file-only: use `--body-file PATH` for DM bodies, task messages, discussion/document/file messages, box discussion bodies, and document bodies. Task creation opening messages use `--body-file PATH`. Inline body flags and stdin body input (`--body-stdin` or `--body-file -`) are intentionally unsupported for these write flows so Markdown, backticks, and shell-sensitive content are read from disk instead of passing through fragile shell quoting or piped interactive flows.
+Agent-authored posting bodies are file-only: use `--body-file PATH` for DM bodies, task messages, discussion/document/file messages, box discussion bodies, and document bodies. Task descriptions use `--body-file PATH` on `task create` and `task update`. Inline body flags and stdin body input (`--body-stdin` or `--body-file -`) are intentionally unsupported for these write flows so Markdown, backticks, and shell-sensitive content are read from disk instead of passing through fragile shell quoting or piped interactive flows.
 
 Recommended workflow:
 
