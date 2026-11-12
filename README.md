@@ -118,6 +118,48 @@ Example `.missionbase-agent.json`:
 }
 ```
 
+### Agent work (Herdr agents)
+
+These commands let orchestrators and their Claude Code / Codex workers track work on Missionbase tasks. They print short text by default; add `--json` for the server's JSON (or, for `tasks ls`, `tasks changes`, `task next` and `project`, a shaped JSON object described below).
+
+```bash
+missionbase-agent task start <task-id> [--terminal [machine/]tN] [--force] [--json]
+missionbase-agent task stop <task-id> [--reason done|manual|reopened|reassigned|terminal_gone|agent_exited] [--json]
+missionbase-agent task attention <task-id> "Short or long copy?" [--json]
+missionbase-agent task attention <task-id> --body-file /tmp/question.md [--json]
+missionbase-agent task attention clear <task-id> [--json]
+missionbase-agent task next [--cwd DIR | --project ID] [--json]
+missionbase-agent tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]
+missionbase-agent tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
+missionbase-agent project [show] [--cwd DIR | --project ID] [--json]
+missionbase-agent project default [ID | --clear]
+```
+
+- **`task start`** assigns the acting agent to the task, records where the work runs (hc core id, machine name, terminal) and moves Backlog/To Do to In Progress (`POST /api/v1/tasks/:id/work`). Without `--terminal` it uses `$HC_TERMINAL_ID` on this machine. `--terminal t7` is a terminal on this machine; `--terminal omarchy-intel/t7` is a terminal on a machine from `hc machine ls` (matched by name, host, target or core id). The core id comes from `hc server status --json` / `hc machine ls --json`; `hc` is only run by `task start`, with a 3 second timeout. If another agent is already running the task elsewhere, it exits 3 and says who is running it where; `--force` takes the work over.
+- **`task stop`** clears where your work runs and keeps you assigned (`DELETE /api/v1/tasks/:id/work`). "Nothing of yours was running" is not an error.
+- **`task attention`** moves the task to Needs Attention and posts the reason as a task comment for a person to answer. `clear` returns it to In Progress.
+- **`tasks ls`** lists the current project's tasks, open by default, in project order (`GET /api/v1/boxes/:id/tasks`, all pages). `--status` takes a category (`open`, `done`, `canceled`), `all`, or status keys such as `needs_attention` or `todo,in_progress`. `--all` lists every project you can access; it reads the changes feed and its JSON includes a `cursor` to continue with `tasks changes --since`. JSON: `{"project": {...} | null, "tasks": [...], "cursor"?: "..."}`.
+- **`tasks changes`** returns tasks changed since a cursor (open and closed), following pages until done, deduped by id, with deleted tasks removed. Treat the cursor as opaque. Without `--since` it starts from the beginning. JSON: `{"tasks": [...], "deleted_task_ids": [...], "cursor": "..."}`.
+- **`task next`** picks, in the current project, the first task that nobody is running, that is unassigned or assigned to you, and that is not waiting on a person: your In Progress tasks first, then To Do, each in project order. With no project it returns your next assigned task from `GET /api/v1/agent/work`. JSON: `{"has_work": bool, "task": {...} | null, "project": {...} | null}`.
+
+**Project resolution** ("here") is the same for `tasks ls`, `task next` and `project`:
+
+1. `--project ID` (a box id)
+2. the nearest `.missionbase/project.json` (its `box_id`) from `--cwd DIR` or the current folder, searching parent folders
+3. this machine's default project, set with `missionbase-agent project default ID` and stored as `default_project` in `~/.config/missionbase-agent/credentials`
+
+Task payloads include `running` (agent, machine id/name, terminal, since, stale), `live_status` and `attention` (reason, comment id, since).
+
+#### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Any other error: bad arguments, network failure, or an API error other than 409 |
+| 3 | Conflict: the API answered HTTP 409 (for example `task start` while another agent runs the task elsewhere). Applies to every command. |
+| 4 | `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
+| 5 | No project resolved (`tasks ls` and `project` without `--project`, a `.missionbase/project.json` or a default project) |
+
 ### Local Pi sessions
 
 List active agents available to the authenticated team token, then launch Pi with an explicit Missionbase agent identity:
