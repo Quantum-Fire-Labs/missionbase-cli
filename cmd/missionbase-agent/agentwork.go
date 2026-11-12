@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -332,7 +331,6 @@ type workTask struct {
 	Title       string `json:"title"`
 	Status      string `json:"status"`
 	StatusLabel string `json:"status_label"`
-	BoxPosition *int   `json:"box_position"`
 	Box         *struct {
 		ID   int64  `json:"id"`
 		Name string `json:"name"`
@@ -780,25 +778,39 @@ func tasksLs(args []string) error {
 	if all && (pf.project != "" || pf.cwd != "") {
 		return fmt.Errorf("use --all or --cwd/--project, not both")
 	}
-	if all {
-		return tasksLsAll(status, jsonOut)
+	query := statusQuery(status)
+	var project resolvedProject
+	if !all {
+		var ok bool
+		var err error
+		if project, ok, err = resolveProject(pf.project, pf.cwd); err != nil {
+			return err
+		}
+		if !ok {
+			return errNoProject()
+		}
+		query.Set("box_ids", project.BoxID)
+	}
+	tasks, err := fetchAccessibleTasks(query)
+	if err != nil {
+		return err
 	}
 
-	project, ok, err := resolveProject(pf.project, pf.cwd)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errNoProject()
-	}
-	tasks, err := fetchBoxTasks(project.BoxID, statusQuery(status))
-	if err != nil {
-		return err
+	if all {
+		if jsonOut {
+			return printJSON(map[string]any{"project": nil, "tasks": rawMessages(tasks)})
+		}
+		fmt.Printf("All projects (%d tasks)\n", len(tasks))
+		printTaskTable(tasks, true)
+		return nil
 	}
 	if jsonOut {
 		return printJSON(map[string]any{"project": project, "tasks": rawMessages(tasks)})
 	}
 	name := project.BoxName
+	if name == "" && len(tasks) > 0 && tasks[0].task.Box != nil {
+		name = tasks[0].task.Box.Name
+	}
 	if name == "" {
 		name = "Project " + project.BoxID
 	}
@@ -818,9 +830,9 @@ func projectSourceLabel(p resolvedProject) string {
 	}
 }
 
-// statusQuery maps --status to box task filters. Categories and "all" use
+// statusQuery maps --status to task list filters. Categories and "all" use
 // status_category; anything else is passed through as status keys, which the
-// server validates (so new statuses need no CLI change).
+// server validates (so new statuses need no CLI change). No filter means open.
 func statusQuery(status string) url.Values {
 	query := url.Values{}
 	switch status {
@@ -835,96 +847,36 @@ func statusQuery(status string) url.Values {
 	return query
 }
 
-func fetchBoxTasks(boxID string, query url.Values) ([]rawTask, error) {
+// fetchAccessibleTasks reads every page of GET /api/v1/tasks/accessible, which
+// is already in project, status and box_position order.
+func fetchAccessibleTasks(query url.Values) ([]rawTask, error) {
 	var all []rawTask
-	query.Set("per_page", "100")
+	query.Set("per_page", "500")
 	for page := 1; page <= maxPages; page++ {
 		query.Set("page", strconv.Itoa(page))
-		body, err := agentDo(http.MethodGet, withQuery("/api/v1/boxes/"+url.PathEscape(boxID)+"/tasks", query), nil)
+		body, err := agentDo(http.MethodGet, withQuery("/api/v1/tasks/accessible", query), nil)
 		if err != nil {
 			return nil, err
 		}
 		var response struct {
 			Tasks []json.RawMessage `json:"tasks"`
 			Meta  struct {
-				Total int `json:"total"`
+				HasMore bool `json:"has_more"`
 			} `json:"meta"`
 		}
 		if err := json.Unmarshal(body, &response); err != nil {
-			return nil, fmt.Errorf("unexpected box tasks response: %w", err)
+			return nil, fmt.Errorf("unexpected accessible tasks response: %w", err)
 		}
 		tasks, err := decodeRawTasks(response.Tasks)
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, tasks...)
-		if len(response.Tasks) == 0 || len(all) >= response.Meta.Total {
+		if !response.Meta.HasMore || len(response.Tasks) == 0 {
 			break
 		}
 	}
 	return all, nil
-}
-
-// tasksLsAll lists every accessible project's tasks. There is no team-wide
-// agent task list with running/attention fields, so this reads the changes
-// feed from the beginning and filters locally. Its cursor is returned so a
-// caller can continue with `tasks changes --since`.
-func tasksLsAll(status string, jsonOut bool) error {
-	feed, err := fetchChanges("", "")
-	if err != nil {
-		return err
-	}
-	var statusKeys, categories []string
-	switch status {
-	case "", "open":
-		categories = []string{"open"}
-	case "all":
-	case "done", "canceled":
-		categories = []string{status}
-	default:
-		statusKeys = strings.Split(status, ",")
-	}
-	var tasks []rawTask
-	for _, rt := range feed.tasks {
-		var meta struct {
-			StatusCategory string `json:"status_category"`
-		}
-		_ = json.Unmarshal(rt.raw, &meta)
-		if len(categories) > 0 && !contains(categories, meta.StatusCategory) {
-			continue
-		}
-		if len(statusKeys) > 0 && !contains(statusKeys, rt.task.Status) {
-			continue
-		}
-		tasks = append(tasks, rt)
-	}
-	sort.SliceStable(tasks, func(i, j int) bool {
-		a, b := tasks[i].task, tasks[j].task
-		if boxName(a) != boxName(b) {
-			return boxName(a) < boxName(b)
-		}
-		return position(a) < position(b)
-	})
-	if jsonOut {
-		return printJSON(map[string]any{"project": nil, "tasks": rawMessages(tasks), "cursor": feed.cursor})
-	}
-	fmt.Printf("All projects (%d tasks)\n", len(tasks))
-	printTaskTable(tasks, true)
-	return nil
-}
-
-func boxName(t workTask) string {
-	if t.Box == nil {
-		return ""
-	}
-	return t.Box.Name
-}
-
-func position(t workTask) int {
-	if t.BoxPosition == nil {
-		return 1 << 30
-	}
-	return *t.BoxPosition
 }
 
 // ---- tasks changes ----------------------------------------------------------------
@@ -943,7 +895,7 @@ func tasksChanges(args []string) error {
 		switch args[i] {
 		case "--since":
 			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
-				return fmt.Errorf("--since requires a cursor (from a previous tasks changes or tasks ls --all)")
+				return fmt.Errorf("--since requires a cursor (from a previous tasks changes)")
 			}
 			since = strings.TrimSpace(args[i+1])
 			i++
@@ -1061,11 +1013,10 @@ func fetchChanges(since, boxIDs string) (changesFeed, error) {
 
 const taskNextUsage = "usage: missionbase-agent task next [--cwd DIR | --project ID] [--json]"
 
-// taskNext picks the next task in the resolved project: the first open task,
-// in project order, that nobody is running, that is not waiting on a person,
-// and that is unassigned or assigned to this agent. In Progress tasks of yours
-// come before To Do. Without a project it asks the server for this agent's
-// next assigned task (GET /api/v1/agent/work).
+// taskNext asks the server for the next task: in the resolved project,
+// GET /api/v1/boxes/:id/tasks/next (the first To Do task by position that is
+// unassigned or yours and not running); with no project, this agent's next
+// assigned task from GET /api/v1/agent/work.
 func taskNext(args []string) error {
 	var pf projectFlags
 	jsonOut := false
@@ -1094,12 +1045,11 @@ func taskNext(args []string) error {
 		return err
 	}
 
-	var next *rawTask
+	path := "/api/v1/agent/work"
 	if ok {
-		next, err = nextInProject(project.BoxID)
-	} else {
-		next, err = nextAssigned()
+		path = "/api/v1/boxes/" + url.PathEscape(project.BoxID) + "/tasks/next"
 	}
+	next, err := fetchNext(path)
 	if err != nil {
 		return err
 	}
@@ -1117,7 +1067,7 @@ func taskNext(args []string) error {
 	}
 	if next == nil {
 		if ok {
-			fmt.Println("No work here: nothing open that is unassigned or yours and not already running.")
+			fmt.Println("No work here: no To Do task that is unassigned or yours and not already running.")
 		} else {
 			fmt.Println("No work assigned to you.")
 		}
@@ -1128,50 +1078,9 @@ func taskNext(args []string) error {
 	return nil
 }
 
-func nextInProject(boxID string) (*rawTask, error) {
-	cfg, err := config.LoadAgent()
-	if err != nil {
-		return nil, err
-	}
-	query := url.Values{}
-	query.Set("status", "in_progress,todo")
-	tasks, err := fetchBoxTasks(boxID, query)
-	if err != nil {
-		return nil, err
-	}
-	mineOrFree := func(t workTask) bool {
-		if len(t.Assignees) == 0 {
-			return true
-		}
-		for _, a := range t.Assignees {
-			if a.Type == "Agent" && a.Slug == cfg.AgentSlug {
-				return true
-			}
-		}
-		return false
-	}
-	for _, wanted := range []string{"in_progress", "todo"} {
-		var candidates []rawTask
-		for _, rt := range tasks {
-			t := rt.task
-			if t.Status != wanted || t.Running != nil || !mineOrFree(t) {
-				continue
-			}
-			if wanted == "in_progress" && len(t.Assignees) == 0 {
-				continue // someone moved it along by hand; leave it to them
-			}
-			candidates = append(candidates, rt)
-		}
-		sort.SliceStable(candidates, func(i, j int) bool { return position(candidates[i].task) < position(candidates[j].task) })
-		if len(candidates) > 0 {
-			return &candidates[0], nil
-		}
-	}
-	return nil, nil
-}
-
-func nextAssigned() (*rawTask, error) {
-	body, err := agentDo(http.MethodGet, "/api/v1/agent/work", nil)
+// fetchNext reads a {has_work, task} response.
+func fetchNext(path string) (*rawTask, error) {
+	body, err := agentDo(http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1179,7 +1088,7 @@ func nextAssigned() (*rawTask, error) {
 		Task json.RawMessage `json:"task"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("unexpected agent work response: %w", err)
+		return nil, fmt.Errorf("unexpected next task response: %w", err)
 	}
 	if len(response.Task) == 0 || string(response.Task) == "null" {
 		return nil, nil

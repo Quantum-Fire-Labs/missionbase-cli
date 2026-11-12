@@ -388,23 +388,25 @@ func writeProjectFile(t *testing.T, root, content string) {
 }
 
 func boxTask(id int, status string, position int, extra string) string {
-	return fmt.Sprintf(`{"id":%d,"title":"Task %d","status":"%s","status_label":"%s","box_position":%d,"assignees":[],"running":null,"live_status":null,"attention":null%s}`, id, id, status, status, position, extra)
+	return fmt.Sprintf(`{"id":%d,"title":"Task %d","status":"%s","status_label":"%s","status_category":"open","box":{"id":113,"name":"Engage Spot"},"box_position":%d,"assignees":[],"running":null,"live_status":null,"attention":null%s}`, id, id, status, status, position, extra)
 }
+
+const emptyAccessible = `{"tasks":[],"meta":{"total":0,"page":1,"per_page":500,"has_more":false}}`
 
 func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 	root := t.TempDir()
-	writeProjectFile(t, root, `{"team_id":2,"box_id":113,"box_name":"Engage Spot"}`)
+	writeProjectFile(t, root, `{"team_id":2,"box_id":113}`)
 	nested := filepath.Join(root, "app", "models")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/boxes/113/tasks": func(r *http.Request) (int, string) {
+		"GET /api/v1/tasks/accessible": func(r *http.Request) (int, string) {
 			if r.URL.Query().Get("page") == "1" {
-				return 200, `{"tasks":[` + boxTask(1, "todo", 1, "") + `],"meta":{"total":2,"page":1,"per_page":100}}`
+				return 200, `{"tasks":[` + boxTask(1, "todo", 1, "") + `],"meta":{"total":2,"page":1,"per_page":500,"has_more":true}}`
 			}
-			return 200, `{"tasks":[` + boxTask(2, "needs_attention", 1, `,"attention":{"reason":"Pick one"}`) + `],"meta":{"total":2,"page":2,"per_page":100}}`
+			return 200, `{"tasks":[` + boxTask(2, "needs_attention", 1, `,"attention":{"reason":"Pick one"}`) + `],"meta":{"total":2,"page":2,"per_page":500,"has_more":false}}`
 		},
 	})
 	setAgentEnv(t, server.URL)
@@ -413,7 +415,7 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(*requests) != 2 || (*requests)[0].query != "page=1&per_page=100" {
+	if len(*requests) != 2 || (*requests)[0].query != "box_ids=113&page=1&per_page=500" || (*requests)[1].query != "box_ids=113&page=2&per_page=500" {
 		t.Fatalf("requests = %#v", *requests)
 	}
 	var result struct {
@@ -427,6 +429,7 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 
+	// Without box_name in project.json, the text header uses the box name from the payload.
 	out, err = runCapture(t, "tasks", "ls", "--cwd", nested)
 	if err != nil {
 		t.Fatal(err)
@@ -442,9 +445,7 @@ func TestTasksLsProjectPrecedence(t *testing.T) {
 	root := t.TempDir()
 	writeProjectFile(t, root, `{"box_id":"113"}`)
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/boxes/7/tasks":   fixed(200, `{"tasks":[],"meta":{"total":0}}`),
-		"GET /api/v1/boxes/113/tasks": fixed(200, `{"tasks":[],"meta":{"total":0}}`),
-		"GET /api/v1/boxes/55/tasks":  fixed(200, `{"tasks":[],"meta":{"total":0}}`),
+		"GET /api/v1/tasks/accessible": fixed(200, emptyAccessible),
 	})
 	setAgentEnv(t, server.URL)
 	if err := os.WriteFile(os.Getenv("MISSIONBASE_AGENT_CREDENTIALS"), []byte(`{"token":"file-token","default_project":"55"}`), 0o600); err != nil {
@@ -453,18 +454,18 @@ func TestTasksLsProjectPrecedence(t *testing.T) {
 
 	for _, tc := range []struct {
 		args []string
-		path string
+		box  string
 	}{
-		{[]string{"tasks", "ls", "--project", "7", "--json"}, "/api/v1/boxes/7/tasks"},
-		{[]string{"tasks", "ls", "--cwd", root, "--json"}, "/api/v1/boxes/113/tasks"},
-		{[]string{"tasks", "ls", "--cwd", t.TempDir(), "--json"}, "/api/v1/boxes/55/tasks"},
+		{[]string{"tasks", "ls", "--project", "7", "--json"}, "7"},
+		{[]string{"tasks", "ls", "--cwd", root, "--json"}, "113"},
+		{[]string{"tasks", "ls", "--cwd", t.TempDir(), "--json"}, "55"},
 	} {
 		before := len(*requests)
 		if _, err := runCapture(t, tc.args...); err != nil {
 			t.Fatalf("%v: %v", tc.args, err)
 		}
-		if got := (*requests)[before].path; got != tc.path {
-			t.Fatalf("%v: path = %s, want %s", tc.args, got, tc.path)
+		if got := mustParseQuery(t, (*requests)[before].query).Get("box_ids"); got != tc.box {
+			t.Fatalf("%v: box_ids = %s, want %s", tc.args, got, tc.box)
 		}
 	}
 }
@@ -488,7 +489,7 @@ func TestTasksLsWithoutProjectExitsWithDistinctCode(t *testing.T) {
 
 func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/boxes/9/tasks": fixed(200, `{"tasks":[],"meta":{"total":0}}`),
+		"GET /api/v1/tasks/accessible": fixed(200, emptyAccessible),
 	})
 	setAgentEnv(t, server.URL)
 	for _, tc := range []struct{ status, key, value string }{
@@ -501,10 +502,9 @@ func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 		if _, err := runCapture(t, "tasks", "ls", "--project", "9", "--status", tc.status, "--json"); err != nil {
 			t.Fatal(err)
 		}
-		req := (*requests)[before]
-		query := mustParseQuery(t, req.query)
-		if query.Get(tc.key) != tc.value {
-			t.Fatalf("--status %s: query = %s", tc.status, req.query)
+		query := mustParseQuery(t, (*requests)[before].query)
+		if query.Get(tc.key) != tc.value || query.Get("box_ids") != "9" {
+			t.Fatalf("--status %s: query = %s", tc.status, (*requests)[before].query)
 		}
 	}
 
@@ -520,13 +520,12 @@ func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 	}
 }
 
-func TestTasksLsAllFiltersChangesFeedAndReturnsCursor(t *testing.T) {
+func TestTasksLsAllUsesAccessibleTasksInServerOrder(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/tasks/changes": fixed(200, `{"tasks":[
-			{"id":1,"title":"Open","status":"todo","status_category":"open","box":{"id":2,"name":"B"},"box_position":2},
-			{"id":2,"title":"Done","status":"complete","status_category":"done","box":{"id":2,"name":"B"},"box_position":1},
-			{"id":3,"title":"Waiting","status":"needs_attention","status_category":"open","box":{"id":1,"name":"A"},"box_position":1}
-		],"deleted_task_ids":[],"cursor":"1.5.3.0","has_more":false}`),
+		"GET /api/v1/tasks/accessible": fixed(200, `{"tasks":[
+			{"id":3,"title":"Waiting","status":"needs_attention","status_category":"open","box":{"id":1,"name":"A"},"box_position":1},
+			{"id":1,"title":"Open","status":"todo","status_category":"open","box":{"id":2,"name":"B"},"box_position":2}
+		],"meta":{"total":2,"page":1,"per_page":500,"has_more":false}}`),
 	})
 	setAgentEnv(t, server.URL)
 
@@ -534,21 +533,35 @@ func TestTasksLsAllFiltersChangesFeedAndReturnsCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q := mustParseQuery(t, (*requests)[0].query); q.Get("since") != "" || q.Get("limit") != "500" {
-		t.Fatalf("query = %s", (*requests)[0].query)
+	if got := (*requests)[0].query; got != "page=1&per_page=500" {
+		t.Fatalf("query = %s, want no box_ids or status filter", got)
+	}
+	if strings.Contains(out, "cursor") {
+		t.Fatalf("--all output should no longer carry a changes cursor: %s", out)
 	}
 	var result struct {
 		Project any `json:"project"`
 		Tasks   []struct {
 			ID int `json:"id"`
 		} `json:"tasks"`
-		Cursor string `json:"cursor"`
 	}
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Project != nil || result.Cursor != "1.5.3.0" || len(result.Tasks) != 2 || result.Tasks[0].ID != 3 || result.Tasks[1].ID != 1 {
+	if result.Project != nil || len(result.Tasks) != 2 || result.Tasks[0].ID != 3 || result.Tasks[1].ID != 1 {
 		t.Fatalf("result = %+v", result)
+	}
+
+	if _, err := runCapture(t, "tasks", "ls", "--all", "--status", "done", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	if q := mustParseQuery(t, (*requests)[1].query); q.Get("status_category") != "done" || q.Get("box_ids") != "" {
+		t.Fatalf("query = %s", (*requests)[1].query)
+	}
+
+	text, err := runCapture(t, "tasks", "ls", "--all")
+	if err != nil || !strings.Contains(text, "All projects (2 tasks)") || !strings.Contains(text, "A  ") {
+		t.Fatalf("text = %q, err = %v", text, err)
 	}
 }
 
@@ -611,18 +624,9 @@ func TestTasksChangesEmptyKeepsCursorAndPrintsEmptyArrays(t *testing.T) {
 
 // ---- task next ----
 
-func TestTaskNextPicksFirstFreeOrOwnTaskInProject(t *testing.T) {
-	mine := `,"assignees":[{"type":"Agent","slug":"missionbase-dev"}]`
-	other := `,"assignees":[{"type":"User","id":5,"name":"Dan"}]`
-	running := `,"running":{"agent":{"slug":"claude"},"machine_id":"x","terminal":"t1"}`
+func TestTaskNextInProjectUsesServerNext(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/boxes/9/tasks": fixed(200, `{"tasks":[`+strings.Join([]string{
-			boxTask(1, "todo", 1, other),
-			boxTask(2, "todo", 2, running),
-			boxTask(3, "in_progress", 1, ""),
-			boxTask(4, "todo", 4, ""),
-			boxTask(5, "todo", 3, mine),
-		}, ",")+`],"meta":{"total":5}}`),
+		"GET /api/v1/boxes/9/tasks/next": fixed(200, `{"has_work":true,"task":`+boxTask(5, "todo", 3, "")+`}`),
 	})
 	setAgentEnv(t, server.URL)
 
@@ -630,24 +634,14 @@ func TestTaskNextPicksFirstFreeOrOwnTaskInProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q := mustParseQuery(t, (*requests)[0].query); q.Get("status") != "in_progress,todo" {
-		t.Fatalf("query = %s", (*requests)[0].query)
+	if len(*requests) != 1 || (*requests)[0].slug != "missionbase-dev" || (*requests)[0].query != "" {
+		t.Fatalf("requests = %#v", *requests)
 	}
 	if !strings.Contains(out, `#5 "Task 5"`) || !strings.Contains(out, "task start 5") {
 		t.Fatalf("output = %q, want task 5", out)
 	}
-}
 
-func TestTaskNextPrefersOwnInProgressAndReportsNoWork(t *testing.T) {
-	mine := `,"assignees":[{"type":"Agent","slug":"missionbase-dev"}]`
-	tasks := `{"tasks":[` + boxTask(1, "todo", 1, "") + `,` + boxTask(2, "in_progress", 9, mine) + `],"meta":{"total":2}}`
-	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/boxes/9/tasks":  fixed(200, tasks),
-		"GET /api/v1/boxes/10/tasks": fixed(200, `{"tasks":[],"meta":{"total":0}}`),
-	})
-	setAgentEnv(t, server.URL)
-
-	out, err := runCapture(t, "task", "next", "--project", "9", "--json")
+	out, err = runCapture(t, "task", "next", "--project", "9", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,13 +655,33 @@ func TestTaskNextPrefersOwnInProgressAndReportsNoWork(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(err)
 	}
-	if !result.HasWork || result.Task.ID != 2 || result.Project.BoxID != "9" {
+	if !result.HasWork || result.Task.ID != 5 || result.Project.BoxID != "9" || result.Project.Source != "flag" {
 		t.Fatalf("result = %+v", result)
 	}
+}
 
-	out, err = runCapture(t, "task", "next", "--project", "10", "--json")
-	if err != nil || !strings.Contains(out, `"has_work":false`) || !strings.Contains(out, `"task":null`) {
+func TestTaskNextInProjectReportsNoWorkAndErrors(t *testing.T) {
+	root := t.TempDir()
+	writeProjectFile(t, root, `{"box_id":10}`)
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/boxes/10/tasks/next": fixed(200, `{"has_work":false,"task":null}`),
+		"GET /api/v1/boxes/11/tasks/next": fixed(404, `{"error":{"code":"not_found","message":"Box not found"}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "task", "next", "--cwd", root, "--json")
+	if err != nil || !strings.Contains(out, `"has_work":false`) || !strings.Contains(out, `"task":null`) || !strings.Contains(out, `"box_id":"10"`) {
 		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	if (*requests)[0].path != "/api/v1/boxes/10/tasks/next" {
+		t.Fatalf("path = %s", (*requests)[0].path)
+	}
+	out, err = runCapture(t, "task", "next", "--cwd", root)
+	if err != nil || !strings.Contains(out, "No work here") {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	if _, err := runCapture(t, "task", "next", "--project", "11"); err == nil || !strings.Contains(err.Error(), "HTTP 404") || exitCodeFor(err) != 1 {
+		t.Fatalf("err = %v, want 404 with exit 1", err)
 	}
 }
 

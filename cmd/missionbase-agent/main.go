@@ -3918,7 +3918,7 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   task attention clear <task-id> [--json]
                                       Clear Needs Attention (back to In Progress)
   task next [--cwd DIR | --project ID] [--json]
-                                      Next open task here that is free or yours and not running
+                                      Next To Do task here that is free or yours and not running
   tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]
                                       List this project's tasks (open by default), or every project with --all
   tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
