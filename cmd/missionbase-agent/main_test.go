@@ -1569,6 +1569,35 @@ func TestTaskCreateRejectsInvalidDeadline(t *testing.T) {
 	}
 }
 
+func TestTaskUpdateTitlePatchesTitleWithoutOtherChanges(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/tasks/123" {
+			t.Fatalf("request = %s %s, want PATCH /api/v1/tasks/123", r.Method, r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if len(payload) != 1 || payload["title"] != "New title" {
+			t.Fatalf("payload = %#v, want title only", payload)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"task":{"id":123,"title":"New title"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "update", "123", "--title", "New title"}); err != nil {
+		t.Fatalf("run task update title: %v", err)
+	}
+}
+
+func TestTaskUpdateRejectsBlankTitle(t *testing.T) {
+	if err := run([]string{"task", "update", "123", "--title", "  "}); err == nil || !strings.Contains(err.Error(), "--title requires a non-empty value") {
+		t.Fatalf("err = %v, want non-empty title error", err)
+	}
+}
+
 func TestTaskUpdateDeadlinePatchesDeadline(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch {
@@ -1696,7 +1725,7 @@ func TestTaskHelpDocumentsDeadlineAndSchedulingOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--body-file PATH", "Update task deadline", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task title, deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}
