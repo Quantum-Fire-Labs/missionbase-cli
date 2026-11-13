@@ -2605,6 +2605,10 @@ func task(args []string) error {
 		return taskStop(args[1:])
 	case "attention":
 		return taskAttention(args[1:])
+	case "ask":
+		return taskAsk(args[1:])
+	case "questions":
+		return taskQuestions(args[1:])
 	case "next":
 		return taskNext(args[1:])
 	case "messages", "comments":
@@ -3875,7 +3879,7 @@ Commands:
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
   week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
-  task show <task-id>                  Show full task working context
+  task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
   task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
       [--assign-agent slug | --assign-user ID|@mention]
       [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
@@ -3913,9 +3917,19 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Stop your running work (default reason: manual); stays assigned
   task attention <task-id> "reason" [--json]
   task attention <task-id> --body-file PATH [--json]
-                                      Set Needs Attention; the reason is posted as a task comment
+                                      Set Needs Attention; the reason is asked as one question
   task attention clear <task-id> [--json]
                                       Clear Needs Attention (back to In Progress)
+  task ask <task-id> "question" [--context TEXT] [--option TEXT]... [--json]
+  task ask <task-id> --file PATH [--json]
+                                      Ask the owner 1-5 questions (task moves to Needs Attention).
+                                      --option is repeatable (max 4). --file is a JSON array:
+                                      [{"body": "...", "context": "...", "options": ["..."]}]
+  task questions <task-id> [--status open|answered|dismissed[,...]] [--json]
+                                      List the task's questions with their answers
+  task questions <task-id> --wait [--timeout DURATION] [--json]
+                                      Poll every 20s until no question is open, then print the answers
+                                      (exit 6 on timeout; DURATION like 90s, 10m, 1h or seconds)
   task next [--cwd DIR | --project ID] [--json]
                                       Next To Do task here that is free or yours and not running
   tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]
@@ -3927,7 +3941,8 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   project default [ID | --clear]      Show, set or clear this machine's default project
   Project resolution: --project, then the nearest .missionbase/project.json (box_id) from --cwd or
   the current folder, then the machine default. Exit codes: 3 = HTTP 409 conflict, 4 = hc missing
-  or could not resolve the terminal, 5 = no project resolved, 1 = any other error.
+  or could not resolve the terminal, 5 = no project resolved, 6 = task questions --wait timed out,
+  1 = any other error.
 
   discussion show <discussion-id> [--limit N]
                                       Show a discussion by canonical discussion id

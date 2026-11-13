@@ -28,6 +28,7 @@ const (
 	exitConflict          = 3 // HTTP 409, e.g. task start while work runs elsewhere
 	exitHCUnavailable     = 4 // hc is missing, failed, or could not resolve the machine/terminal
 	exitProjectUnresolved = 5 // no --project, .missionbase/project.json or default project
+	exitWaitTimeout       = 6 // task questions --wait timed out with questions still open
 )
 
 // exitCodeError carries a specific process exit code to main.
@@ -344,6 +345,17 @@ type workTask struct {
 	Attention *struct {
 		Reason *string `json:"reason"`
 	} `json:"attention"`
+	Questions *struct {
+		OpenCount int `json:"open_count"`
+	} `json:"questions"`
+}
+
+// openQuestions is "N questions" when the task has open questions, else "".
+func (t workTask) openQuestions() string {
+	if t.Questions == nil || t.Questions.OpenCount <= 0 {
+		return ""
+	}
+	return plural(t.Questions.OpenCount, "question")
 }
 
 func (t workTask) label() string {
@@ -428,6 +440,9 @@ func printTaskTable(tasks []rawTask, showBox bool) {
 		if t.Attention != nil && t.Attention.Reason != nil {
 			extra = append(extra, "waiting on you: "+oneLine(*t.Attention.Reason, 80))
 		}
+		if questions := t.openQuestions(); questions != "" {
+			extra = append(extra, questions)
+		}
 		columns = append(columns, strings.Join(extra, " "))
 		fmt.Fprintln(w, strings.TrimRight(strings.Join(columns, "\t"), "\t"))
 	}
@@ -486,6 +501,7 @@ type apiError struct {
 	httpErr *httpclient.HTTPError
 	message string
 	code    string
+	details []string // error.details when it is a list of messages
 }
 
 func (e *apiError) Error() string {
@@ -493,7 +509,11 @@ func (e *apiError) Error() string {
 	if e.code != "" {
 		detail += " " + e.code
 	}
-	return fmt.Sprintf("%s (%s)", e.message, detail)
+	text := fmt.Sprintf("%s (%s)", e.message, detail)
+	for _, d := range e.details {
+		text += "\n  " + d
+	}
+	return text
 }
 
 func (e *apiError) Unwrap() error { return e.httpErr }
@@ -505,14 +525,17 @@ func readableAPIError(err error) error {
 	}
 	var envelope struct {
 		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
+			Code    string          `json:"code"`
+			Message string          `json:"message"`
+			Details json.RawMessage `json:"details"`
 		} `json:"error"`
 	}
 	if json.Unmarshal(httpErr.Body, &envelope) != nil || envelope.Error.Message == "" {
 		return err // not the standard envelope; keep the raw body
 	}
-	return &apiError{httpErr: httpErr, message: envelope.Error.Message, code: envelope.Error.Code}
+	var details []string
+	_ = json.Unmarshal(envelope.Error.Details, &details) // only a list of messages; objects are ignored
+	return &apiError{httpErr: httpErr, message: envelope.Error.Message, code: envelope.Error.Code, details: details}
 }
 
 func taskPath(taskID, suffix string) (string, error) {
@@ -753,7 +776,7 @@ func taskAttention(args []string) error {
 	} else {
 		reason = strings.TrimSpace(normalizeAgentAuthoredBody(reason))
 		if reason == "" {
-			return fmt.Errorf("a reason is required: task attention <task-id> \"reason\" (it is posted as a task comment for a person to answer)")
+			return fmt.Errorf("a reason is required: task attention <task-id> \"reason\" (it is asked as a question for the task's owner to answer)")
 		}
 		body, err = agentDo(http.MethodPost, path, map[string]string{"reason": reason})
 	}
@@ -1125,7 +1148,11 @@ func taskNext(args []string) error {
 		}
 		return nil
 	}
-	fmt.Printf("#%d %q (%s)\n", next.task.ID, next.task.Title, next.task.label())
+	state := next.task.label()
+	if questions := next.task.openQuestions(); questions != "" {
+		state += ", " + questions
+	}
+	fmt.Printf("#%d %q (%s)\n", next.task.ID, next.task.Title, state)
 	fmt.Printf("Start it with: missionbase-agent task start %d\n", next.task.ID)
 	return nil
 }
