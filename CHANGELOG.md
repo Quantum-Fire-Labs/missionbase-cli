@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Boxes are now called projects. Added `projects ...` to both CLIs (same subcommands as `boxes ...`, which keeps working), `missionbase project show` beside `box show`, `missionbase-agent agent projects add` beside `agent boxes add`, and `--project` / `--project-id` beside `--box` / `--box-id` (task create, task update, task move, document create, members, tasks, agent projects add). Help and README use the project names.
+- Requests go to `/api/v1/projects/...` and send `project_id` / `project_ids`, plus `box_id` / `box_ids` with the same value for older servers. A projects path that an older server does not route (a 404 without the API error envelope) is retried on its `/api/v1/boxes/...` path, and the rest of the run uses the box paths. Responses are read as `project` first, then `box`.
+- `.missionbase/project.json` is read as `project_id` / `project_name`, falling back to `box_id` / `box_name`. The `project` object in `project`, `tasks ls` and `task next --json` output carries both pairs (`project_id`, `project_name`, `box_id`, `box_name`), so older Herdr panels keep working.
+- Added `missionbase-agent project link <project-id> [--cwd DIR]`, which writes `.missionbase/project.json` with the project's name and team from the server and both the `project_*` and `box_*` pairs, keeping other keys in the file.
+
 - Removed the `needs_attention` status (statuses: `backlog`, `planning`, `todo`, `in_progress`, `complete`, `not_doing`). "Needs you" is now the `needs_you` flag on task payloads (open questions or a live permission prompt). `task status <id> needs_attention` and `missionbase task create|update --status needs_attention` fail before sending, pointing to `task ask`; `tasks ls --status needs_attention` points to `--needs-you`.
 - Added `tasks ls --needs-you` (`needs_you=true`). The text output of `tasks ls` and `tasks changes` marks tasks that need you, with the oldest open question when there is one.
 - `task attention` asks one question and `task attention clear` dismisses the open questions; neither changes the status. `task ask` prints the unchanged status.
