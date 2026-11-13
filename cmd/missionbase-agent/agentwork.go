@@ -776,7 +776,7 @@ func taskAttention(args []string) error {
 	} else {
 		reason = strings.TrimSpace(normalizeAgentAuthoredBody(reason))
 		if reason == "" {
-			return fmt.Errorf("a reason is required: task attention <task-id> \"reason\" (it is posted as a task comment for a person to answer)")
+			return fmt.Errorf("a reason is required: task attention <task-id> \"reason\" (it is asked as a question for the task's owner to answer)")
 		}
 		body, err = agentDo(http.MethodPost, path, map[string]string{"reason": reason})
 	}

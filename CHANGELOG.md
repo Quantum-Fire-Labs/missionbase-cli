@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added `missionbase-agent task ask <task-id> "question" [--context TEXT] [--option TEXT]...` and `task ask <task-id> --file PATH` (a JSON array of 1 to 5 `{"body", "context", "options"}` objects) to ask the task's owner questions. The task moves to Needs Attention; the output lists the questions, the new status and the task page link.
+- Added `missionbase-agent task questions <task-id> [--status open|answered|dismissed[,...]]` to list a task's questions with their answers, and `--wait [--timeout DURATION]` to poll every 20s until none are open. A `--wait` timeout exits with code 6.
+- `tasks ls`, `tasks changes` and `task next` show "N questions" for tasks with open questions.
+- API errors now list the server's `error.details` messages (for example the per-question errors from `task ask`).
+- `task attention` is documented as asking one question; the server no longer posts it as a comment.
+
 - Removed task status ids, which Missionbase no longer has. Statuses are now fixed keys (`backlog`, `todo`, `in_progress`, `needs_attention`, `complete`, `not_doing`). `--task-status-ids` (`boxes tasks`, both CLIs), `--task-status-id` (`task create`/`task update` in `missionbase`, and `discussion convert` in both) now fail with a pointer to `--status KEY` / `--status-category`. The `boxes task-statuses` help and the README describe the fixed list, and `task move` keeps the task's status.
 - Added agent work commands for Herdr agents: `task start` (records the hc machine and terminal, `--force` to take over), `task stop`, `task attention` / `task attention clear`, `task next`, `tasks ls`, `tasks changes` and `project [show|default]`, all with `--json`. Project resolution uses `--project`, then `.missionbase/project.json`, then the machine's `default_project`.
 - An HTTP 409 now exits with code 3. `task start` exits 4 when `hc` cannot resolve the terminal, and `tasks ls` exits 5 when no project resolves. `auth status` shows the default project.

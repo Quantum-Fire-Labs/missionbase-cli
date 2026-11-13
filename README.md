@@ -128,6 +128,10 @@ missionbase-agent task stop <task-id> [--reason done|manual|reopened|reassigned|
 missionbase-agent task attention <task-id> "Short or long copy?" [--json]
 missionbase-agent task attention <task-id> --body-file /tmp/question.md [--json]
 missionbase-agent task attention clear <task-id> [--json]
+missionbase-agent task ask <task-id> "Short or long copy?" [--context TEXT] [--option TEXT]... [--json]
+missionbase-agent task ask <task-id> --file questions.json [--json]
+missionbase-agent task questions <task-id> [--status open|answered|dismissed[,...]] [--json]
+missionbase-agent task questions <task-id> --wait [--timeout DURATION] [--json]
 missionbase-agent task next [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
@@ -137,7 +141,8 @@ missionbase-agent project default [ID | --clear]
 
 - **`task start`** assigns the acting agent to the task, records where the work runs (hc core id, machine name, terminal) and moves Backlog/To Do to In Progress (`POST /api/v1/tasks/:id/work`). Without `--terminal` it uses `$HC_TERMINAL_ID` on this machine. `--terminal t7` is a terminal on this machine; `--terminal omarchy-intel/t7` is a terminal on a machine from `hc machine ls` (matched by name, host, target or core id). The core id comes from `hc server status --json` / `hc machine ls --json`; `hc` is only run by `task start`, with a 3 second timeout. If another agent is already running the task elsewhere, it exits 3 and says who is running it where; `--force` takes the work over.
 - **`task stop`** clears where your work runs and keeps you assigned (`DELETE /api/v1/tasks/:id/work`). "Nothing of yours was running" is not an error.
-- **`task attention`** moves the task to Needs Attention and posts the reason as a task comment for a person to answer. `clear` returns it to In Progress.
+- **`task attention`** moves the task to Needs Attention and asks the reason as one question (a shortcut for `task ask` with one question and no options). `clear` returns it to In Progress and dismisses any open questions.
+- **`task ask`** and **`task questions`** ask the task's owner questions and read the answers. See [Agent questions](#agent-questions).
 - **`tasks ls`** lists the current project's tasks, open by default, in status order and then project order (`GET /api/v1/tasks/accessible?box_ids=<id>`, all pages). `--status` takes a category (`open`, `done`, `canceled`), `all`, or status keys such as `needs_attention` or `todo,in_progress`. `--all` lists every project you can access, ordered by project name (the same endpoint without `box_ids`). JSON: `{"project": {...} | null, "tasks": [...], "cursor": "..."}`. `cursor` is a changes-feed cursor taken before the list was read: the first page's `meta.cursor`, which is the earliest. It is `null` only if the server sent none.
 - **`tasks changes`** returns tasks changed since a cursor (open and closed), following pages until done, deduped by id, with deleted tasks removed. Treat the cursor as opaque. Without `--since` it starts from the beginning. JSON: `{"tasks": [...], "deleted_task_ids": [...], "cursor": "..."}`.
 - **`task next`** asks Missionbase for the next task in the current project (`GET /api/v1/boxes/:id/tasks/next`): the first To Do task in project order that nobody is running and that is unassigned or assigned to you. In Progress, Needs Attention and Backlog tasks are never picked. With no project it returns your next assigned task from `GET /api/v1/agent/work`. JSON: `{"has_work": bool, "task": {...} | null, "project": {...} | null}`.
@@ -156,7 +161,75 @@ missionbase-agent tasks changes --since "$cursor" --json      # {"tasks", "delet
 2. the nearest `.missionbase/project.json` (its `box_id`) from `--cwd DIR` or the current folder, searching parent folders
 3. this machine's default project, set with `missionbase-agent project default ID` and stored as `default_project` in `~/.config/missionbase-agent/credentials`
 
-Task payloads include `running` (agent, machine id/name, terminal, since, stale), `live_status` and `attention` (reason, comment id, since).
+Task payloads include `running` (agent, machine id/name, terminal, since, stale), `live_status`, `attention` (reason, comment id, since) and `questions` (`open_count`, `latest_batch_at`). The text output of `tasks ls`, `tasks changes` and `task next` shows "2 questions" when a task has open questions.
+
+#### Agent questions
+
+An agent can ask the task's owner 1 to 5 questions at a time. The task moves to Needs Attention, and the owner answers (or dismisses) them on the task page. When the last open question is resolved the task returns to In Progress, and the agent gets a `questions_answered` update (`listen`, or the `task.questions_answered` webhook). Agents can't answer or dismiss questions.
+
+```bash
+# One question, with optional context (Markdown) and up to 4 suggested answers
+missionbase-agent task ask 42 "Should a 409 from Optimus count as delivered?" \
+  --context "Optimus returns 409 when it already processed that event ID." \
+  --option "Yes, treat as delivered" --option "No, keep as failure"
+
+# Several questions from a file
+missionbase-agent task ask 42 --file questions.json
+
+# Block until they are answered (exit 6 if still open after 30 minutes)
+missionbase-agent task questions 42 --wait --timeout 30m
+```
+
+`--file` is a JSON array of 1 to 5 objects. `body` is required; `context` and `options` (at most 4 non-blank strings) are optional. Other keys are rejected, so a typo doesn't send an empty question. Use either a question argument (with `--context`/`--option`) or `--file`, not both.
+
+```json
+[
+  {"body": "Should a 409 from Optimus count as delivered?",
+   "context": "Optimus returns 409 when it already processed that event ID.",
+   "options": ["Yes, treat as delivered", "No, keep as failure"]},
+  {"body": "Cap total retry time at 1 hour or 24 hours?", "options": ["1 hour", "24 hours"]}
+]
+```
+
+`task ask` prints the questions it asked, the task's new status and a link to the task page:
+
+```text
+Asked 2 questions on #42 "Webhook retries"
+  1. Should a 409 from Optimus count as delivered?
+     Context: Optimus returns 409 when it already processed that event ID.
+     Options: Yes, treat as delivered · No, keep as failure
+  2. Cap total retry time at 1 hour or 24 hours?
+     Options: 1 hour · 24 hours
+Status: Needs Attention
+https://dash.missionbase.app/tasks/42
+Wait for answers with: missionbase-agent task questions 42 --wait
+```
+
+`--json` prints the server's response (`batch`, `questions`, `task`). The CLI checks the counts, blank bodies and options before sending. The server's 422 errors are shown with their per-question details (indexes are 0-based):
+
+```text
+missionbase-agent: Invalid questions (HTTP 422 validation_error)
+  questions[1]: Body is too long (maximum is 10000 characters)
+```
+
+A Complete or Not Doing task is refused with `Task is closed; reopen it before asking questions (HTTP 422 task_closed)`.
+
+`task questions` lists every question on the task (`GET /api/v1/tasks/:id/questions`), grouped by the ask they came from, with its status and the answer or dismissal. `--status` takes `open`, `answered` and `dismissed`, comma-separated (`--open` is short for `--status open`). `--json` prints `{"task_id", "open_count", "questions"}`.
+
+```text
+#42: 2 questions, 0 open
+Asked by Publisher at 2026-11-13T05:12:40Z
+  1. [answered] Should a 409 from Optimus count as delivered?
+     Options: Yes, treat as delivered · No, keep as failure
+     Answer (John Doe): Yes, treat as delivered
+  2. [dismissed] Cap total retry time at 1 hour or 24 hours?
+     Options: 1 hour · 24 hours
+     Dismissed by John Doe
+```
+
+`task questions --wait` polls every 20 seconds until the task has no open questions, then prints the questions that were open when it started. If none were open (the owner answered before the first poll), it prints the latest ask. It exits 0 when they are resolved. `--timeout` takes a duration (`90s`, `10m`, `1h`) or a number of seconds; without it, it waits indefinitely. On timeout it exits 6 (with `--json`, after printing the last response). Network errors, HTTP 429 and 5xx responses are retried on the next poll; other API errors stop it with exit 1. A manual status change also dismisses open questions, so `--wait` finishes then too: check each question's status.
+
+`task show` prints the task detail JSON, which includes every question in `questions.items`.
 
 #### Exit codes
 
@@ -167,6 +240,7 @@ Task payloads include `running` (agent, machine id/name, terminal, since, stale)
 | 3 | Conflict: the API answered HTTP 409 (for example `task start` while another agent runs the task elsewhere). Applies to every command. |
 | 4 | `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
 | 5 | No project resolved (`tasks ls` and `project` without `--project`, a `.missionbase/project.json` or a default project) |
+| 6 | `task questions --wait --timeout` ran out with questions still open |
 
 ### Local Pi sessions
 
@@ -494,6 +568,7 @@ The update stream is intended for events that should wake an agent up:
 - `task_assigned` — a task was assigned to the current agent.
 - `conversation_unread` — a task or discussion conversation became unread for the current agent, usually through a mention or participant update.
 - `direct_message` — another agent sent this agent a direct message.
+- `questions_answered` — the owner resolved the last open question on a task this agent asked about. The payload has the task's new `status` and each resolved question with its `answer_body` or dismissal.
 
 `listen` prints each JSON response. Use `--once` for scripts that want one long-poll cycle and then exit.
 
