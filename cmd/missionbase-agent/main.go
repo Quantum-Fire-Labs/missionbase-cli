@@ -1539,7 +1539,7 @@ func readWorkspaceStdinIfPiped() ([]byte, error) {
 
 func boxes(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		fmt.Println("usage: missionbase-agent projects <create|tasks|discussions|activity|files|statuses|task-statuses>")
+		fmt.Println("usage: missionbase-agent projects <create|tasks|notes|discussions|activity|files|statuses|task-statuses>")
 		return nil
 	}
 
@@ -1548,6 +1548,8 @@ func boxes(args []string) error {
 		return boxCreate(args[1:])
 	case "tasks":
 		return boxTasks(args[1:])
+	case "notes":
+		return projectNotes(args[1:])
 	case "discussions":
 		return boxDiscussions(args[1:])
 	case "files":
@@ -3995,6 +3997,14 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   projects tasks <project-id>         Show open-category tasks in an accessible project by default
       [--status STATUS[,STATUS]] [--status-category open|done|canceled]
       [--scheduled actionable|future|all] [--page N] [--per-page N]
+  projects notes show [project-id]    Print the project's notes (Markdown) and their latest version
+  projects notes edit [project-id] --body-file PATH [--base-version VERSION_ID]
+                                      Replace the notes; --base-version keeps entries appended since
+  projects notes append [project-id] --body-file PATH [--date YYYY-MM-DD]
+                                      Add a dated entry under ## Log without rewriting the page
+  projects notes history [project-id] [--limit N] [--before VERSION_ID]
+                                      List the notes' versions (who, what, +/- lines)
+                                      Without an id: --project, .missionbase/project.json, the default
   projects discussions <project-id>   List standalone project discussions (not task conversations)
       [--page N] [--per-page N]
   projects discussions create <project-id> --title TITLE --body-file PATH
