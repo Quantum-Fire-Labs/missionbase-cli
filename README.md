@@ -148,6 +148,7 @@ missionbase-agent tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
 missionbase-agent project [show] [--cwd DIR | --project ID] [--json]
 missionbase-agent project link <project-id> [--cwd DIR]
 missionbase-agent project default [ID | --clear]
+missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project ID] [--json]
 ```
 
 - **`task start`** assigns the acting agent to the task, records where the work runs (hc core id, machine name, terminal) and moves Backlog/To Do to In Progress (`POST /api/v1/tasks/:id/work`); a Planning task stays in Planning. Without `--terminal` it uses `$HC_TERMINAL_ID` on this machine. `--terminal t7` is a terminal on this machine; `--terminal omarchy-intel/t7` is a terminal on a machine from `hc machine ls` (matched by name, host, target or core id). The core id comes from `hc server status --json` / `hc machine ls --json`; `hc` is only run by `task start`, with a 3 second timeout. If another agent is already running the task elsewhere, it exits 3 and says who is running it where; `--force` takes the work over.
@@ -173,6 +174,14 @@ missionbase-agent tasks changes --since "$cursor" --json      # {"tasks", "delet
 3. this machine's default project, set with `missionbase-agent project default ID` and stored as `default_project` in `~/.config/missionbase-agent/credentials`
 
 `project link <project-id>` writes `.missionbase/project.json` in `--cwd DIR` (or the current folder) with the project's name and team from the server, keeping any other keys in the file: `{"team_id", "team_name", "project_id", "project_name", "box_id", "box_name"}`. The `box_*` pair is for CLIs and Herdr panels from before the rename. The `project` object in `--json` output also carries both pairs: `{"project_id", "project_name", "box_id", "box_name", "source", "path"}`.
+
+**Watching a project** (for orchestrators): `project watch --terminal t9d` signs up terminal `t9d` on this machine for the current project's activity. The [missionbase-herdr](https://github.com/Quantum-Fire-Labs/missionbase-herdr) bridge then types one short digest into that terminal when its agent is idle: the owner's (users', not agents') new tasks, replies, question answers and status changes in the project, and replies that @mention the watching agent from anyone. A project has one watching terminal per machine: signing up again replaces it. `project watch --off` stops; `project watch` shows the project's watch (or every watch here when no project resolves). Nothing is stored in Missionbase: the watch lives in `~/.config/missionbase-herdr/watches.json` (`$XDG_CONFIG_HOME`, or `$MISSIONBASE_HERDR_WATCHES`), written in one rename:
+
+```json
+{"version": 1, "watches": [{"project_id": 5, "project_name": "Missionbase", "terminal": "t9d", "agent_slug": "claude", "since": "2026-11-13T19:40:00Z"}]}
+```
+
+`agent_slug` is the acting agent (`MISSIONBASE_AGENT_SLUG` or the folder config), so the bridge can spot mentions of it. `--terminal` takes only `tN`: the file is this machine's, so a terminal elsewhere is refused. Signing up checks that the agent can read the project (`GET /api/v1/projects/:id`) and stores its name.
 
 Task payloads include `running` (agent, machine id/name, terminal, since, stale), `live_status`, `needs_you` (open questions or a live permission prompt), `attention` (derived from the oldest open question: reason, comment id (always null), since; null when none are open) and `questions` (`open_count`, `latest_batch_at`). The text output of `tasks ls`, `tasks changes` and `task next` shows "2 questions" when a task has open questions.
 

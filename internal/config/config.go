@@ -260,3 +260,21 @@ func applyAgentEnv(cfg *Config) {
 		cfg.AgentSlug = agentSlug
 	}
 }
+
+// HerdrWatchesPath is where `project watch` keeps this machine's project
+// watches for the missionbase-herdr bridge: $MISSIONBASE_HERDR_WATCHES, else
+// $XDG_CONFIG_HOME/missionbase-herdr/watches.json (~/.config by default).
+func HerdrWatchesPath() string {
+	if path := os.Getenv("MISSIONBASE_HERDR_WATCHES"); path != "" {
+		return path
+	}
+	configHome := os.Getenv("XDG_CONFIG_HOME")
+	if configHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ".missionbase-herdr-watches.json"
+		}
+		configHome = filepath.Join(home, ".config")
+	}
+	return filepath.Join(configHome, "missionbase-herdr", "watches.json")
+}

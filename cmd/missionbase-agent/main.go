@@ -3961,6 +3961,15 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   project [show] [--cwd DIR | --project ID] [--json]
                                       Show which project "here" resolves to
   project default [ID | --clear]      Show, set or clear this machine's default project
+  project watch --terminal tN [--cwd DIR | --project ID] [--json]
+                                      Sign this machine's terminal tN up for the project's activity: the Herdr
+                                      bridge types a digest of the owner's new tasks, replies, answers and status
+                                      changes, and mentions of this agent, when it's idle. Replaces any previous
+                                      terminal for the project. Kept in ~/.config/missionbase-herdr/watches.json
+  project watch --off [--cwd DIR | --project ID] [--json]
+                                      Stop watching the project
+  project watch [--cwd DIR | --project ID] [--json]
+                                      Show the project's watch (every watch here when no project resolves)
   Project resolution: --project, then the nearest .missionbase/project.json (project_id, or the
   older box_id) from --cwd or the current folder, then the machine default. Exit codes: 3 = HTTP 409
   conflict, 4 = hc missing or could not resolve the terminal, 5 = no project resolved, 6 = task

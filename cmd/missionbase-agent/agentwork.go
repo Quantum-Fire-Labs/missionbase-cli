@@ -1268,7 +1268,8 @@ func fetchNext(path string) (*rawTask, error) {
 
 const projectUsage = `usage: missionbase-agent project [show] [--cwd DIR | --project ID] [--json]
        missionbase-agent project link ID [--cwd DIR]
-       missionbase-agent project default [ID | --clear]`
+       missionbase-agent project default [ID | --clear]
+       missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project ID] [--json]`
 
 func projectCommand(args []string) error {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
@@ -1280,6 +1281,9 @@ func projectCommand(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "link" {
 		return projectLink(args[1:])
+	}
+	if len(args) > 0 && args[0] == "watch" {
+		return projectWatchCommand(args[1:])
 	}
 	if len(args) > 0 && args[0] == "show" {
 		args = args[1:]
@@ -1360,32 +1364,9 @@ func projectLink(args []string) error {
 		return fmt.Errorf("--cwd %q is not a directory", dir)
 	}
 
-	body, err := agentDo(http.MethodGet, "/api/v1/projects/"+url.PathEscape(id), nil)
+	project, err := fetchProject(id)
 	if err != nil {
 		return err
-	}
-	type projectPayload struct {
-		ID    int64  `json:"id"`
-		Name  string `json:"name"`
-		Owner struct {
-			Type string `json:"type"`
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"owner"`
-	}
-	var response struct {
-		Project *projectPayload `json:"project"`
-		Box     *projectPayload `json:"box"` // servers from before the rename
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return fmt.Errorf("unexpected project response: %w", err)
-	}
-	project := response.Project
-	if project == nil {
-		project = response.Box
-	}
-	if project == nil || project.ID == 0 {
-		return fmt.Errorf("unexpected project response: no project")
 	}
 	var teamID int64
 	teamName := ""
@@ -1399,6 +1380,39 @@ func projectLink(args []string) error {
 	}
 	fmt.Printf("Linked %s to project %d %s\n", path, project.ID, project.Name)
 	return nil
+}
+
+type projectPayload struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Owner struct {
+		Type string `json:"type"`
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	} `json:"owner"`
+}
+
+// fetchProject reads a project the agent can access (GET /api/v1/projects/:id).
+func fetchProject(id string) (*projectPayload, error) {
+	body, err := agentDo(http.MethodGet, "/api/v1/projects/"+url.PathEscape(id), nil)
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Project *projectPayload `json:"project"`
+		Box     *projectPayload `json:"box"` // servers from before the rename
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("unexpected project response: %w", err)
+	}
+	project := response.Project
+	if project == nil {
+		project = response.Box
+	}
+	if project == nil || project.ID == 0 {
+		return nil, fmt.Errorf("unexpected project response: no project")
+	}
+	return project, nil
 }
 
 func projectDefault(args []string) error {
