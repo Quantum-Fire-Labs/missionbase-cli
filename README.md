@@ -249,6 +249,19 @@ Asked by Publisher at 2026-11-13T05:12:40Z
      Dismissed by John Doe
 ```
 
+**Images in answers.** The owner can answer with images, and an image alone is an answer. `task questions` (and `--wait`) saves an answer's images to `~/.cache/missionbase/answers/<task-id>/` (`$XDG_CACHE_HOME/missionbase/answers/<task-id>/` when set), named `q<question-id>-<n>-<filename>`, and prints their paths under the answer. Look at them before acting on the answer. An image-only answer reads `[2 images]`. Images already saved are reused. The download uses the image's signed URL, without the API key. If one can't be saved, its URL is printed instead and the command still succeeds.
+
+```text
+  1. [answered] Which layout should the settings page use?
+     Answer (John Doe): This one
+     This answer includes 2 images. Look at them before acting: /home/me/.cache/missionbase/answers/42/q7-1-layout.png, /home/me/.cache/missionbase/answers/42/q7-2-mobile.png
+  2. [answered] Can you share a screenshot of the bug?
+     Answer (John Doe): [1 image]
+     This answer includes 1 image. Look at it before acting: /home/me/.cache/missionbase/answers/42/q8-1-bug.png
+```
+
+Each question in the API carries `answer_attachments: [{"filename", "content_type", "byte_size", "url"}]`. With `--json`, `task questions` adds `local_path` to each saved image (or `download_error` when it couldn't be saved).
+
 `task questions --wait` polls every 20 seconds until the task has no open questions, then prints the questions that were open when it started. If none were open (the owner answered before the first poll), it prints the latest ask. It exits 0 when they are resolved. `--timeout` takes a duration (`90s`, `10m`, `1h`) or a number of seconds; without it, it waits indefinitely. On timeout it exits 6 (with `--json`, after printing the last response). Network errors, HTTP 429 and 5xx responses are retried on the next poll; other API errors stop it with exit 1. A manual status change also dismisses open questions, so `--wait` finishes then too: check each question's status.
 
 `task show` prints the task detail JSON, which includes every question in `questions.items`.

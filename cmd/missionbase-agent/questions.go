@@ -62,6 +62,8 @@ type taskQuestion struct {
 	AnswerBody  *string         `json:"answer_body"`
 	AnsweredBy  *questionPerson `json:"answered_by"`
 	DismissedBy *questionPerson `json:"dismissed_by"`
+	// Images in the answer; downloadAnswerImages saves them locally.
+	AnswerAttachments []answerAttachment `json:"answer_attachments"`
 }
 
 // questionInput is one question as sent to POST /api/v1/tasks/:id/questions
@@ -123,7 +125,11 @@ func printQuestion(q taskQuestion, indent string, showStatus bool) {
 		if q.AnswerBody != nil {
 			answer = *q.AnswerBody
 		}
+		if strings.TrimSpace(answer) == "" && len(q.AnswerAttachments) > 0 {
+			answer = "[" + plural(len(q.AnswerAttachments), "image") + "]"
+		}
 		fmt.Println(inner + label + ": " + indentBlock(answer, inner+"  "))
+		printAnswerImages(q, inner)
 	case "dismissed":
 		line := inner + "Dismissed"
 		if who := q.DismissedBy.display(); who != "" {
@@ -329,6 +335,8 @@ func normalizeQuestions(questions []questionInput, fromFile bool) error {
 const taskQuestionsUsage = `usage: missionbase-agent task questions <task-id> [--status open|answered|dismissed[,...]] [--json]
        missionbase-agent task questions <task-id> --wait [--timeout DURATION] [--json]
   --wait polls every 20s until the task has no open questions, then prints the questions it waited on.
+  Images in answers are saved to ~/.cache/missionbase/answers/<task-id>/ and listed under the answer;
+  --json adds each image's local_path.
   --timeout takes a Go duration (90s, 10m, 1h) or seconds; it exits 6 if questions are still open.`
 
 type questionsResponse struct {
@@ -406,11 +414,20 @@ func taskQuestions(args []string) error {
 	if err != nil {
 		return err
 	}
+	downloadAnswerImages(taskID, response.Questions)
 	if jsonOut {
-		fmt.Println(string(body))
-		return nil
+		return printQuestionsJSON(body, response.Questions)
 	}
 	printQuestionsSummary(taskID, response, response.Questions)
+	return nil
+}
+
+func printQuestionsJSON(body []byte, questions []taskQuestion) error {
+	body, err := questionsJSONWithLocalPaths(body, questions)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(body))
 	return nil
 }
 
@@ -480,8 +497,8 @@ func waitForQuestions(taskID, path string, timeout time.Duration, jsonOut bool) 
 			}
 			if response.OpenCount == 0 && countOpen(response.Questions) == 0 {
 				if jsonOut {
-					fmt.Println(string(body))
-					return nil
+					downloadAnswerImages(taskID, response.Questions)
+					return printQuestionsJSON(body, response.Questions)
 				}
 				var shown []taskQuestion
 				for _, q := range response.Questions {
@@ -489,12 +506,16 @@ func waitForQuestions(taskID, path string, timeout time.Duration, jsonOut bool) 
 						shown = append(shown, q)
 					}
 				}
+				downloadAnswerImages(taskID, shown)
 				printQuestionsSummary(taskID, response, shown)
 				return nil
 			}
 			if !deadline.IsZero() && !time.Now().Before(deadline) {
 				if jsonOut {
-					fmt.Println(string(body))
+					downloadAnswerImages(taskID, response.Questions)
+					if err := printQuestionsJSON(body, response.Questions); err != nil {
+						return err
+					}
 				}
 				return withExitCode(exitWaitTimeout, fmt.Errorf("timed out after %s: %s still open on #%s", timeout, plural(response.OpenCount, "question"), taskID))
 			}

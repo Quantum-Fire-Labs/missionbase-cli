@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `task questions` (and `--wait`) saves the images in an answer to `~/.cache/missionbase/answers/<task-id>/` and prints, under the answer, "This answer includes 2 images. Look at them before acting: …" with their paths. An image-only answer reads `Answer: [2 images]`. `--json` adds `local_path` (or `download_error`) to each of a question's `answer_attachments`. Downloads use the signed image URL without the API key, reuse saved files, and never fail the command: an image that can't be saved is listed by URL.
+
 - Added `missionbase-agent project watch --terminal tN [--cwd DIR | --project ID]`, `project watch --off` and `project watch` (show). A watch signs a terminal on this machine up for the project's activity, which the missionbase-herdr bridge types into it as a digest when it's idle. It is kept in `~/.config/missionbase-herdr/watches.json` (`$MISSIONBASE_HERDR_WATCHES` overrides), one terminal per project, with the acting agent's slug; nothing is stored in Missionbase.
 
 - Boxes are now called projects. Added `projects ...` to both CLIs (same subcommands as `boxes ...`, which keeps working), `missionbase project show` beside `box show`, `missionbase-agent agent projects add` beside `agent boxes add`, and `--project` / `--project-id` beside `--box` / `--box-id` (task create, task update, task move, document create, members, tasks, agent projects add). Help and README use the project names.
