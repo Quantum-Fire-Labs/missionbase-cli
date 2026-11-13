@@ -18,6 +18,7 @@ import (
 
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/statuses"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/textbody"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/update"
 )
@@ -34,7 +35,7 @@ func main() {
 			os.Exit(exitError.ExitCode())
 		}
 		fmt.Fprintf(os.Stderr, "missionbase-agent: %v\n", err)
-		os.Exit(1)
+		os.Exit(exitCodeFor(err))
 	}
 }
 
@@ -75,6 +76,8 @@ func run(args []string) error {
 		return document(args[1:])
 	case "tasks":
 		return tasks(args[1:])
+	case "project":
+		return projectCommand(args[1:])
 	case "week":
 		return week(args[1:])
 	case "task":
@@ -196,6 +199,12 @@ func parseAgentScratchpadUpdateArgs(args []string) (string, string, error) {
 func tasks(args []string) error {
 	if len(args) == 0 {
 		return apiGet("/api/v1/agent/tasks")
+	}
+	switch args[0] {
+	case "ls", "list":
+		return tasksLs(args[1:])
+	case "changes":
+		return tasksChanges(args[1:])
 	}
 
 	due := ""
@@ -341,6 +350,9 @@ func auth(args []string) error {
 			fmt.Printf("Agent slug: %s\n", cfg.AgentSlug)
 		} else {
 			fmt.Println("Agent slug: not set")
+		}
+		if cfg.DefaultProject != "" {
+			fmt.Printf("Default project: %s\n", cfg.DefaultProject)
 		}
 		fmt.Printf("Credentials: %s\n", config.CredentialsPath("missionbase-agent"))
 		if path, ok := config.LocalAgentConfigPath(); ok {
@@ -985,7 +997,7 @@ func conversation(args []string) error {
 }
 
 func discussionConvert(args []string) error {
-	usage := "usage: missionbase-agent discussion convert <discussion-id> [--title TITLE] [--description-file PATH] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]"
+	usage := "usage: missionbase-agent discussion convert <discussion-id> [--title TITLE] [--description-file PATH] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--assign-agent ID_OR_SLUG]"
 	if len(args) < 1 {
 		return fmt.Errorf("%s", usage)
 	}
@@ -993,11 +1005,13 @@ func discussionConvert(args []string) error {
 	payload := map[string]string{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--title", "--deadline", "--status", "--task-status-id", "--assign-user", "--assign-agent":
+		case "--task-status-id":
+			return statuses.RemovedIDFlag(args[i])
+		case "--title", "--deadline", "--status", "--assign-user", "--assign-agent":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			key := map[string]string{"--title": "title", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
+			key := map[string]string{"--title": "title", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--description-file", "--body-file":
@@ -2402,7 +2416,7 @@ func boxTaskStatuses(args []string) error {
 
 func boxTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS|--status-category open|done|canceled|--task-status-ids IDS] [--scheduled actionable|future|all] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS[,STATUS]|--status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]")
 	}
 
 	boxID := args[0]
@@ -2422,11 +2436,7 @@ func boxTasks(args []string) error {
 			values.Set("status_category", args[i+1])
 			i++
 		case "--task-status-ids":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--task-status-ids requires a value")
-			}
-			values.Set("task_status_ids", args[i+1])
-			i++
+			return statuses.RemovedIDFlag(args[i])
 		case "--scheduled":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--scheduled requires a value: actionable, future, or all")
@@ -2564,7 +2574,7 @@ func week(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -2589,6 +2599,14 @@ func task(args []string) error {
 		return taskMove(args[1:])
 	case "complete":
 		return taskComplete(args[1:])
+	case "start":
+		return taskStart(args[1:])
+	case "stop":
+		return taskStop(args[1:])
+	case "attention":
+		return taskAttention(args[1:])
+	case "next":
+		return taskNext(args[1:])
 	case "messages", "comments":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: missionbase-agent task %s <task-id> [--limit N]", args[0])
@@ -2623,7 +2641,7 @@ func task(args []string) error {
 }
 
 func taskUpdate(args []string) error {
-	usage := "usage: missionbase-agent task update <task-id> [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at]"
+	usage := "usage: missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at]"
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(usage)
 		return nil
@@ -2640,6 +2658,27 @@ func taskUpdate(args []string) error {
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return fmt.Errorf("--title requires a non-empty value")
+			}
+			payload["title"] = args[i+1]
+			i++
+		case "--body", "--body-stdin":
+			return fmt.Errorf("%s is not supported; use --body-file PATH", args[i])
+		case "--body-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--body-file requires a file path")
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(body) == "" {
+				return fmt.Errorf("body file %q is empty; the task description was not changed", args[i+1])
+			}
+			payload["body"] = body
+			i++
 		case "--deadline":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--deadline requires a value in YYYY-MM-DD format")
@@ -2683,7 +2722,7 @@ func taskUpdate(args []string) error {
 		return fmt.Errorf("use only one of --scheduled-at or --no-scheduled-at")
 	}
 	if len(payload) == 0 {
-		return fmt.Errorf("one of --deadline, --no-deadline, --scheduled-at, or --no-scheduled-at is required")
+		return fmt.Errorf("one of --title, --body-file, --deadline, --no-deadline, --scheduled-at, or --no-scheduled-at is required")
 	}
 
 	body, err := json.Marshal(payload)
@@ -3841,9 +3880,9 @@ Commands:
       [--assign-agent slug | --assign-user ID|@mention]
       [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
-  task update <task-id> [--deadline YYYY-MM-DD | --no-deadline]
+  task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
       [--scheduled-at DATETIME | --no-scheduled-at]
-                                      Update task deadline or schedule and print the updated task JSON
+                                      Update task title, description, deadline, or schedule and print the updated task JSON
   task assign <task-id> --user ID|@mention
                                       Assign an existing task to a user
   task assign <task-id> --agent slug  Assign an existing task to an agent
@@ -3855,7 +3894,7 @@ Commands:
   task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
-  task status <task-id> <status>      Set status (server validates box-specific statuses)
+  task status <task-id> <status>      Set status by key: backlog, todo, in_progress, needs_attention, complete, not_doing
   task move <task-id> --box BOX_ID    Move a task to another accessible box
   task complete <task-id>             Mark a task complete
   task messages <task-id> [--limit N] Show task discussion messages
@@ -3865,6 +3904,31 @@ Commands:
                                       Add a user participant to a task
   task participants add <task-id> --agent slug
                                       Add an agent participant to a task
+
+Agent work (text output by default; --json for scripts and the Herdr panel):
+  task start <task-id> [--terminal [machine/]tN] [--force] [--json]
+                                      Start work: assign yourself and record where it runs
+                                      (default terminal: $HC_TERMINAL_ID on this machine)
+  task stop <task-id> [--reason done|manual|reopened|reassigned|terminal_gone|agent_exited] [--json]
+                                      Stop your running work (default reason: manual); stays assigned
+  task attention <task-id> "reason" [--json]
+  task attention <task-id> --body-file PATH [--json]
+                                      Set Needs Attention; the reason is posted as a task comment
+  task attention clear <task-id> [--json]
+                                      Clear Needs Attention (back to In Progress)
+  task next [--cwd DIR | --project ID] [--json]
+                                      Next To Do task here that is free or yours and not running
+  tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]
+                                      List this project's tasks (open by default), or every project with --all
+  tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
+                                      Tasks changed since a cursor, plus deletions and the next cursor
+  project [show] [--cwd DIR | --project ID] [--json]
+                                      Show which project "here" resolves to
+  project default [ID | --clear]      Show, set or clear this machine's default project
+  Project resolution: --project, then the nearest .missionbase/project.json (box_id) from --cwd or
+  the current folder, then the machine default. Exit codes: 3 = HTTP 409 conflict, 4 = hc missing
+  or could not resolve the terminal, 5 = no project resolved, 1 = any other error.
+
   discussion show <discussion-id> [--limit N]
                                       Show a discussion by canonical discussion id
   discussion message <discussion-id> --body-file PATH
@@ -3883,7 +3947,7 @@ Commands:
       [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]
                                       Create a team-owned box
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
-      [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
+      [--status STATUS[,STATUS]] [--status-category open|done|canceled]
       [--scheduled actionable|future|all] [--page N] [--per-page N]
   boxes discussions <box-id>          List standalone box discussions (not task conversations)
       [--page N] [--per-page N]
@@ -3918,7 +3982,7 @@ Commands:
                                       Pin a supported page to a user's sidebar
   sidebar unpin --user ID|@mention --type box_file --id ID
                                       Unpin a supported page from a user's sidebar
-  boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
+  boxes task-statuses <box-id>        List the fixed task statuses (key, name, category, color, position) as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived
   boxes statuses <box-id>             Alias for boxes task-statuses

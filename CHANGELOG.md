@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Removed task status ids, which Missionbase no longer has. Statuses are now fixed keys (`backlog`, `todo`, `in_progress`, `needs_attention`, `complete`, `not_doing`). `--task-status-ids` (`boxes tasks`, both CLIs), `--task-status-id` (`task create`/`task update` in `missionbase`, and `discussion convert` in both) now fail with a pointer to `--status KEY` / `--status-category`. The `boxes task-statuses` help and the README describe the fixed list, and `task move` keeps the task's status.
+- Added agent work commands for Herdr agents: `task start` (records the hc machine and terminal, `--force` to take over), `task stop`, `task attention` / `task attention clear`, `task next`, `tasks ls`, `tasks changes` and `project [show|default]`, all with `--json`. Project resolution uses `--project`, then `.missionbase/project.json`, then the machine's `default_project`.
+- An HTTP 409 now exits with code 3. `task start` exits 4 when `hc` cannot resolve the terminal, and `tasks ls` exits 5 when no project resolves. `auth status` shows the default project.
+- Added `missionbase-agent task update <task-id> --body-file PATH` to replace a task description (sent as `body`, like `task create --body-file`), and `--title` to rename a task.
 - Added `missionbase-agent agent image set AGENT --file PATH`, `agent image clear AGENT --yes`, and `agent create --image PATH` for agent profile images (PNG, JPEG, WEBP; max 5 MB; the server stores them as JPEG resized to fit within 500×500).
 - Added `missionbase-agent boxes create --name NAME --team TEAM_ID` for creating team-owned boxes, with optional Markdown description, kind, status, and visibility.
 - Reported native Pi session names on registration, heartbeat, and `/name` changes so Missionbase can distinguish sessions by their human-readable names.

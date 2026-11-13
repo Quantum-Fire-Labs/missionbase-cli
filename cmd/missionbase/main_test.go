@@ -196,7 +196,6 @@ func TestBoxesTasksBuildsQuery(t *testing.T) {
 		for key, want := range map[string]string{
 			"status":          "todo",
 			"status_category": "open",
-			"task_status_ids": "7,8",
 			"page":            "2",
 			"per_page":        "25",
 		} {
@@ -204,12 +203,15 @@ func TestBoxesTasksBuildsQuery(t *testing.T) {
 				t.Fatalf("%s query = %q, want %q", key, got, want)
 			}
 		}
+		if query.Has("task_status_ids") {
+			t.Fatalf("task_status_ids must not be sent: %s", r.URL.RawQuery)
+		}
 		_, _ = w.Write([]byte(`{"tasks":[]}`))
 	}))
 	defer server.Close()
 
 	setUserEnv(t, server.URL)
-	if err := run([]string{"boxes", "tasks", "42", "--status", "todo", "--status-category", "open", "--task-status-ids", "7,8", "--page", "2", "--per-page", "25"}); err != nil {
+	if err := run([]string{"boxes", "tasks", "42", "--status", "todo", "--status-category", "open", "--page", "2", "--per-page", "25"}); err != nil {
 		t.Fatalf("run boxes tasks: %v", err)
 	}
 }
@@ -784,5 +786,33 @@ func TestConversationMessagePostsJSON(t *testing.T) {
 	setUserEnv(t, server.URL)
 	if err := run([]string{"discussion", "message", "1", "--message", "hi"}); err != nil {
 		t.Fatalf("run discussion message: %v", err)
+	}
+}
+
+func TestRemovedTaskStatusIDFlagsFailBeforeSending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s", r.Method, r.URL.String())
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"boxes", "tasks", "42", "--task-status-ids", "7,8"}, "--task-status-ids was removed"},
+		{[]string{"task", "create", "--title", "T", "--box", "2", "--task-status-id", "9"}, "--task-status-id was removed"},
+		{[]string{"task", "update", "5", "--task-status-id", "9"}, "--task-status-id was removed"},
+		{[]string{"discussion", "convert", "5", "--task-status-id", "9"}, "--task-status-id was removed"},
+	} {
+		err := run(tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "--status") {
+			t.Fatalf("%v: err = %v, want %q pointing to --status", tc.args, err, tc.want)
+		}
+	}
+
+	stdout := captureStdout(t, func() { printHelp() })
+	if strings.Contains(stdout, "task-status-id") {
+		t.Fatalf("help still mentions task status ids:\n%s", stdout)
 	}
 }

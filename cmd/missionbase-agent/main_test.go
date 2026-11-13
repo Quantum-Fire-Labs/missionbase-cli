@@ -537,7 +537,7 @@ func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task_statuses":[{"id":1,"key":"todo","name":"To Do","category":"open","position":2,"color":"amber","default_open":true,"primary_done":false,"primary_canceled":false,"archived":false}]}`))
+		_, _ = w.Write([]byte(`{"task_statuses":[{"key":"todo","name":"To Do","category":"open","color":"amber","position":2,"default_open":true,"primary_done":false,"primary_canceled":false}]}`))
 	}))
 	defer server.Close()
 
@@ -1569,6 +1569,35 @@ func TestTaskCreateRejectsInvalidDeadline(t *testing.T) {
 	}
 }
 
+func TestTaskUpdateTitlePatchesTitleWithoutOtherChanges(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/tasks/123" {
+			t.Fatalf("request = %s %s, want PATCH /api/v1/tasks/123", r.Method, r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if len(payload) != 1 || payload["title"] != "New title" {
+			t.Fatalf("payload = %#v, want title only", payload)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"task":{"id":123,"title":"New title"}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "update", "123", "--title", "New title"}); err != nil {
+		t.Fatalf("run task update title: %v", err)
+	}
+}
+
+func TestTaskUpdateRejectsBlankTitle(t *testing.T) {
+	if err := run([]string{"task", "update", "123", "--title", "  "}); err == nil || !strings.Contains(err.Error(), "--title requires a non-empty value") {
+		t.Fatalf("err = %v, want non-empty title error", err)
+	}
+}
+
 func TestTaskUpdateDeadlinePatchesDeadline(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch {
@@ -1696,7 +1725,7 @@ func TestTaskHelpDocumentsDeadlineAndSchedulingOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--body-file PATH", "Update task deadline", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}
@@ -2321,4 +2350,70 @@ func setAgentEnvNoSlug(t *testing.T, baseURL string) {
 		t.Fatalf("write agent config: %v", err)
 	}
 	t.Setenv("MISSIONBASE_AGENT_CONFIG", configPath)
+}
+
+func TestTaskUpdateBodyFilePatchesBodyLikeTaskCreate(t *testing.T) {
+	want := "## Details\n\n- Preserved `context: \"modal\"`\n\n```text\nliteral `ticks`\n```\n"
+	bodyFile := writeTextFile(t, "description.md", want)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/tasks/123" {
+			t.Fatalf("request = %s %s, want PATCH /api/v1/tasks/123", r.Method, r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if len(payload) != 2 || payload["body"] != want || payload["title"] != "Renamed" {
+			t.Fatalf("payload = %#v, want body and title", payload)
+		}
+		_, _ = w.Write([]byte(`{"task":{"id":123}}`))
+	}))
+	defer server.Close()
+
+	setAgentEnv(t, server.URL)
+	if err := run([]string{"task", "update", "123", "--title", "Renamed", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run task update body file: %v", err)
+	}
+}
+
+func TestTaskUpdateBodyFileRejectsInlineStdinAndEmptyBodies(t *testing.T) {
+	empty := writeTextFile(t, "empty.md", "  \n")
+	cases := map[string][]string{
+		"is not supported; use --body-file PATH": {"task", "update", "1", "--body", "x"},
+		"stdin body input is not supported":      {"task", "update", "1", "--body-file", "-"},
+		"is empty":                               {"task", "update", "1", "--body-file", empty},
+		"--body-file requires a file path":       {"task", "update", "1", "--body-file"},
+	}
+	for want, args := range cases {
+		if err := run(args); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("run %v: err = %v, want %q", args, err, want)
+		}
+	}
+}
+
+func TestRemovedTaskStatusIDFlagsFailBeforeSending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s", r.Method, r.URL.String())
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"boxes", "tasks", "2", "--task-status-ids", "7,8"}, "--task-status-ids was removed"},
+		{[]string{"discussion", "convert", "5", "--task-status-id", "9"}, "--task-status-id was removed"},
+	} {
+		err := run(tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "--status") {
+			t.Fatalf("%v: err = %v, want %q pointing to --status", tc.args, err, tc.want)
+		}
+	}
+
+	stdout := captureStdout(t, func() { printHelp() })
+	if strings.Contains(stdout, "task-status-id") || strings.Contains(stdout, "box-specific statuses") {
+		t.Fatalf("help still mentions task status ids or per-box statuses:\n%s", stdout)
+	}
 }
