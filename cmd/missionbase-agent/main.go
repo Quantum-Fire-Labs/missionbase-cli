@@ -2605,6 +2605,10 @@ func task(args []string) error {
 		return taskStop(args[1:])
 	case "attention":
 		return taskAttention(args[1:])
+	case "ask":
+		return taskAsk(args[1:])
+	case "questions":
+		return taskQuestions(args[1:])
 	case "next":
 		return taskNext(args[1:])
 	case "messages", "comments":
