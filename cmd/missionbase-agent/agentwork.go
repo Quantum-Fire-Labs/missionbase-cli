@@ -791,21 +791,26 @@ func tasksLs(args []string) error {
 		}
 		query.Set("box_ids", project.BoxID)
 	}
-	tasks, err := fetchAccessibleTasks(query)
+	tasks, cursor, err := fetchAccessibleTasks(query)
 	if err != nil {
 		return err
+	}
+	// cursor is null only if the server sent none.
+	var cursorValue any
+	if cursor != "" {
+		cursorValue = cursor
 	}
 
 	if all {
 		if jsonOut {
-			return printJSON(map[string]any{"project": nil, "tasks": rawMessages(tasks)})
+			return printJSON(map[string]any{"project": nil, "tasks": rawMessages(tasks), "cursor": cursorValue})
 		}
 		fmt.Printf("All projects (%d tasks)\n", len(tasks))
 		printTaskTable(tasks, true)
 		return nil
 	}
 	if jsonOut {
-		return printJSON(map[string]any{"project": project, "tasks": rawMessages(tasks)})
+		return printJSON(map[string]any{"project": project, "tasks": rawMessages(tasks), "cursor": cursorValue})
 	}
 	name := project.BoxName
 	if name == "" && len(tasks) > 0 && tasks[0].task.Box != nil {
@@ -848,35 +853,42 @@ func statusQuery(status string) url.Values {
 }
 
 // fetchAccessibleTasks reads every page of GET /api/v1/tasks/accessible, which
-// is already in project, status and box_position order.
-func fetchAccessibleTasks(query url.Values) ([]rawTask, error) {
+// is already in project, status and box_position order. It also returns the
+// first page's meta.cursor: a changes-feed cursor taken before that page was
+// read, so `tasks changes --since` from it misses nothing changed while paging.
+func fetchAccessibleTasks(query url.Values) ([]rawTask, string, error) {
 	var all []rawTask
+	cursor := ""
 	query.Set("per_page", "500")
 	for page := 1; page <= maxPages; page++ {
 		query.Set("page", strconv.Itoa(page))
 		body, err := agentDo(http.MethodGet, withQuery("/api/v1/tasks/accessible", query), nil)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		var response struct {
 			Tasks []json.RawMessage `json:"tasks"`
 			Meta  struct {
-				HasMore bool `json:"has_more"`
+				HasMore bool   `json:"has_more"`
+				Cursor  string `json:"cursor"`
 			} `json:"meta"`
 		}
 		if err := json.Unmarshal(body, &response); err != nil {
-			return nil, fmt.Errorf("unexpected accessible tasks response: %w", err)
+			return nil, "", fmt.Errorf("unexpected accessible tasks response: %w", err)
 		}
 		tasks, err := decodeRawTasks(response.Tasks)
 		if err != nil {
-			return nil, err
+			return nil, "", err
+		}
+		if page == 1 {
+			cursor = response.Meta.Cursor // the earliest; later pages' cursors could skip changes
 		}
 		all = append(all, tasks...)
 		if !response.Meta.HasMore || len(response.Tasks) == 0 {
 			break
 		}
 	}
-	return all, nil
+	return all, cursor, nil
 }
 
 // ---- tasks changes ----------------------------------------------------------------

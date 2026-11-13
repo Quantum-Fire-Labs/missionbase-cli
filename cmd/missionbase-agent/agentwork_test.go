@@ -404,9 +404,9 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
 		"GET /api/v1/tasks/accessible": func(r *http.Request) (int, string) {
 			if r.URL.Query().Get("page") == "1" {
-				return 200, `{"tasks":[` + boxTask(1, "todo", 1, "") + `],"meta":{"total":2,"page":1,"per_page":500,"has_more":true}}`
+				return 200, `{"tasks":[` + boxTask(1, "todo", 1, "") + `],"meta":{"total":2,"page":1,"per_page":500,"has_more":true,"cursor":"1.1000.0.42"}}`
 			}
-			return 200, `{"tasks":[` + boxTask(2, "needs_attention", 1, `,"attention":{"reason":"Pick one"}`) + `],"meta":{"total":2,"page":2,"per_page":500,"has_more":false}}`
+			return 200, `{"tasks":[` + boxTask(2, "needs_attention", 1, `,"attention":{"reason":"Pick one"}`) + `],"meta":{"total":2,"page":2,"per_page":500,"has_more":false,"cursor":"1.2000.0.43"}}`
 		},
 	})
 	setAgentEnv(t, server.URL)
@@ -421,12 +421,17 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 	var result struct {
 		Project resolvedProject   `json:"project"`
 		Tasks   []json.RawMessage `json:"tasks"`
+		Cursor  string            `json:"cursor"`
 	}
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("output %q: %v", out, err)
 	}
 	if result.Project.BoxID != "113" || result.Project.Source != "project_file" || result.Project.Path != filepath.Join(root, ".missionbase", "project.json") || len(result.Tasks) != 2 {
 		t.Fatalf("result = %+v", result)
+	}
+	// The first page's cursor is the earliest; a later page's could skip changes made while paging.
+	if result.Cursor != "1.1000.0.42" {
+		t.Fatalf("cursor = %q, want the first page's 1.1000.0.42", result.Cursor)
 	}
 
 	// Without box_name in project.json, the text header uses the box name from the payload.
@@ -525,7 +530,7 @@ func TestTasksLsAllUsesAccessibleTasksInServerOrder(t *testing.T) {
 		"GET /api/v1/tasks/accessible": fixed(200, `{"tasks":[
 			{"id":3,"title":"Waiting","status":"needs_attention","status_category":"open","box":{"id":1,"name":"A"},"box_position":1},
 			{"id":1,"title":"Open","status":"todo","status_category":"open","box":{"id":2,"name":"B"},"box_position":2}
-		],"meta":{"total":2,"page":1,"per_page":500,"has_more":false}}`),
+		],"meta":{"total":2,"page":1,"per_page":500,"has_more":false,"cursor":"1.1794529810123456.0.42"}}`),
 	})
 	setAgentEnv(t, server.URL)
 
@@ -536,19 +541,17 @@ func TestTasksLsAllUsesAccessibleTasksInServerOrder(t *testing.T) {
 	if got := (*requests)[0].query; got != "page=1&per_page=500" {
 		t.Fatalf("query = %s, want no box_ids or status filter", got)
 	}
-	if strings.Contains(out, "cursor") {
-		t.Fatalf("--all output should no longer carry a changes cursor: %s", out)
-	}
 	var result struct {
 		Project any `json:"project"`
 		Tasks   []struct {
 			ID int `json:"id"`
 		} `json:"tasks"`
+		Cursor string `json:"cursor"`
 	}
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Project != nil || len(result.Tasks) != 2 || result.Tasks[0].ID != 3 || result.Tasks[1].ID != 1 {
+	if result.Project != nil || result.Cursor != "1.1794529810123456.0.42" || len(result.Tasks) != 2 || result.Tasks[0].ID != 3 || result.Tasks[1].ID != 1 {
 		t.Fatalf("result = %+v", result)
 	}
 
@@ -746,4 +749,40 @@ func mustParseQuery(t *testing.T, raw string) url.Values {
 		t.Fatal(err)
 	}
 	return values
+}
+
+func TestTasksLsCursorHandsOffToTasksChanges(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/tasks/accessible": fixed(200, `{"tasks":[`+boxTask(1, "todo", 1, "")+`],"meta":{"total":1,"page":1,"per_page":500,"has_more":false,"cursor":"1.5000.0.7"}}`),
+		"GET /api/v1/tasks/changes":    fixed(200, `{"tasks":[],"deleted_task_ids":[],"cursor":"1.5000.0.7","has_more":false}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "tasks", "ls", "--project", "113", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listing struct {
+		Cursor string `json:"cursor"`
+	}
+	if err := json.Unmarshal([]byte(out), &listing); err != nil || listing.Cursor == "" {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	if _, err := runCapture(t, "tasks", "changes", "--since", listing.Cursor, "--json"); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustParseQuery(t, (*requests)[1].query).Get("since"); got != "1.5000.0.7" {
+		t.Fatalf("changes since = %q, want the cursor from tasks ls verbatim", got)
+	}
+}
+
+func TestTasksLsCursorIsNullWhenServerSendsNone(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/tasks/accessible": fixed(200, emptyAccessible),
+	})
+	setAgentEnv(t, server.URL)
+	out, err := runCapture(t, "tasks", "ls", "--all", "--json")
+	if err != nil || strings.TrimSpace(out) != `{"cursor":null,"project":null,"tasks":[]}` {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
 }
