@@ -407,7 +407,7 @@ func TestTaskListingsShowOpenQuestionCount(t *testing.T) {
 	oneQuestion := `,"questions":{"open_count":1,"latest_batch_at":null}`
 	noneOpen := `,"questions":{"open_count":0,"latest_batch_at":"2026-11-13T05:12:40Z"}`
 	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/tasks/accessible":   fixed(200, `{"tasks":[`+boxTask(1, "in_progress", 1, withQuestions)+`,`+boxTask(2, "in_progress", 2, noneOpen)+`],"meta":{"has_more":false}}`),
+		"GET /api/v1/tasks/accessible":      fixed(200, `{"tasks":[`+boxTask(1, "in_progress", 1, withQuestions)+`,`+boxTask(2, "in_progress", 2, noneOpen)+`],"meta":{"has_more":false}}`),
 		"GET /api/v1/projects/9/tasks/next": fixed(200, `{"has_work":true,"task":`+boxTask(5, "todo", 3, oneQuestion)+`}`),
 	})
 	setAgentEnv(t, server.URL)
