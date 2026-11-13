@@ -786,3 +786,26 @@ func TestTasksLsCursorIsNullWhenServerSendsNone(t *testing.T) {
 		t.Fatalf("out = %q, err = %v", out, err)
 	}
 }
+
+func TestAgentWorkCommandsShowTheAPIErrorMessage(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"POST /api/v1/tasks/7/work":   fixed(422, `{"error":{"code":"task_closed","message":"Task is closed; reopen it before starting work","details":{}}}`),
+		"GET /api/v1/tasks/changes":   fixed(422, `{"error":{"code":"validation_error","message":"since is not a valid cursor","details":{}}}`),
+		"DELETE /api/v1/tasks/8/work": fixed(502, `<html>Bad gateway</html>`),
+	})
+	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
+	setAgentEnv(t, server.URL)
+	t.Setenv("HC_TERMINAL_ID", "t1")
+
+	_, err := runCapture(t, "task", "start", "7")
+	if err == nil || err.Error() != "Task is closed; reopen it before starting work (HTTP 422 task_closed)" || exitCodeFor(err) != 1 {
+		t.Fatalf("err = %v (exit %d)", err, exitCodeFor(err))
+	}
+	if _, err := runCapture(t, "tasks", "changes", "--since", "nope"); err == nil || err.Error() != "since is not a valid cursor (HTTP 422 validation_error)" {
+		t.Fatalf("err = %v", err)
+	}
+	// A body that is not the standard envelope keeps the raw message.
+	if _, err := runCapture(t, "task", "stop", "8"); err == nil || !strings.Contains(err.Error(), "HTTP 502: <html>Bad gateway</html>") {
+		t.Fatalf("err = %v", err)
+	}
+}

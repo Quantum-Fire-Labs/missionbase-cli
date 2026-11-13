@@ -472,7 +472,47 @@ func agentDo(method, path string, payload any) ([]byte, error) {
 			return nil, err
 		}
 	}
-	return httpclient.New(cfg).Do(method, path, body)
+	response, err := httpclient.New(cfg).Do(method, path, body)
+	if err != nil {
+		return nil, readableAPIError(err)
+	}
+	return response, nil
+}
+
+// apiError shows an API error envelope as "message (HTTP 422 task_closed)"
+// instead of the raw response body. It wraps the HTTPError, so exit codes
+// and errors.As keep working.
+type apiError struct {
+	httpErr *httpclient.HTTPError
+	message string
+	code    string
+}
+
+func (e *apiError) Error() string {
+	detail := fmt.Sprintf("HTTP %d", e.httpErr.StatusCode)
+	if e.code != "" {
+		detail += " " + e.code
+	}
+	return fmt.Sprintf("%s (%s)", e.message, detail)
+}
+
+func (e *apiError) Unwrap() error { return e.httpErr }
+
+func readableAPIError(err error) error {
+	var httpErr *httpclient.HTTPError
+	if !errors.As(err, &httpErr) {
+		return err
+	}
+	var envelope struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(httpErr.Body, &envelope) != nil || envelope.Error.Message == "" {
+		return err // not the standard envelope; keep the raw body
+	}
+	return &apiError{httpErr: httpErr, message: envelope.Error.Message, code: envelope.Error.Code}
 }
 
 func taskPath(taskID, suffix string) (string, error) {
