@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added the `planning` task status, between `backlog` and `todo`: the task is being planned with its owner, not built. `task status <id> planning`, `missionbase task create|update --status planning` and `tasks ls --status planning` accept it, the help and README list it, and `task next` never picks a Planning task (the server skips it). `task start` leaves a Planning task in Planning.
 - Added `missionbase-agent task ask <task-id> "question" [--context TEXT] [--option TEXT]...` and `task ask <task-id> --file PATH` (a JSON array of 1 to 5 `{"body", "context", "options"}` objects) to ask the task's owner questions. The task moves to Needs Attention; the output lists the questions, the new status and the task page link.
 - Added `missionbase-agent task questions <task-id> [--status open|answered|dismissed[,...]]` to list a task's questions with their answers, and `--wait [--timeout DURATION]` to poll every 20s until none are open. A `--wait` timeout exits with code 6.
 - `tasks ls`, `tasks changes` and `task next` show "N questions" for tasks with open questions.
