@@ -77,9 +77,9 @@ func run(args []string) error {
 		return users(args[1:])
 	case "team":
 		return team(args[1:])
-	case "boxes":
+	case "projects", "boxes":
 		return boxes(args[1:])
-	case "box":
+	case "project", "box":
 		return box(args[1:])
 	case "tasks":
 		return tasks(args[1:])
@@ -409,10 +409,10 @@ func boxes(args []string) error {
 	case "statuses", "task-statuses":
 		return boxTaskStatuses(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase boxes [--team TEAM_ID]\n       missionbase boxes <tasks|discussions|documents|files|statuses|task-statuses> <box-id>")
+		fmt.Println("usage: missionbase projects [--team TEAM_ID]\n       missionbase projects <tasks|discussions|documents|files|statuses|task-statuses> <project-id>")
 		return nil
 	default:
-		return fmt.Errorf("unknown boxes command %q", args[0])
+		return fmt.Errorf("unknown projects command %q", args[0])
 	}
 }
 
@@ -427,36 +427,36 @@ func listBoxes(args []string) error {
 			values.Set("team_id", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes [--team TEAM_ID]")
+			fmt.Println("usage: missionbase projects [--team TEAM_ID]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes option %q", args[i])
+			return fmt.Errorf("unknown projects option %q", args[i])
 		}
 	}
-	return apiGet(withQuery("/api/v1/boxes", values))
+	return apiGet(withQuery("/api/v1/projects", values))
 }
 
 func box(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase box show <box-id>")
+		return fmt.Errorf("usage: missionbase project show <project-id>")
 	}
 	switch args[0] {
 	case "show":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: missionbase box show <box-id>")
+			return fmt.Errorf("usage: missionbase project show <project-id>")
 		}
-		return apiGet("/api/v1/boxes/" + url.PathEscape(args[1]))
+		return apiGet("/api/v1/projects/" + url.PathEscape(args[1]))
 	case "--help", "-h":
-		fmt.Println("usage: missionbase box show <box-id>")
+		fmt.Println("usage: missionbase project show <project-id>")
 		return nil
 	default:
-		return fmt.Errorf("unknown box command %q", args[0])
+		return fmt.Errorf("unknown project command %q", args[0])
 	}
 }
 
 func boxTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes tasks <box-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase projects tasks <project-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]")
 	}
 	boxID := args[0]
 	values := url.Values{}
@@ -492,18 +492,18 @@ func boxTasks(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes tasks <box-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]")
+			fmt.Println("usage: missionbase projects tasks <project-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes tasks option %q", args[i])
+			return fmt.Errorf("unknown projects tasks option %q", args[i])
 		}
 	}
-	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(boxID)+"/tasks", values))
+	return apiGet(withQuery("/api/v1/projects/"+url.PathEscape(boxID)+"/tasks", values))
 }
 
 func boxDiscussions(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
+		return fmt.Errorf("usage: missionbase projects discussions <project-id> [--page N] [--per-page N]\n       missionbase projects discussions create <project-id> --title TITLE --body TEXT")
 	}
 	if args[0] == "create" {
 		return boxDiscussionsCreate(args[1:])
@@ -525,43 +525,43 @@ func boxDiscussions(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
+			fmt.Println("usage: missionbase projects discussions <project-id> [--page N] [--per-page N]\n       missionbase projects discussions create <project-id> --title TITLE --body TEXT")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes discussions option %q", args[i])
+			return fmt.Errorf("unknown projects discussions option %q", args[i])
 		}
 	}
-	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(boxID)+"/discussions", values))
+	return apiGet(withQuery("/api/v1/projects/"+url.PathEscape(boxID)+"/discussions", values))
 }
 
 func boxTaskStatuses(args []string) error {
 	if len(args) == 1 && isHelp(args[0]) {
-		fmt.Println("usage: missionbase boxes task-statuses <box-id>")
+		fmt.Println("usage: missionbase projects task-statuses <project-id>")
 		return nil
 	}
 	if len(args) != 1 {
-		return fmt.Errorf("usage: missionbase boxes task-statuses <box-id>")
+		return fmt.Errorf("usage: missionbase projects task-statuses <project-id>")
 	}
-	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/task_statuses")
+	return apiGet("/api/v1/projects/" + url.PathEscape(args[0]) + "/task_statuses")
 }
 
 func boxDocuments(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+		return fmt.Errorf("usage: missionbase projects documents create <project-id> --title TITLE --body TEXT")
 	}
 	if args[0] != "create" {
 		if isHelp(args[0]) {
-			fmt.Println("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+			fmt.Println("usage: missionbase projects documents create <project-id> --title TITLE --body TEXT")
 			return nil
 		}
-		return fmt.Errorf("unknown boxes documents command %q", args[0])
+		return fmt.Errorf("unknown projects documents command %q", args[0])
 	}
 	return boxDocumentsCreate(args[1:])
 }
 
 func boxDocumentsCreate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+		return fmt.Errorf("usage: missionbase projects documents create <project-id> --title TITLE --body TEXT")
 	}
 	boxID := strings.TrimSpace(args[0])
 	payload := map[string]string{}
@@ -580,14 +580,14 @@ func boxDocumentsCreate(args []string) error {
 			payload["body"] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes documents create <box-id> --title TITLE --body TEXT")
+			fmt.Println("usage: missionbase projects documents create <project-id> --title TITLE --body TEXT")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes documents create option %q", args[i])
+			return fmt.Errorf("unknown projects documents create option %q", args[i])
 		}
 	}
 	if boxID == "" {
-		return fmt.Errorf("box id is required")
+		return fmt.Errorf("project id is required")
 	}
 	if strings.TrimSpace(payload["title"]) == "" {
 		return fmt.Errorf("--title is required")
@@ -596,12 +596,12 @@ func boxDocumentsCreate(args []string) error {
 	if strings.TrimSpace(payload["body"]) == "" {
 		return fmt.Errorf("--body is required")
 	}
-	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(boxID)+"/documents", payload)
+	return apiPostJSON("/api/v1/projects/"+url.PathEscape(boxID)+"/documents", payload)
 }
 
 func boxFiles(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files message <box-id> <file-id> --body TEXT [--attach PATH]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return fmt.Errorf("usage: missionbase projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase projects files show <project-id> <file-id>\n       missionbase projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase projects files update <project-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase projects files message <project-id> <file-id> --body TEXT [--attach PATH]\n       missionbase projects files versions <project-id> <file-id>\n       missionbase projects files upload-version <project-id> <file-id> --file PATH\n       missionbase projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	switch args[0] {
 	case "list", "search":
@@ -625,7 +625,7 @@ func boxFiles(args []string) error {
 	case "download", "fetch":
 		return boxFileDownload(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase boxes files show <box-id> <file-id>\n       missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase boxes files message <box-id> <file-id> --body TEXT [--attach PATH]\n       missionbase boxes files versions <box-id> <file-id>\n       missionbase boxes files upload-version <box-id> <file-id> --file PATH\n       missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		fmt.Println("usage: missionbase projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n       missionbase projects files show <project-id> <file-id>\n       missionbase projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT]\n       missionbase projects files update <project-id> <file-id> [--title TITLE] [--description TEXT]\n       missionbase projects files message <project-id> <file-id> --body TEXT [--attach PATH]\n       missionbase projects files versions <project-id> <file-id>\n       missionbase projects files upload-version <project-id> <file-id> --file PATH\n       missionbase projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]")
 		return nil
 	default:
 		return boxFilesList(args)
@@ -634,7 +634,7 @@ func boxFiles(args []string) error {
 
 func boxFilesList(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
+		return fmt.Errorf("usage: missionbase projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
 	}
 	values := url.Values{}
 	for i := 1; i < len(args); i++ {
@@ -680,40 +680,40 @@ func boxFilesList(args []string) error {
 		case "--recursive", "--all-folders":
 			values.Set("scope", "recursive")
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
+			fmt.Println("usage: missionbase projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files option %q", args[i])
+			return fmt.Errorf("unknown projects files option %q", args[i])
 		}
 	}
-	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", values))
+	return apiGet(withQuery("/api/v1/projects/"+url.PathEscape(args[0])+"/files", values))
 }
 
 func boxFileShow(args []string) error {
 	if len(args) != 2 {
-		return fmt.Errorf("usage: missionbase boxes files show <box-id> <file-id>")
+		return fmt.Errorf("usage: missionbase projects files show <project-id> <file-id>")
 	}
-	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
+	return apiGet("/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
 }
 
 func boxFileMessage(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase boxes files message <box-id> <file-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase projects files message <project-id> <file-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
 	boxID := strings.TrimSpace(args[0])
 	fileID := strings.TrimSpace(args[1])
 	if boxID == "" || fileID == "" {
-		return fmt.Errorf("box id and file id are required")
+		return fmt.Errorf("project id and file id are required")
 	}
 	discussionID, err := boxFileDiscussionID(boxID, fileID)
 	if err != nil {
 		return err
 	}
-	return postDiscussionMessage(discussionID, args[2:], "boxes files message")
+	return postDiscussionMessage(discussionID, args[2:], "projects files message")
 }
 
 func boxFileDiscussionID(boxID string, fileID string) (string, error) {
-	body, err := apiGetBody("/api/v1/boxes/" + url.PathEscape(boxID) + "/files/" + url.PathEscape(fileID))
+	body, err := apiGetBody("/api/v1/projects/" + url.PathEscape(boxID) + "/files/" + url.PathEscape(fileID))
 	if err != nil {
 		return "", err
 	}
@@ -734,7 +734,7 @@ func boxFileDiscussionID(boxID string, fileID string) (string, error) {
 
 func boxFileUpload(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+		return fmt.Errorf("usage: missionbase projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT]")
 	}
 	fields := map[string]string{}
 	filePath := ""
@@ -767,24 +767,24 @@ func boxFileUpload(args []string) error {
 		case "--root":
 			fields["folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]")
+			fmt.Println("usage: missionbase projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files upload option %q", args[i])
+			return fmt.Errorf("unknown projects files upload option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(args[0]) == "" {
-		return fmt.Errorf("box id is required")
+		return fmt.Errorf("project id is required")
 	}
 	if strings.TrimSpace(filePath) == "" {
 		return fmt.Errorf("--file is required")
 	}
-	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
+	return apiPostSingleFileMultipart("/api/v1/projects/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
 }
 
 func boxFileMkdir(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+		return fmt.Errorf("usage: missionbase projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]")
 	}
 	payload := map[string]string{"kind": "folder"}
 	for i := 1; i < len(args); i++ {
@@ -804,21 +804,21 @@ func boxFileMkdir(args []string) error {
 		case "--root":
 			payload["folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+			fmt.Println("usage: missionbase projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files mkdir option %q", args[i])
+			return fmt.Errorf("unknown projects files mkdir option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(payload["title"]) == "" {
 		return fmt.Errorf("--title is required")
 	}
-	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", payload)
+	return apiPostJSON("/api/v1/projects/"+url.PathEscape(args[0])+"/files", payload)
 }
 
 func boxFileMove(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+		return fmt.Errorf("usage: missionbase projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)")
 	}
 	payload := map[string]string{}
 	for i := 2; i < len(args); i++ {
@@ -832,21 +832,21 @@ func boxFileMove(args []string) error {
 		case "--root":
 			payload["parent_folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+			fmt.Println("usage: missionbase projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files mv option %q", args[i])
+			return fmt.Errorf("unknown projects files mv option %q", args[i])
 		}
 	}
 	if _, ok := payload["parent_folder_id"]; !ok {
 		return fmt.Errorf("one of --folder or --root is required")
 	}
-	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
+	return apiPatchJSON("/api/v1/projects/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
 
 func boxFileUpdate(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+		return fmt.Errorf("usage: missionbase projects files update <project-id> <file-id> [--title TITLE] [--description TEXT]")
 	}
 	payload := map[string]string{}
 	for i := 2; i < len(args); i++ {
@@ -872,28 +872,28 @@ func boxFileUpdate(args []string) error {
 		case "--root":
 			payload["parent_folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]")
+			fmt.Println("usage: missionbase projects files update <project-id> <file-id> [--title TITLE] [--description TEXT]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files update option %q", args[i])
+			return fmt.Errorf("unknown projects files update option %q", args[i])
 		}
 	}
 	if len(payload) == 0 {
 		return fmt.Errorf("at least one of --title, --description, --folder, or --root is required")
 	}
-	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
+	return apiPatchJSON("/api/v1/projects/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
 
 func boxFileVersions(args []string) error {
 	if len(args) != 2 {
-		return fmt.Errorf("usage: missionbase boxes files versions <box-id> <file-id>")
+		return fmt.Errorf("usage: missionbase projects files versions <project-id> <file-id>")
 	}
-	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions")
+	return apiGet("/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions")
 }
 
 func boxFileUploadVersion(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase boxes files upload-version <box-id> <file-id> --file PATH")
+		return fmt.Errorf("usage: missionbase projects files upload-version <project-id> <file-id> --file PATH")
 	}
 	filePath := ""
 	for i := 2; i < len(args); i++ {
@@ -905,21 +905,21 @@ func boxFileUploadVersion(args []string) error {
 			filePath = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files upload-version <box-id> <file-id> --file PATH")
+			fmt.Println("usage: missionbase projects files upload-version <project-id> <file-id> --file PATH")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files upload-version option %q", args[i])
+			return fmt.Errorf("unknown projects files upload-version option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(filePath) == "" {
 		return fmt.Errorf("--file is required")
 	}
-	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1])+"/versions", map[string]string{}, "file", filePath)
+	return apiPostSingleFileMultipart("/api/v1/projects/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1])+"/versions", map[string]string{}, "file", filePath)
 }
 
 func boxFileDownload(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return fmt.Errorf("usage: missionbase projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	output := ""
 	versionID := ""
@@ -938,18 +938,18 @@ func boxFileDownload(args []string) error {
 			versionID = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+			fmt.Println("usage: missionbase projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files download option %q", args[i])
+			return fmt.Errorf("unknown projects files download option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(output) == "" {
 		return fmt.Errorf("--output is required")
 	}
-	path := "/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download"
+	path := "/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download"
 	if strings.TrimSpace(versionID) != "" {
-		path = "/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions/" + url.PathEscape(versionID) + "/download"
+		path = "/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions/" + url.PathEscape(versionID) + "/download"
 	}
 	body, err := apiGetBody(path)
 	if err != nil {
@@ -1038,7 +1038,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|messages> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|messages> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -1209,26 +1209,32 @@ func taskTeamID(client httpclient.Client, taskID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	type taskProject struct {
+		TeamID int `json:"team_id"`
+		Team   struct {
+			ID int `json:"id"`
+		} `json:"team"`
+	}
 	var response struct {
 		Task struct {
-			TeamID int `json:"team_id"`
-			Box    struct {
-				TeamID int `json:"team_id"`
-				Team   struct {
-					ID int `json:"id"`
-				} `json:"team"`
-			} `json:"box"`
+			TeamID  int          `json:"team_id"`
+			Project *taskProject `json:"project"`
+			Box     *taskProject `json:"box"` // servers from before the rename send only box
 		} `json:"task"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return "", err
 	}
 	id := response.Task.TeamID
-	if id == 0 {
-		id = response.Task.Box.TeamID
+	project := response.Task.Project
+	if project == nil {
+		project = response.Task.Box
 	}
-	if id == 0 {
-		id = response.Task.Box.Team.ID
+	if id == 0 && project != nil {
+		id = project.TeamID
+	}
+	if id == 0 && project != nil {
+		id = project.Team.ID
 	}
 	if id == 0 {
 		return "", fmt.Errorf("team context is required; pass --team <team-id> or use a numeric user id")
@@ -1502,7 +1508,7 @@ func rawWrite(method string, args []string) error {
 
 func boxDiscussionsCreate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
+		return fmt.Errorf("usage: missionbase projects discussions create <project-id> --title TITLE --body TEXT")
 	}
 	boxID := strings.TrimSpace(args[0])
 	payload := map[string]string{}
@@ -1521,14 +1527,14 @@ func boxDiscussionsCreate(args []string) error {
 			payload["body"] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes discussions create <box-id> --title TITLE --body TEXT")
+			fmt.Println("usage: missionbase projects discussions create <project-id> --title TITLE --body TEXT")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes discussions create option %q", args[i])
+			return fmt.Errorf("unknown projects discussions create option %q", args[i])
 		}
 	}
 	if boxID == "" {
-		return fmt.Errorf("box id is required")
+		return fmt.Errorf("project id is required")
 	}
 	if strings.TrimSpace(payload["title"]) == "" {
 		return fmt.Errorf("--title is required")
@@ -1537,7 +1543,7 @@ func boxDiscussionsCreate(args []string) error {
 	if strings.TrimSpace(payload["body"]) == "" {
 		return fmt.Errorf("--body is required")
 	}
-	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(boxID)+"/discussions", payload)
+	return apiPostJSON("/api/v1/projects/"+url.PathEscape(boxID)+"/discussions", payload)
 }
 
 func taskCreate(args []string) error {
@@ -1547,7 +1553,7 @@ func taskCreate(args []string) error {
 		switch args[i] {
 		case "--task-status-id":
 			return statuses.RemovedIDFlag(args[i])
-		case "--title", "--body", "--box", "--deadline", "--status", "--assign-user":
+		case "--title", "--body", "--project", "--box", "--deadline", "--status", "--assign-user":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
@@ -1556,8 +1562,11 @@ func taskCreate(args []string) error {
 					return err
 				}
 			}
-			key := map[string]string{"--title": "title", "--body": "body", "--box": "box_id", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id"}[args[i]]
+			key := map[string]string{"--title": "title", "--body": "body", "--project": "project_id", "--box": "project_id", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id"}[args[i]]
 			payload[key] = args[i+1]
+			if key == "project_id" {
+				payload["box_id"] = args[i+1] // for servers from before the rename
+			}
 			i++
 		case "--attach":
 			if i+1 >= len(args) {
@@ -1572,7 +1581,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -1592,7 +1601,7 @@ func taskCreate(args []string) error {
 
 func taskUpdate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS]")
+		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]")
 	}
 	taskID := args[0]
 	payload := map[string]string{}
@@ -1600,7 +1609,7 @@ func taskUpdate(args []string) error {
 		switch args[i] {
 		case "--task-status-id":
 			return statuses.RemovedIDFlag(args[i])
-		case "--title", "--box", "--status":
+		case "--title", "--project", "--box", "--status":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
@@ -1609,11 +1618,14 @@ func taskUpdate(args []string) error {
 					return err
 				}
 			}
-			key := map[string]string{"--title": "title", "--box": "box_id", "--status": "status"}[args[i]]
+			key := map[string]string{"--title": "title", "--project": "project_id", "--box": "project_id", "--status": "status"}[args[i]]
 			payload[key] = args[i+1]
+			if key == "project_id" {
+				payload["box_id"] = args[i+1] // for servers from before the rename
+			}
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS]")
+			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task update option %q", args[i])
@@ -2000,26 +2012,29 @@ Commands:
                                       Look up users or resolve a team @mention
   team show <team-id>                 Show a team
   team members <team-id>              List team members
-  boxes [--team TEAM_ID]              List boxes visible to the current user
-  box show <box-id>                   Show a box
-  boxes tasks <box-id>                List tasks in a box
+  projects [--team TEAM_ID]           List projects visible to the current user
+  project show <project-id>           Show a project
+  projects tasks <project-id>         List tasks in a project
       [--status STATUS[,STATUS]] [--status-category open|done|canceled]
       [--page N] [--per-page N]
-  boxes discussions <box-id>          List standalone box discussions
+  projects discussions <project-id>   List standalone project discussions
       [--page N] [--per-page N]
-  boxes documents create <box-id> --title TITLE --body TEXT
-                                      Create a document in a box
-  boxes files <box-id>                List/search Docs & Files items
+  projects documents create <project-id> --title TITLE --body TEXT
+                                      Create a document in a project
+  projects files <project-id>         List/search Docs & Files items
       [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
-  boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
-  boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT]
+  projects files show <project-id> <file-id>
+                                      Show file/document metadata and preview fields
+  projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT]
                                       Upload a file to Docs & Files
-  boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
+  projects files update <project-id> <file-id> [--title TITLE] [--description TEXT]
                                       Update uploaded file metadata
-  boxes files download <box-id> <file-id> --output PATH
+  projects files download <project-id> <file-id> --output PATH
                                       Download an uploaded file
-  boxes statuses <box-id>             Alias for boxes task-statuses
-  boxes task-statuses <box-id>        List the fixed task statuses (key, name, category, color, position)
+  projects statuses <project-id>      Alias for projects task-statuses
+  projects task-statuses <project-id> List the fixed task statuses (key, name, category, color, position)
+  boxes ..., box show                 Old names for projects ... and project show; --box is the old
+                                      name for --project
   notes search <query> [--team ID]    Search your notes
   scratchpad show|fetch               Show current user's scratchpad
   scratchpad update|edit --body TEXT  Update current user's scratchpad
@@ -2037,9 +2052,9 @@ Commands:
       [--page N] [--per-page N]
   tasks visible                       List tasks visible to the current user
       [--page N] [--per-page N]
-  task create --title TITLE [--box ID] [--body TEXT]
+  task create --title TITLE [--project ID] [--body TEXT]
                                       Create a task
-  task update <task-id> [--title TITLE] [--box ID]
+  task update <task-id> [--title TITLE] [--project ID]
                                       Update a task
   task status <task-id> <status>      Set a task status
   task complete <task-id>             Mark a task complete as the current user

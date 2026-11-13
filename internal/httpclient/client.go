@@ -78,10 +78,31 @@ func (c Client) Do(method, path string, body []byte) ([]byte, error) {
 }
 
 func (c Client) do(method, path string, body []byte, contentType string) ([]byte, error) {
-	url := strings.TrimRight(c.cfg.BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
-	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	boxPath, isProjectPath := BoxPath(path)
+	if isProjectPath && c.routesOnlyBoxes() {
+		path = boxPath
+	}
+
+	statusCode, respBody, err := c.send(method, path, body, contentType)
+	if err == nil && isProjectPath && path != boxPath && missingRoute(statusCode, respBody) {
+		c.rememberRoutesOnlyBoxes()
+		path = boxPath
+		statusCode, respBody, err = c.send(method, path, body, contentType)
+	}
 	if err != nil {
 		return nil, err
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return nil, &HTTPError{Method: method, Path: path, StatusCode: statusCode, Body: respBody}
+	}
+	return respBody, nil
+}
+
+func (c Client) send(method, path string, body []byte, contentType string) (int, []byte, error) {
+	url := c.baseURL() + "/" + strings.TrimLeft(path, "/")
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
 	}
 	if c.cfg.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
@@ -97,18 +118,15 @@ func (c Client) do(method, path string, body []byte, contentType string) ([]byte
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &HTTPError{Method: method, Path: path, StatusCode: resp.StatusCode, Body: respBody}
-	}
-	return respBody, nil
+	return resp.StatusCode, respBody, nil
 }
 
 // HTTPError is a non-2xx API response. Callers can inspect StatusCode and Body

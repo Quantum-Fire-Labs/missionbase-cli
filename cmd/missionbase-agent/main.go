@@ -92,7 +92,7 @@ func run(args []string) error {
 		return members(args[1:])
 	case "sidebar":
 		return sidebar(args[1:])
-	case "boxes":
+	case "projects", "boxes":
 		return boxes(args[1:])
 	case "activity":
 		return activity(args[1:])
@@ -235,11 +235,12 @@ func tasks(args []string) error {
 			}
 			query.Set("due", args[i+1])
 			i++
-		case "--box":
+		case "--project", "--box":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--box requires a value")
+				return fmt.Errorf("%s requires a value", args[i])
 			}
-			query.Set("box", args[i+1])
+			query.Set("project", args[i+1])
+			query.Set("box", args[i+1]) // for servers from before the rename
 			i++
 		case "--status-category":
 			if i+1 >= len(args) {
@@ -279,7 +280,7 @@ func tasks(args []string) error {
 		case "--json":
 			// JSON is the default output format; accept this flag for script-friendly ergonomics.
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent tasks [today|upcoming|overdue] --user ID|@handle [--due today|upcoming|overdue|none|all] [--box ID] [--status-category open|done|canceled] [--status STATUS] [--include-closed] [--scheduled actionable|future|all] [--page N] [--per-page N] [--json]")
+			fmt.Println("usage: missionbase-agent tasks [today|upcoming|overdue] --user ID|@handle [--due today|upcoming|overdue|none|all] [--project ID] [--status-category open|done|canceled] [--status STATUS] [--include-closed] [--scheduled actionable|future|all] [--page N] [--per-page N] [--json]")
 			return nil
 		default:
 			return fmt.Errorf("unknown tasks option %q", args[i])
@@ -631,7 +632,7 @@ func isASCIISpace(ch byte) bool {
 
 func agent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|boxes|image|instructions>")
+		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|projects|image|instructions>")
 	}
 
 	switch args[0] {
@@ -641,7 +642,7 @@ func agent(args []string) error {
 		return agentArchive(args[1:])
 	case "restore", "unarchive", "reactivate":
 		return agentRestore(args[1:])
-	case "boxes":
+	case "projects", "boxes":
 		return agentBoxes(args[1:])
 	case "image":
 		return agentImage(args[1:])
@@ -760,7 +761,7 @@ func agentRestore(args []string) error {
 		return fmt.Errorf("agent id or slug is required")
 	}
 	if !confirmed {
-		return fmt.Errorf("--yes is required to restore an agent; restore reactivates the agent with its existing identity and box memberships")
+		return fmt.Errorf("--yes is required to restore an agent; restore reactivates the agent with its existing identity and project memberships")
 	}
 
 	return apiPatchAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/restore", nil)
@@ -768,43 +769,44 @@ func agentRestore(args []string) error {
 
 func agentBoxes(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]")
+		return fmt.Errorf("usage: missionbase-agent agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]")
 	}
 	if args[0] != "add" {
-		return fmt.Errorf("unknown agent boxes command %q", args[0])
+		return fmt.Errorf("unknown agent projects command %q", args[0])
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]")
+		return fmt.Errorf("usage: missionbase-agent agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]")
 	}
 	agentID := args[1]
 	var boxIDs []string
 	for i := 2; i < len(args); i++ {
 		switch args[i] {
-		case "--box", "--box-id":
+		case "--project", "--project-id", "--box", "--box-id":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
 			boxIDs = append(boxIDs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]")
+			fmt.Println("usage: missionbase-agent agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]")
 			return nil
 		default:
-			return fmt.Errorf("unknown agent boxes add option %q", args[i])
+			return fmt.Errorf("unknown agent projects add option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(agentID) == "" {
 		return fmt.Errorf("agent id or slug is required")
 	}
 	if len(boxIDs) == 0 {
-		return fmt.Errorf("at least one --box is required")
+		return fmt.Errorf("at least one --project is required")
 	}
 
-	body, err := json.Marshal(map[string][]string{"box_ids": boxIDs})
+	// box_ids is for servers from before the rename.
+	body, err := json.Marshal(map[string][]string{"project_ids": boxIDs, "box_ids": boxIDs})
 	if err != nil {
 		return err
 	}
-	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/boxes", body)
+	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/projects", body)
 }
 
 func agentImage(args []string) error {
@@ -1106,7 +1108,7 @@ func postDiscussionMessage(discussionID string, args []string, usage string, com
 
 func document(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document message <document-id> --body-file PATH [--attach PATH]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
+		return fmt.Errorf("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document message <document-id> --body-file PATH [--attach PATH]\n       missionbase-agent document create --project PROJECT_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH")
 	}
 
 	switch args[0] {
@@ -1119,7 +1121,7 @@ func document(args []string) error {
 	case "edit", "update":
 		return documentEdit(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document message <document-id> --body-file PATH [--attach PATH]\n       missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document show 77\n  missionbase-agent document message 77 --body-file /tmp/reply.md\n  missionbase-agent document show 77 --format markdown\n  missionbase-agent document show 77 --format html\n  missionbase-agent document show 77 --format plain-text\n  missionbase-agent document create --box 2 --title Runbook --body-file /tmp/runbook.md --folder 67")
+		fmt.Println("usage: missionbase-agent document show <document-id> [--format markdown|html|plain-text]\n       missionbase-agent document message <document-id> --body-file PATH [--attach PATH]\n       missionbase-agent document create --project PROJECT_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]\n       missionbase-agent document edit <document-id> [--title TITLE] --body-file PATH\n\nExamples:\n  missionbase-agent document show 77\n  missionbase-agent document message 77 --body-file /tmp/reply.md\n  missionbase-agent document show 77 --format markdown\n  missionbase-agent document show 77 --format html\n  missionbase-agent document show 77 --format plain-text\n  missionbase-agent document create --project 2 --title Runbook --body-file /tmp/runbook.md --folder 67")
 		return nil
 	default:
 		return fmt.Errorf("unknown document command %q", args[0])
@@ -1238,7 +1240,7 @@ func documentCreate(args []string) error {
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--box", "--box-id":
+		case "--project", "--project-id", "--box", "--box-id":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
@@ -1273,7 +1275,7 @@ func documentCreate(args []string) error {
 			payload["folder_id"] = "root"
 			rootSet = true
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]")
+			fmt.Println("usage: missionbase-agent document create --project PROJECT_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]")
 			return nil
 		default:
 			return fmt.Errorf("unknown document create option %q", args[i])
@@ -1281,7 +1283,7 @@ func documentCreate(args []string) error {
 	}
 
 	if strings.TrimSpace(boxID) == "" {
-		return fmt.Errorf("--box is required")
+		return fmt.Errorf("--project is required")
 	}
 	if folderSet && rootSet {
 		return fmt.Errorf("use only one of --folder or --root")
@@ -1301,7 +1303,7 @@ func documentCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return apiPost("/api/v1/boxes/"+url.PathEscape(boxID)+"/documents", body)
+	return apiPost("/api/v1/projects/"+url.PathEscape(boxID)+"/documents", body)
 }
 
 func documentEdit(args []string) error {
@@ -1537,7 +1539,7 @@ func readWorkspaceStdinIfPiped() ([]byte, error) {
 
 func boxes(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		fmt.Println("usage: missionbase-agent boxes <create|tasks|discussions|activity|files|statuses|task-statuses>")
+		fmt.Println("usage: missionbase-agent projects <create|tasks|discussions|activity|files|statuses|task-statuses>")
 		return nil
 	}
 
@@ -1551,16 +1553,16 @@ func boxes(args []string) error {
 	case "files":
 		return boxFiles(args[1:])
 	case "activity", "activity-events":
-		return scopedActivity("box", args[1:])
+		return scopedActivity("project", args[1:])
 	case "statuses", "task-statuses":
 		return boxTaskStatuses(args[1:])
 	default:
-		return fmt.Errorf("unknown boxes command %q", args[0])
+		return fmt.Errorf("unknown projects command %q", args[0])
 	}
 }
 
 func boxCreate(args []string) error {
-	usage := "usage: missionbase-agent boxes create --name NAME --team TEAM_ID [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]"
+	usage := "usage: missionbase-agent projects create --name NAME --team TEAM_ID [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]"
 	payload := map[string]string{"ownable_type": "Team"}
 
 	for i := 0; i < len(args); i++ {
@@ -1599,7 +1601,7 @@ func boxCreate(args []string) error {
 			fmt.Println(usage)
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes create option %q", args[i])
+			return fmt.Errorf("unknown projects create option %q", args[i])
 		}
 	}
 
@@ -1610,7 +1612,7 @@ func boxCreate(args []string) error {
 		return fmt.Errorf("--team is required")
 	}
 
-	return apiPostJSON("/api/v1/boxes", payload)
+	return apiPostJSON("/api/v1/projects", payload)
 }
 
 type activityResponse struct {
@@ -1632,8 +1634,16 @@ type activityEvent struct {
 }
 
 type activityScope struct {
-	Box  *activityRef `json:"box"`
-	Team *activityRef `json:"team"`
+	Project *activityRef `json:"project"`
+	Box     *activityRef `json:"box"` // servers from before the rename send only box
+	Team    *activityRef `json:"team"`
+}
+
+func (scope activityScope) project() *activityRef {
+	if scope.Project != nil {
+		return scope.Project
+	}
+	return scope.Box
 }
 
 type activityRef struct {
@@ -1649,8 +1659,8 @@ func activity(args []string) error {
 	}
 
 	switch args[0] {
-	case "box", "boxes":
-		return scopedActivity("box", args[1:])
+	case "project", "projects", "box", "boxes":
+		return scopedActivity("project", args[1:])
 	case "team", "teams":
 		return scopedActivity("team", args[1:])
 	default:
@@ -1756,7 +1766,7 @@ func scopedActivity(scope string, args []string) error {
 		}
 	}
 
-	pathScope := "boxes"
+	pathScope := "projects"
 	if scope == "team" {
 		pathScope = "teams"
 	}
@@ -1773,7 +1783,7 @@ func scopedActivity(scope string, args []string) error {
 }
 
 func activityUsage() string {
-	return "usage: missionbase-agent activity <box|team> <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID|--actor-type TYPE --actor-id ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]\n       missionbase-agent boxes activity <box-id> [same filters]"
+	return "usage: missionbase-agent activity <project|team> <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID|--actor-type TYPE --actor-id ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]\n       missionbase-agent projects activity <project-id> [same filters]"
 }
 
 func printActivitySummary(body []byte) error {
@@ -1804,11 +1814,12 @@ func printActivitySummary(body []byte) error {
 }
 
 func formatActivityScope(scope activityScope) string {
-	if scope.Box != nil && scope.Team != nil {
-		return formatActivityRef(scope.Box) + ", " + formatActivityRef(scope.Team)
+	project := scope.project()
+	if project != nil && scope.Team != nil {
+		return formatActivityRef(project) + ", " + formatActivityRef(scope.Team)
 	}
-	if scope.Box != nil {
-		return formatActivityRef(scope.Box)
+	if project != nil {
+		return formatActivityRef(project)
 	}
 	if scope.Team != nil {
 		return formatActivityRef(scope.Team)
@@ -1840,7 +1851,7 @@ func compactJSON(value any) string {
 
 func boxDiscussions(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE --body-file PATH")
+		return fmt.Errorf("usage: missionbase-agent projects discussions <project-id> [--page N] [--per-page N]\n       missionbase-agent projects discussions create <project-id> --title TITLE --body-file PATH")
 	}
 	if args[0] == "create" {
 		return boxDiscussionsCreate(args[1:])
@@ -1863,14 +1874,14 @@ func boxDiscussions(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]\n       missionbase-agent boxes discussions create <box-id> --title TITLE --body-file PATH")
+			fmt.Println("usage: missionbase-agent projects discussions <project-id> [--page N] [--per-page N]\n       missionbase-agent projects discussions create <project-id> --title TITLE --body-file PATH")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes discussions option %q", args[i])
+			return fmt.Errorf("unknown projects discussions option %q", args[i])
 		}
 	}
 
-	path := "/api/v1/boxes/" + url.PathEscape(boxID) + "/discussions"
+	path := "/api/v1/projects/" + url.PathEscape(boxID) + "/discussions"
 	if encoded := values.Encode(); encoded != "" {
 		path += "?" + encoded
 	}
@@ -1879,12 +1890,12 @@ func boxDiscussions(args []string) error {
 
 func boxDiscussionsCreate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes discussions create <box-id> --title TITLE --body-file PATH")
+		return fmt.Errorf("usage: missionbase-agent projects discussions create <project-id> --title TITLE --body-file PATH")
 	}
 
 	boxID := strings.TrimSpace(args[0])
 	if boxID == "" {
-		return fmt.Errorf("box id is required")
+		return fmt.Errorf("project id is required")
 	}
 
 	payload := map[string]string{}
@@ -1909,10 +1920,10 @@ func boxDiscussionsCreate(args []string) error {
 			payload["body"] = body
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes discussions create <box-id> --title TITLE --body-file PATH")
+			fmt.Println("usage: missionbase-agent projects discussions create <project-id> --title TITLE --body-file PATH")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes discussions create option %q", args[i])
+			return fmt.Errorf("unknown projects discussions create option %q", args[i])
 		}
 	}
 
@@ -1928,7 +1939,7 @@ func boxDiscussionsCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return apiPost("/api/v1/boxes/"+url.PathEscape(boxID)+"/discussions", body)
+	return apiPost("/api/v1/projects/"+url.PathEscape(boxID)+"/discussions", body)
 }
 
 func boxFiles(args []string) error {
@@ -1967,21 +1978,21 @@ func boxFiles(args []string) error {
 }
 
 func boxFilesUsage() string {
-	return "usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n" +
-		"       missionbase-agent boxes files show <box-id> <file-id>\n" +
-		"       missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
-		"       missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]\n" +
-		"       missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
-		"       missionbase-agent boxes files message <box-id> <file-id> --body-file PATH [--attach PATH]\n" +
-		"       missionbase-agent boxes files versions <box-id> <file-id>\n" +
-		"       missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH\n" +
-		"       missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]\n\n" +
+	return "usage: missionbase-agent projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]\n" +
+		"       missionbase-agent projects files show <project-id> <file-id>\n" +
+		"       missionbase-agent projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
+		"       missionbase-agent projects files create-artifact <project-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]\n" +
+		"       missionbase-agent projects files update <project-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]\n" +
+		"       missionbase-agent projects files message <project-id> <file-id> --body-file PATH [--attach PATH]\n" +
+		"       missionbase-agent projects files versions <project-id> <file-id>\n" +
+		"       missionbase-agent projects files upload-version <project-id> <file-id> --file PATH\n" +
+		"       missionbase-agent projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]\n\n" +
 		"Missionbase artifacts are sandboxed interactive HTML files. Artifact JavaScript runs outside the main Missionbase app origin and cannot access app DOM, local storage, auth tokens, or normal Missionbase APIs. Use window.MissionbaseArtifact.loadState()/saveState(data) (or loadState()/saveState(data)) for one shared persisted JSON state blob. Static .html uploads remain static previews."
 }
 
 func boxFilesList(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
+		return fmt.Errorf("usage: missionbase-agent projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
 	}
 	values := url.Values{}
 	for i := 1; i < len(args); i++ {
@@ -2027,44 +2038,44 @@ func boxFilesList(args []string) error {
 		case "--recursive", "--all-folders":
 			values.Set("scope", "recursive")
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
+			fmt.Println("usage: missionbase-agent projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files option %q", args[i])
+			return fmt.Errorf("unknown projects files option %q", args[i])
 		}
 	}
-	return apiGet(withQuery("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", values))
+	return apiGet(withQuery("/api/v1/projects/"+url.PathEscape(args[0])+"/files", values))
 }
 
 func boxFileShow(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes files show <box-id> <file-id>")
+		fmt.Println("usage: missionbase-agent projects files show <project-id> <file-id>")
 		return nil
 	}
 	if len(args) != 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files show <box-id> <file-id>")
+		return fmt.Errorf("usage: missionbase-agent projects files show <project-id> <file-id>")
 	}
-	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
+	return apiGet("/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]))
 }
 
 func boxFileMessage(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files message <box-id> <file-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+		return fmt.Errorf("usage: missionbase-agent projects files message <project-id> <file-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 	}
 	boxID := strings.TrimSpace(args[0])
 	fileID := strings.TrimSpace(args[1])
 	if boxID == "" || fileID == "" {
-		return fmt.Errorf("box id and file id are required")
+		return fmt.Errorf("project id and file id are required")
 	}
 	discussionID, err := boxFileDiscussionID(boxID, fileID)
 	if err != nil {
 		return err
 	}
-	return postDiscussionMessage(discussionID, args[2:], "usage: missionbase-agent boxes files message <box-id> <file-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]", "boxes files message")
+	return postDiscussionMessage(discussionID, args[2:], "usage: missionbase-agent projects files message <project-id> <file-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]", "projects files message")
 }
 
 func boxFileDiscussionID(boxID string, fileID string) (string, error) {
-	body, err := apiGetBody("/api/v1/boxes/" + url.PathEscape(boxID) + "/files/" + url.PathEscape(fileID))
+	body, err := apiGetBody("/api/v1/projects/" + url.PathEscape(boxID) + "/files/" + url.PathEscape(fileID))
 	if err != nil {
 		return "", err
 	}
@@ -2085,11 +2096,11 @@ func boxFileDiscussionID(boxID string, fileID string) (string, error) {
 
 func boxFileUpload(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
+		fmt.Println("usage: missionbase-agent projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 		return nil
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
+		return fmt.Errorf("usage: missionbase-agent projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 	}
 	fields := map[string]string{}
 	filePath := ""
@@ -2122,23 +2133,23 @@ func boxFileUpload(args []string) error {
 		case "--root":
 			fields["folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
+			fmt.Println("usage: missionbase-agent projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files upload option %q", args[i])
+			return fmt.Errorf("unknown projects files upload option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(args[0]) == "" {
-		return fmt.Errorf("box id is required")
+		return fmt.Errorf("project id is required")
 	}
 	if strings.TrimSpace(filePath) == "" {
 		return fmt.Errorf("--file is required")
 	}
-	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
+	return apiPostSingleFileMultipart("/api/v1/projects/"+url.PathEscape(args[0])+"/files", fields, "file", filePath)
 }
 
 func boxFileCreateArtifact(args []string) error {
-	artifactHelp := "usage: missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]\n\nCreates a missionbase_artifact from HTML. Artifacts are sandboxed interactive HTML with JavaScript enabled and a persisted shared JSON state bridge: loadState() and saveState(data). Artifact JavaScript cannot access the Missionbase app origin, DOM, local storage, auth tokens, or normal Missionbase APIs. Static .html uploads remain static previews."
+	artifactHelp := "usage: missionbase-agent projects files create-artifact <project-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]\n\nCreates a missionbase_artifact from HTML. Artifacts are sandboxed interactive HTML with JavaScript enabled and a persisted shared JSON state bridge: loadState() and saveState(data). Artifact JavaScript cannot access the Missionbase app origin, DOM, local storage, auth tokens, or normal Missionbase APIs. Static .html uploads remain static previews."
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(artifactHelp)
 		return nil
@@ -2183,11 +2194,11 @@ func boxFileCreateArtifact(args []string) error {
 			fmt.Println(artifactHelp)
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files create-artifact option %q", args[i])
+			return fmt.Errorf("unknown projects files create-artifact option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(args[0]) == "" {
-		return fmt.Errorf("box id is required")
+		return fmt.Errorf("project id is required")
 	}
 	if strings.TrimSpace(fields["title"]) == "" {
 		return fmt.Errorf("--title is required")
@@ -2195,16 +2206,16 @@ func boxFileCreateArtifact(args []string) error {
 	if useStdin == (strings.TrimSpace(filePath) != "") {
 		return fmt.Errorf("provide exactly one of --file PATH or --stdin")
 	}
-	return apiPostArtifactMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", fields, filePath, useStdin)
+	return apiPostArtifactMultipart("/api/v1/projects/"+url.PathEscape(args[0])+"/files", fields, filePath, useStdin)
 }
 
 func boxFileMkdir(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+		fmt.Println("usage: missionbase-agent projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]")
 		return nil
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+		return fmt.Errorf("usage: missionbase-agent projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]")
 	}
 	payload := map[string]string{"kind": "folder"}
 	for i := 1; i < len(args); i++ {
@@ -2224,25 +2235,25 @@ func boxFileMkdir(args []string) error {
 		case "--root":
 			payload["folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]")
+			fmt.Println("usage: missionbase-agent projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files mkdir option %q", args[i])
+			return fmt.Errorf("unknown projects files mkdir option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(payload["title"]) == "" {
 		return fmt.Errorf("--title is required")
 	}
-	return apiPostJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files", payload)
+	return apiPostJSON("/api/v1/projects/"+url.PathEscape(args[0])+"/files", payload)
 }
 
 func boxFileMove(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+		fmt.Println("usage: missionbase-agent projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)")
 		return nil
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+		return fmt.Errorf("usage: missionbase-agent projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)")
 	}
 	payload := map[string]string{}
 	for i := 2; i < len(args); i++ {
@@ -2256,21 +2267,21 @@ func boxFileMove(args []string) error {
 		case "--root":
 			payload["parent_folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)")
+			fmt.Println("usage: missionbase-agent projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files mv option %q", args[i])
+			return fmt.Errorf("unknown projects files mv option %q", args[i])
 		}
 	}
 	if _, ok := payload["parent_folder_id"]; !ok {
 		return fmt.Errorf("one of --folder or --root is required")
 	}
-	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
+	return apiPatchJSON("/api/v1/projects/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
 
 func boxFileUpdate(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
+		return fmt.Errorf("usage: missionbase-agent projects files update <project-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 	}
 	payload := map[string]string{}
 	for i := 2; i < len(args); i++ {
@@ -2296,36 +2307,36 @@ func boxFileUpdate(args []string) error {
 		case "--root":
 			payload["parent_folder_id"] = "root"
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
+			fmt.Println("usage: missionbase-agent projects files update <project-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files update option %q", args[i])
+			return fmt.Errorf("unknown projects files update option %q", args[i])
 		}
 	}
 	if len(payload) == 0 {
 		return fmt.Errorf("at least one of --title, --description, --folder, or --root is required")
 	}
-	return apiPatchJSON("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
+	return apiPatchJSON("/api/v1/projects/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1]), payload)
 }
 
 func boxFileVersions(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes files versions <box-id> <file-id>")
+		fmt.Println("usage: missionbase-agent projects files versions <project-id> <file-id>")
 		return nil
 	}
 	if len(args) != 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files versions <box-id> <file-id>")
+		return fmt.Errorf("usage: missionbase-agent projects files versions <project-id> <file-id>")
 	}
-	return apiGet("/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions")
+	return apiGet("/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions")
 }
 
 func boxFileUploadVersion(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH")
+		fmt.Println("usage: missionbase-agent projects files upload-version <project-id> <file-id> --file PATH")
 		return nil
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH")
+		return fmt.Errorf("usage: missionbase-agent projects files upload-version <project-id> <file-id> --file PATH")
 	}
 	filePath := ""
 	for i := 2; i < len(args); i++ {
@@ -2337,25 +2348,25 @@ func boxFileUploadVersion(args []string) error {
 			filePath = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH")
+			fmt.Println("usage: missionbase-agent projects files upload-version <project-id> <file-id> --file PATH")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files upload-version option %q", args[i])
+			return fmt.Errorf("unknown projects files upload-version option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(filePath) == "" {
 		return fmt.Errorf("--file is required")
 	}
-	return apiPostSingleFileMultipart("/api/v1/boxes/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1])+"/versions", map[string]string{}, "file", filePath)
+	return apiPostSingleFileMultipart("/api/v1/projects/"+url.PathEscape(args[0])+"/files/"+url.PathEscape(args[1])+"/versions", map[string]string{}, "file", filePath)
 }
 
 func boxFileDownload(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		fmt.Println("usage: missionbase-agent projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]")
 		return nil
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+		return fmt.Errorf("usage: missionbase-agent projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]")
 	}
 	output := ""
 	versionID := ""
@@ -2374,18 +2385,18 @@ func boxFileDownload(args []string) error {
 			versionID = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]")
+			fmt.Println("usage: missionbase-agent projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]")
 			return nil
 		default:
-			return fmt.Errorf("unknown boxes files download option %q", args[i])
+			return fmt.Errorf("unknown projects files download option %q", args[i])
 		}
 	}
 	if strings.TrimSpace(output) == "" {
 		return fmt.Errorf("--output is required")
 	}
-	path := "/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download"
+	path := "/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/download"
 	if strings.TrimSpace(versionID) != "" {
-		path = "/api/v1/boxes/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions/" + url.PathEscape(versionID) + "/download"
+		path = "/api/v1/projects/" + url.PathEscape(args[0]) + "/files/" + url.PathEscape(args[1]) + "/versions/" + url.PathEscape(versionID) + "/download"
 	}
 	body, err := apiGetBody(path)
 	if err != nil {
@@ -2400,23 +2411,23 @@ func boxFileDownload(args []string) error {
 
 func boxTaskStatuses(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("usage: missionbase-agent boxes task-statuses <box-id>")
+		fmt.Println("usage: missionbase-agent projects task-statuses <project-id>")
 		return nil
 	}
 	if len(args) != 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes task-statuses <box-id>")
+		return fmt.Errorf("usage: missionbase-agent projects task-statuses <project-id>")
 	}
 
 	boxID := args[0]
 	if strings.TrimSpace(boxID) == "" {
-		return fmt.Errorf("box id is required")
+		return fmt.Errorf("project id is required")
 	}
-	return apiGet("/api/v1/boxes/" + url.PathEscape(boxID) + "/task_statuses")
+	return apiGet("/api/v1/projects/" + url.PathEscape(boxID) + "/task_statuses")
 }
 
 func boxTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS[,STATUS]|--status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase-agent projects tasks <project-id> [--status STATUS[,STATUS]|--status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]")
 	}
 
 	boxID := args[0]
@@ -2459,11 +2470,11 @@ func boxTasks(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		default:
-			return fmt.Errorf("unknown boxes tasks option %q", args[i])
+			return fmt.Errorf("unknown projects tasks option %q", args[i])
 		}
 	}
 
-	path := "/api/v1/boxes/" + url.PathEscape(boxID) + "/tasks"
+	path := "/api/v1/projects/" + url.PathEscape(boxID) + "/tasks"
 	if encoded := values.Encode(); encoded != "" {
 		path += "?" + encoded
 	}
@@ -2493,17 +2504,18 @@ func members(args []string) error {
 	filtered := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--box", "--group":
+		case "--project", "--box", "--group":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			path += "?box_id=" + args[i+1]
+			// box_id is for servers from before the rename.
+			path += "?" + url.Values{"project_id": {args[i+1]}, "box_id": {args[i+1]}}.Encode()
 			filtered = true
 			i++
 		case "--json":
 			// JSON is the default output format; accept this flag for consistency.
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent members [--box ID] [--json]")
+			fmt.Println("usage: missionbase-agent members [--project ID] [--json]")
 			return nil
 		default:
 			return fmt.Errorf("unknown members option %q", args[i])
@@ -2574,7 +2586,7 @@ func week(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --box BOX_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	switch args[0] {
@@ -2595,7 +2607,7 @@ func task(args []string) error {
 		return taskUnassign(args[1:])
 	case "status":
 		return taskStatus(args[1:])
-	case "move", "box":
+	case "move", "project", "box":
 		return taskMove(args[1:])
 	case "complete":
 		return taskComplete(args[1:])
@@ -2919,18 +2931,21 @@ func taskStatus(args []string) error {
 
 func taskMove(args []string) error {
 	if len(args) != 3 {
-		return fmt.Errorf("usage: missionbase-agent task move <task-id> --box BOX_ID")
+		return fmt.Errorf("usage: missionbase-agent task move <task-id> --project PROJECT_ID")
 	}
 	taskID := args[0]
-	if args[1] != "--box" {
+	switch args[1] {
+	case "--project", "--project-id", "--box", "--box-id":
+	default:
 		return fmt.Errorf("unknown task move option %q", args[1])
 	}
 	boxID := strings.TrimSpace(args[2])
 	if boxID == "" {
-		return fmt.Errorf("--box requires a box id")
+		return fmt.Errorf("%s requires a project id", args[1])
 	}
 
-	body, err := json.Marshal(map[string]string{"box_id": boxID})
+	// box_id is for servers from before the rename.
+	body, err := json.Marshal(map[string]string{"project_id": boxID, "box_id": boxID})
 	if err != nil {
 		return err
 	}
@@ -2969,11 +2984,12 @@ func taskCreate(args []string) error {
 			}
 			payload["body"] = body
 			i++
-		case "--box":
+		case "--project", "--box":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--box requires a value")
+				return fmt.Errorf("%s requires a value", args[i])
 			}
-			payload["box_id"] = args[i+1]
+			payload["project_id"] = args[i+1]
+			payload["box_id"] = args[i+1] // for servers from before the rename
 			i++
 		case "--deadline":
 			if i+1 >= len(args) {
@@ -3034,7 +3050,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -3044,8 +3060,8 @@ func taskCreate(args []string) error {
 	if strings.TrimSpace(payload["title"]) == "" {
 		return fmt.Errorf("--title is required")
 	}
-	if strings.TrimSpace(payload["box_id"]) == "" {
-		return fmt.Errorf("--box is required")
+	if strings.TrimSpace(payload["project_id"]) == "" {
+		return fmt.Errorf("--project is required")
 	}
 	if payload["assign_to_agent_slug"] != "" && payload["assign_to_user_id"] != "" {
 		return fmt.Errorf("use only one of --assign-agent or --assign-user")
@@ -3851,8 +3867,8 @@ Commands:
                                       Archive/deactivate an agent safely
   agent restore <agent-id-or-slug> --yes
                                       Restore/reactivate an archived agent
-  agent boxes add <agent-id-or-slug> --box BOX_ID [--box BOX_ID]
-                                      Add an agent to one or more boxes
+  agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]
+                                      Add an agent to one or more projects
   agent image set <agent-id-or-slug> --file PATH
                                       Set an agent profile image (PNG, JPEG, WEBP; max 5 MB)
                                       The server resizes it to fit 500x500 and stores it as JPEG
@@ -3870,20 +3886,20 @@ Commands:
                                       Compatibility alias for document show
   document message <document-id> --body-file PATH [--attach PATH]
                                       Post a Markdown-capable message to a document discussion
-  document create --box BOX_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]
-                                      Create a box document from a Markdown/plain-text file
+  document create --project PROJECT_ID --title TITLE --body-file PATH [--folder FOLDER_ID|--root]
+                                      Create a project document from a Markdown/plain-text file
   document edit <document-id> [--title TITLE] --body-file PATH
                                       Edit a document by creating a new version from a file
   tasks                               Show assigned tasks
   tasks --user ID|@handle [--due today|upcoming|overdue|none|all]
-      [--box ID] [--status-category open|done|canceled] [--include-closed]
+      [--project ID] [--status-category open|done|canceled] [--include-closed]
       [--scheduled actionable|future|all] [--page N] [--per-page N] [--json]
                                       Show open tasks assigned to a target user
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
   week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
   task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
-  task create --title TITLE --box ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
+  task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
       [--assign-agent slug | --assign-user ID|@mention]
       [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Create a task and print the created task JSON
@@ -3902,7 +3918,8 @@ Commands:
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
   task status <task-id> <status>      Set status by key: backlog, planning, todo, in_progress, complete, not_doing
-  task move <task-id> --box BOX_ID    Move a task to another accessible box
+  task move <task-id> --project PROJECT_ID
+                                      Move a task to another accessible project
   task complete <task-id>             Mark a task complete
   task messages <task-id> [--limit N] Show task discussion messages
   task comments <task-id> [--limit N] Legacy alias for task messages
@@ -3944,10 +3961,10 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   project [show] [--cwd DIR | --project ID] [--json]
                                       Show which project "here" resolves to
   project default [ID | --clear]      Show, set or clear this machine's default project
-  Project resolution: --project, then the nearest .missionbase/project.json (box_id) from --cwd or
-  the current folder, then the machine default. Exit codes: 3 = HTTP 409 conflict, 4 = hc missing
-  or could not resolve the terminal, 5 = no project resolved, 6 = task questions --wait timed out,
-  1 = any other error.
+  Project resolution: --project, then the nearest .missionbase/project.json (project_id, or the
+  older box_id) from --cwd or the current folder, then the machine default. Exit codes: 3 = HTTP 409
+  conflict, 4 = hc missing or could not resolve the terminal, 5 = no project resolved, 6 = task
+  questions --wait timed out, 1 = any other error.
 
   discussion show <discussion-id> [--limit N]
                                       Show a discussion by canonical discussion id
@@ -3960,41 +3977,42 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
       [--file PATH|--markdown TEXT]   Create/open a temporary chat workspace
   workspace update --chat-id CHAT_ID [--title TITLE]
       [--file PATH|--markdown TEXT]   Replace workspace content from Markdown or stdin
-  members [--box ID] [--json]         List group members and mention handles
-  activity <box|team> <id>            Query recent activity events with filters; concise text by default, --json for raw output
-  boxes activity <box-id>             Query recent activity events for an accessible box
-  boxes create --name NAME --team TEAM_ID
+  members [--project ID] [--json]     List group members and mention handles
+  activity <project|team> <id>        Query recent activity events with filters; concise text by default, --json for raw output
+  projects activity <project-id>      Query recent activity events for an accessible project
+  projects create --name NAME --team TEAM_ID
       [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]
-                                      Create a team-owned box
-  boxes tasks <box-id>                Show open-category tasks in an accessible box by default
+                                      Create a team-owned project
+  projects tasks <project-id>         Show open-category tasks in an accessible project by default
       [--status STATUS[,STATUS]] [--status-category open|done|canceled]
       [--scheduled actionable|future|all] [--page N] [--per-page N]
-  boxes discussions <box-id>          List standalone box discussions (not task conversations)
+  projects discussions <project-id>   List standalone project discussions (not task conversations)
       [--page N] [--per-page N]
-  boxes discussions create <box-id>   Create a standalone Markdown-capable box discussion
-      --title TITLE --body-file PATH
-  boxes files <box-id>                List/search files and documents in an accessible box
+  projects discussions create <project-id> --title TITLE --body-file PATH
+                                      Create a standalone Markdown-capable project discussion
+  projects files <project-id>         List/search files and documents in an accessible project
       [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N]
       [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]
-  boxes files show <box-id> <file-id> Show BoxFile/document metadata and preview fields
-  boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
+  projects files show <project-id> <file-id>
+                                      Show file/document metadata and preview fields
+  projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]
                                       Upload a file to Docs & Files
-  boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]
+  projects files create-artifact <project-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]
                                       Create sandboxed interactive HTML with persisted JSON state
-  boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]
+  projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]
                                       Create a Docs & Files folder
-  boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)
+  projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)
                                       Move a file, document, or folder
-  boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]
+  projects files update <project-id> <file-id> [--title TITLE] [--description TEXT]
       [--folder FOLDER_ID|--root]
                                       Update uploaded file metadata or placement
-  boxes files message <box-id> <file-id> --body-file PATH [--attach PATH]
+  projects files message <project-id> <file-id> --body-file PATH [--attach PATH]
                                       Post a Markdown-capable message to a file/document discussion
-  boxes files versions <box-id> <file-id>
+  projects files versions <project-id> <file-id>
                                       List uploaded file versions
-  boxes files upload-version <box-id> <file-id> --file PATH
+  projects files upload-version <project-id> <file-id> --file PATH
                                       Upload a new version of an uploaded file
-  boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]
+  projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]
                                       Download an uploaded file
   sidebar pins --user ID|@mention
                                       List pinned sidebar pages for a user
@@ -4002,10 +4020,13 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Pin a supported page to a user's sidebar
   sidebar unpin --user ID|@mention --type box_file --id ID
                                       Unpin a supported page from a user's sidebar
-  boxes task-statuses <box-id>        List the fixed task statuses (key, name, category, color, position) as JSON
+  projects task-statuses <project-id>
+                                      List the fixed task statuses (key, name, category, color, position) as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived
-  boxes statuses <box-id>             Alias for boxes task-statuses
+  projects statuses <project-id>      Alias for projects task-statuses
+  boxes ...                           Old name for projects (same subcommands); --box and --box-id are
+                                      old names for --project, and agent boxes add for agent projects add
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
@@ -4022,7 +4043,7 @@ Artifacts:
   window.MissionbaseArtifact.loadState()/saveState(data) for one shared persisted JSON state blob. Static .html uploads remain static previews.
 
 Markdown:
-  DM bodies, task/discussion/document/file message bodies, box discussion bodies, and document bodies are Markdown-capable
+  DM bodies, task/discussion/document/file message bodies, project discussion bodies, and document bodies are Markdown-capable
   by default. Missionbase renders headings, emphasis, links, lists, blockquotes, and fenced code blocks as
   sanitized rich text while preserving ordinary plain-text messages. Accidental escaped newline sequences
   (\\n, \\r, \\r\\n) are normalized to real line breaks outside quoted/backticked code contexts.

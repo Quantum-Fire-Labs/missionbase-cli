@@ -377,7 +377,7 @@ func TestTaskAttentionValidatesArguments(t *testing.T) {
 
 // ---- project resolution and tasks ls ----
 
-func writeProjectFile(t *testing.T, root, content string) {
+func writeTestProjectFile(t *testing.T, root, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, ".missionbase"), 0o755); err != nil {
 		t.Fatal(err)
@@ -385,6 +385,16 @@ func writeProjectFile(t *testing.T, root, content string) {
 	if err := os.WriteFile(filepath.Join(root, ".missionbase", "project.json"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// projectOutput is the project object in --json output.
+type projectOutput struct {
+	ProjectID   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+	BoxID       string `json:"box_id"`
+	BoxName     string `json:"box_name"`
+	Source      string `json:"source"`
+	Path        string `json:"path"`
 }
 
 func boxTask(id int, status string, position int, extra string) string {
@@ -395,7 +405,7 @@ const emptyAccessible = `{"tasks":[],"meta":{"total":0,"page":1,"per_page":500,"
 
 func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 	root := t.TempDir()
-	writeProjectFile(t, root, `{"team_id":2,"box_id":113}`)
+	writeTestProjectFile(t, root, `{"team_id":2,"box_id":113}`)
 	nested := filepath.Join(root, "app", "models")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
@@ -415,18 +425,18 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(*requests) != 2 || (*requests)[0].query != "box_ids=113&page=1&per_page=500" || (*requests)[1].query != "box_ids=113&page=2&per_page=500" {
+	if len(*requests) != 2 || (*requests)[0].query != "box_ids=113&page=1&per_page=500&project_ids=113" || (*requests)[1].query != "box_ids=113&page=2&per_page=500&project_ids=113" {
 		t.Fatalf("requests = %#v", *requests)
 	}
 	var result struct {
-		Project resolvedProject   `json:"project"`
+		Project projectOutput     `json:"project"`
 		Tasks   []json.RawMessage `json:"tasks"`
 		Cursor  string            `json:"cursor"`
 	}
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("output %q: %v", out, err)
 	}
-	if result.Project.BoxID != "113" || result.Project.Source != "project_file" || result.Project.Path != filepath.Join(root, ".missionbase", "project.json") || len(result.Tasks) != 2 {
+	if result.Project.ProjectID != "113" || result.Project.BoxID != "113" || result.Project.Source != "project_file" || result.Project.Path != filepath.Join(root, ".missionbase", "project.json") || len(result.Tasks) != 2 {
 		t.Fatalf("result = %+v", result)
 	}
 	// The first page's cursor is the earliest; a later page's could skip changes made while paging.
@@ -448,7 +458,7 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 
 func TestTasksLsProjectPrecedence(t *testing.T) {
 	root := t.TempDir()
-	writeProjectFile(t, root, `{"box_id":"113"}`)
+	writeTestProjectFile(t, root, `{"box_id":"113"}`)
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
 		"GET /api/v1/tasks/accessible": fixed(200, emptyAccessible),
 	})
@@ -486,8 +496,8 @@ func TestTasksLsWithoutProjectExitsWithDistinctCode(t *testing.T) {
 	}
 
 	bad := t.TempDir()
-	writeProjectFile(t, bad, `{"team_id":2}`)
-	if _, err := runCapture(t, "tasks", "ls", "--cwd", bad); err == nil || !strings.Contains(err.Error(), "has no valid box_id") {
+	writeTestProjectFile(t, bad, `{"team_id":2}`)
+	if _, err := runCapture(t, "tasks", "ls", "--cwd", bad); err == nil || !strings.Contains(err.Error(), "has no valid project_id") {
 		t.Fatalf("err = %v, want invalid project file", err)
 	}
 }
@@ -517,7 +527,7 @@ func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 	for want, args := range map[string][]string{
 		"use only one of --cwd or --project":     {"tasks", "ls", "--project", "9", "--cwd", "."},
 		"use --all or --cwd/--project, not both": {"tasks", "ls", "--all", "--project", "9"},
-		"--project must be a project (box) id":   {"tasks", "ls", "--project", "abc"},
+		"--project must be a project id":         {"tasks", "ls", "--project", "abc"},
 		`unknown tasks ls option "--done"`:       {"tasks", "ls", "--done"},
 		"use --needs-you to list tasks waiting":  {"tasks", "ls", "--project", "9", "--status", "todo,needs_attention"},
 	} {
@@ -631,7 +641,7 @@ func TestTasksChangesEmptyKeepsCursorAndPrintsEmptyArrays(t *testing.T) {
 
 func TestTaskNextInProjectUsesServerNext(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/boxes/9/tasks/next": fixed(200, `{"has_work":true,"task":`+boxTask(5, "todo", 3, "")+`}`),
+		"GET /api/v1/projects/9/tasks/next": fixed(200, `{"has_work":true,"task":`+boxTask(5, "todo", 3, "")+`}`),
 	})
 	setAgentEnv(t, server.URL)
 
@@ -655,22 +665,22 @@ func TestTaskNextInProjectUsesServerNext(t *testing.T) {
 		Task    struct {
 			ID int `json:"id"`
 		} `json:"task"`
-		Project resolvedProject `json:"project"`
+		Project projectOutput `json:"project"`
 	}
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(err)
 	}
-	if !result.HasWork || result.Task.ID != 5 || result.Project.BoxID != "9" || result.Project.Source != "flag" {
+	if !result.HasWork || result.Task.ID != 5 || result.Project.ProjectID != "9" || result.Project.BoxID != "9" || result.Project.Source != "flag" {
 		t.Fatalf("result = %+v", result)
 	}
 }
 
 func TestTaskNextInProjectReportsNoWorkAndErrors(t *testing.T) {
 	root := t.TempDir()
-	writeProjectFile(t, root, `{"box_id":10}`)
+	writeTestProjectFile(t, root, `{"box_id":10}`)
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/boxes/10/tasks/next": fixed(200, `{"has_work":false,"task":null}`),
-		"GET /api/v1/boxes/11/tasks/next": fixed(404, `{"error":{"code":"not_found","message":"Box not found"}}`),
+		"GET /api/v1/projects/10/tasks/next": fixed(200, `{"has_work":false,"task":null}`),
+		"GET /api/v1/projects/11/tasks/next": fixed(404, `{"error":{"code":"not_found","message":"Box not found"}}`),
 	})
 	setAgentEnv(t, server.URL)
 
@@ -678,7 +688,7 @@ func TestTaskNextInProjectReportsNoWorkAndErrors(t *testing.T) {
 	if err != nil || !strings.Contains(out, `"has_work":false`) || !strings.Contains(out, `"task":null`) || !strings.Contains(out, `"box_id":"10"`) {
 		t.Fatalf("out = %q, err = %v", out, err)
 	}
-	if (*requests)[0].path != "/api/v1/boxes/10/tasks/next" {
+	if (*requests)[0].path != "/api/v1/projects/10/tasks/next" {
 		t.Fatalf("path = %s", (*requests)[0].path)
 	}
 	out, err = runCapture(t, "task", "next", "--cwd", root)

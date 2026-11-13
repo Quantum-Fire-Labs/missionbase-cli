@@ -194,10 +194,23 @@ func resolveWorkTerminal(spec string) (hcMachine, string, error) {
 // ---- project resolution --------------------------------------------------------
 
 type resolvedProject struct {
-	BoxID   string `json:"box_id"`
-	BoxName string `json:"box_name,omitempty"`
-	Source  string `json:"source"` // flag | project_file | default
-	Path    string `json:"path,omitempty"`
+	ID     string
+	Name   string
+	Source string // flag | project_file | default
+	Path   string
+}
+
+// MarshalJSON writes project_id and project_name, plus box_id and box_name
+// with the same values for readers from before the rename (older Herdr panels).
+func (p resolvedProject) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ProjectID   string `json:"project_id"`
+		ProjectName string `json:"project_name,omitempty"`
+		BoxID       string `json:"box_id"`
+		BoxName     string `json:"box_name,omitempty"`
+		Source      string `json:"source"`
+		Path        string `json:"path,omitempty"`
+	}{p.ID, p.Name, p.ID, p.Name, p.Source, p.Path})
 }
 
 const projectFileName = ".missionbase/project.json"
@@ -208,9 +221,9 @@ const projectFileName = ".missionbase/project.json"
 func resolveProject(projectFlag, cwdFlag string) (resolvedProject, bool, error) {
 	if projectFlag != "" {
 		if !isPositiveInteger(projectFlag) {
-			return resolvedProject{}, false, fmt.Errorf("--project must be a project (box) id, got %q", projectFlag)
+			return resolvedProject{}, false, fmt.Errorf("--project must be a project id, got %q", projectFlag)
 		}
-		return resolvedProject{BoxID: projectFlag, Source: "flag"}, true, nil
+		return resolvedProject{ID: projectFlag, Source: "flag"}, true, nil
 	}
 
 	dir := cwdFlag
@@ -247,24 +260,64 @@ func resolveProject(projectFlag, cwdFlag string) (resolvedProject, bool, error) 
 		return resolvedProject{}, false, err
 	}
 	if cfg.DefaultProject != "" {
-		return resolvedProject{BoxID: cfg.DefaultProject, Source: "default", Path: config.CredentialsPath("missionbase-agent")}, true, nil
+		return resolvedProject{ID: cfg.DefaultProject, Source: "default", Path: config.CredentialsPath("missionbase-agent")}, true, nil
 	}
 	return resolvedProject{}, false, nil
 }
 
+// parseProjectFile reads project_id and project_name, or box_id and box_name
+// from files written before the rename.
 func parseProjectFile(path string, data []byte) (resolvedProject, error) {
 	var file struct {
-		BoxID   json.RawMessage `json:"box_id"`
-		BoxName string          `json:"box_name"`
+		ProjectID   json.RawMessage `json:"project_id"`
+		ProjectName string          `json:"project_name"`
+		BoxID       json.RawMessage `json:"box_id"`
+		BoxName     string          `json:"box_name"`
 	}
 	if err := json.Unmarshal(data, &file); err != nil {
 		return resolvedProject{}, fmt.Errorf("%s is not valid JSON: %w", path, err)
 	}
-	boxID := strings.Trim(strings.TrimSpace(string(file.BoxID)), `"`)
-	if !isPositiveInteger(boxID) {
-		return resolvedProject{}, fmt.Errorf("%s has no valid box_id", path)
+	id, name := file.ProjectID, file.ProjectName
+	if len(id) == 0 || string(id) == "null" {
+		id, name = file.BoxID, file.BoxName
 	}
-	return resolvedProject{BoxID: boxID, BoxName: file.BoxName, Source: "project_file", Path: path}, nil
+	projectID := strings.Trim(strings.TrimSpace(string(id)), `"`)
+	if !isPositiveInteger(projectID) {
+		return resolvedProject{}, fmt.Errorf("%s has no valid project_id", path)
+	}
+	return resolvedProject{ID: projectID, Name: name, Source: "project_file", Path: path}, nil
+}
+
+// writeProjectFile links dir to a project in dir/.missionbase/project.json.
+// It writes project_id and project_name, and box_id and box_name for CLIs
+// and Herdr panels from before the rename, keeping any other keys in the file.
+func writeProjectFile(dir string, id int64, name string, teamID int64, teamName string) (string, error) {
+	path := filepath.Join(dir, projectFileName)
+	file := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &file); err != nil {
+			return "", fmt.Errorf("%s is not valid JSON: %w", path, err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	if teamID != 0 {
+		file["team_id"] = teamID
+		file["team_name"] = teamName
+	}
+	file["project_id"] = id
+	file["project_name"] = name
+	file["box_id"] = id
+	file["box_name"] = name
+
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	return path, os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 func isPositiveInteger(value string) bool {
@@ -284,7 +337,7 @@ type projectFlags struct {
 
 func (p *projectFlags) parse(args []string, i *int) (bool, error) {
 	switch args[*i] {
-	case "--project", "--box":
+	case "--project", "--project-id", "--box", "--box-id":
 		if *i+1 >= len(args) || strings.TrimSpace(args[*i+1]) == "" {
 			return true, fmt.Errorf("%s requires a project id", args[*i])
 		}
@@ -328,18 +381,21 @@ type workRunning struct {
 	Reason      string    `json:"reason"`
 }
 
+type taskProject struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 type workTask struct {
-	ID          int64  `json:"id"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	StatusLabel string `json:"status_label"`
-	Box         *struct {
-		ID   int64  `json:"id"`
-		Name string `json:"name"`
-	} `json:"box"`
-	Assignees  []workActor  `json:"assignees"`
-	Running    *workRunning `json:"running"`
-	LiveStatus *struct {
+	ID          int64        `json:"id"`
+	Title       string       `json:"title"`
+	Status      string       `json:"status"`
+	StatusLabel string       `json:"status_label"`
+	Project     *taskProject `json:"project"`
+	Box         *taskProject `json:"box"` // servers from before the rename send only box
+	Assignees   []workActor  `json:"assignees"`
+	Running     *workRunning `json:"running"`
+	LiveStatus  *struct {
 		Worker string `json:"worker"`
 		State  string `json:"state"`
 	} `json:"live_status"`
@@ -354,6 +410,13 @@ type workTask struct {
 
 // needsYou: the task waits on its owner (open questions or a permission
 // prompt). Servers before needs_you only sent attention.
+func (t workTask) project() *taskProject {
+	if t.Project != nil {
+		return t.Project
+	}
+	return t.Box
+}
+
 func (t workTask) needsYou() bool {
 	return t.NeedsYou || t.Attention != nil
 }
@@ -425,17 +488,17 @@ func printJSON(value any) error {
 	return nil
 }
 
-func printTaskTable(tasks []rawTask, showBox bool) {
+func printTaskTable(tasks []rawTask, showProject bool) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, rt := range tasks {
 		t := rt.task
 		columns := []string{"#" + strconv.FormatInt(t.ID, 10), t.label()}
-		if showBox {
-			box := ""
-			if t.Box != nil {
-				box = t.Box.Name
+		if showProject {
+			name := ""
+			if project := t.project(); project != nil {
+				name = project.Name
 			}
-			columns = append(columns, box)
+			columns = append(columns, name)
 		}
 		columns = append(columns, t.Title)
 		var extra []string
@@ -872,7 +935,8 @@ func tasksLs(args []string) error {
 		if !ok {
 			return errNoProject()
 		}
-		query.Set("box_ids", project.BoxID)
+		query.Set("project_ids", project.ID)
+		query.Set("box_ids", project.ID) // for servers from before the rename
 	}
 	tasks, cursor, err := fetchAccessibleTasks(query)
 	if err != nil {
@@ -895,12 +959,12 @@ func tasksLs(args []string) error {
 	if jsonOut {
 		return printJSON(map[string]any{"project": project, "tasks": rawMessages(tasks), "cursor": cursorValue})
 	}
-	name := project.BoxName
-	if name == "" && len(tasks) > 0 && tasks[0].task.Box != nil {
-		name = tasks[0].task.Box.Name
+	name := project.Name
+	if name == "" && len(tasks) > 0 && tasks[0].task.project() != nil {
+		name = tasks[0].task.project().Name
 	}
 	if name == "" {
-		name = "Project " + project.BoxID
+		name = "Project " + project.ID
 	}
 	fmt.Printf("%s (%d tasks, %s)\n", name, len(tasks), projectSourceLabel(project))
 	printTaskTable(tasks, false)
@@ -936,7 +1000,7 @@ func statusQuery(status string) url.Values {
 }
 
 // fetchAccessibleTasks reads every page of GET /api/v1/tasks/accessible, which
-// is already in project, status and box_position order. It also returns the
+// is already in project, status and project_position order. It also returns the
 // first page's meta.cursor: a changes-feed cursor taken before that page was
 // read, so `tasks changes --since` from it misses nothing changed while paging.
 func fetchAccessibleTasks(query url.Values) ([]rawTask, string, error) {
@@ -1049,7 +1113,8 @@ func fetchChanges(since, boxIDs string) (changesFeed, error) {
 			query.Set("since", cursor)
 		}
 		if boxIDs != "" {
-			query.Set("box_ids", boxIDs)
+			query.Set("project_ids", boxIDs)
+			query.Set("box_ids", boxIDs) // for servers from before the rename
 		}
 		query.Set("limit", "500")
 		body, err := agentDo(http.MethodGet, withQuery("/api/v1/tasks/changes", query), nil)
@@ -1109,7 +1174,7 @@ func fetchChanges(since, boxIDs string) (changesFeed, error) {
 const taskNextUsage = "usage: missionbase-agent task next [--cwd DIR | --project ID] [--json]"
 
 // taskNext asks the server for the next task: in the resolved project,
-// GET /api/v1/boxes/:id/tasks/next (the first To Do task by position that is
+// GET /api/v1/projects/:id/tasks/next (the first To Do task by position that is
 // unassigned or yours and not running); with no project, this agent's next
 // assigned task from GET /api/v1/agent/work.
 func taskNext(args []string) error {
@@ -1142,7 +1207,7 @@ func taskNext(args []string) error {
 
 	path := "/api/v1/agent/work"
 	if ok {
-		path = "/api/v1/boxes/" + url.PathEscape(project.BoxID) + "/tasks/next"
+		path = "/api/v1/projects/" + url.PathEscape(project.ID) + "/tasks/next"
 	}
 	next, err := fetchNext(path)
 	if err != nil {
@@ -1202,6 +1267,7 @@ func fetchNext(path string) (*rawTask, error) {
 // ---- project ---------------------------------------------------------------------------
 
 const projectUsage = `usage: missionbase-agent project [show] [--cwd DIR | --project ID] [--json]
+       missionbase-agent project link ID [--cwd DIR]
        missionbase-agent project default [ID | --clear]`
 
 func projectCommand(args []string) error {
@@ -1211,6 +1277,9 @@ func projectCommand(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "default" {
 		return projectDefault(args[1:])
+	}
+	if len(args) > 0 && args[0] == "link" {
+		return projectLink(args[1:])
 	}
 	if len(args) > 0 && args[0] == "show" {
 		args = args[1:]
@@ -1248,10 +1317,87 @@ func projectCommand(args []string) error {
 		return printJSON(map[string]any{"project": project})
 	}
 	name := ""
-	if project.BoxName != "" {
-		name = " " + project.BoxName
+	if project.Name != "" {
+		name = " " + project.Name
 	}
-	fmt.Printf("Project %s%s (%s)\n", project.BoxID, name, projectSourceLabel(project))
+	fmt.Printf("Project %s%s (%s)\n", project.ID, name, projectSourceLabel(project))
+	return nil
+}
+
+// projectLink writes .missionbase/project.json in --cwd (or the current
+// folder) for a project, with its name and team from the server.
+func projectLink(args []string) error {
+	id, cwd := "", ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--cwd":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return fmt.Errorf("--cwd requires a directory")
+			}
+			cwd = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println(projectUsage)
+			return nil
+		default:
+			if id != "" || !isPositiveInteger(args[i]) {
+				return fmt.Errorf("%s", projectUsage)
+			}
+			id = args[i]
+		}
+	}
+	if id == "" {
+		return fmt.Errorf("%s", projectUsage)
+	}
+	dir := cwd
+	if dir == "" {
+		var err error
+		if dir, err = os.Getwd(); err != nil {
+			return err
+		}
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return fmt.Errorf("--cwd %q is not a directory", dir)
+	}
+
+	body, err := agentDo(http.MethodGet, "/api/v1/projects/"+url.PathEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	type projectPayload struct {
+		ID    int64  `json:"id"`
+		Name  string `json:"name"`
+		Owner struct {
+			Type string `json:"type"`
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"owner"`
+	}
+	var response struct {
+		Project *projectPayload `json:"project"`
+		Box     *projectPayload `json:"box"` // servers from before the rename
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("unexpected project response: %w", err)
+	}
+	project := response.Project
+	if project == nil {
+		project = response.Box
+	}
+	if project == nil || project.ID == 0 {
+		return fmt.Errorf("unexpected project response: no project")
+	}
+	var teamID int64
+	teamName := ""
+	if project.Owner.Type == "Team" {
+		teamID, teamName = project.Owner.ID, project.Owner.Name
+	}
+
+	path, err := writeProjectFile(dir, project.ID, project.Name, teamID, teamName)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Linked %s to project %d %s\n", path, project.ID, project.Name)
 	return nil
 }
 

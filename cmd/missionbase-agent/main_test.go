@@ -412,15 +412,17 @@ func TestAgentBoxesAddPostsBoxIDs(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/api/v1/agents/fleet-worker/boxes" {
-			t.Fatalf("path = %s, want /api/v1/agents/fleet-worker/boxes", r.URL.Path)
+		if r.URL.Path != "/api/v1/agents/fleet-worker/projects" {
+			t.Fatalf("path = %s, want /api/v1/agents/fleet-worker/projects", r.URL.Path)
 		}
 		var payload map[string][]string
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if got := payload["box_ids"]; len(got) != 2 || got[0] != "2" || got[1] != "3" {
-			t.Fatalf("box_ids = %#v", got)
+		for _, key := range []string{"project_ids", "box_ids"} {
+			if got := payload[key]; len(got) != 2 || got[0] != "2" || got[1] != "3" {
+				t.Fatalf("%s = %#v", key, got)
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"agent":{"id":42,"slug":"fleet-worker"},"memberships":[{"status":"created"}]}`))
@@ -428,13 +430,16 @@ func TestAgentBoxesAddPostsBoxIDs(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnvNoSlug(t, server.URL)
-	if err := run([]string{"agent", "boxes", "add", "fleet-worker", "--box", "2", "--box", "3"}); err != nil {
+	if err := run([]string{"agent", "projects", "add", "fleet-worker", "--project", "2", "--project", "3"}); err != nil {
+		t.Fatalf("run agent projects add: %v", err)
+	}
+	if err := run([]string{"agent", "boxes", "add", "fleet-worker", "--box", "2", "--box-id", "3"}); err != nil {
 		t.Fatalf("run agent boxes add: %v", err)
 	}
 }
 
 func TestAgentBoxesAddRequiresBox(t *testing.T) {
-	if err := run([]string{"agent", "boxes", "add", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "at least one --box") {
+	if err := run([]string{"agent", "boxes", "add", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "at least one --project") {
 		t.Fatalf("err = %v, want box required", err)
 	}
 }
@@ -530,8 +535,8 @@ func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/api/v1/boxes/2/task_statuses" {
-			t.Fatalf("path = %s, want /api/v1/boxes/2/task_statuses", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/2/task_statuses" {
+			t.Fatalf("path = %s, want /api/v1/projects/2/task_statuses", r.URL.Path)
 		}
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
@@ -552,8 +557,8 @@ func TestBoxesDiscussionsGetsStandaloneDiscussions(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/api/v1/boxes/2/discussions" {
-			t.Fatalf("path = %s, want /api/v1/boxes/2/discussions", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/2/discussions" {
+			t.Fatalf("path = %s, want /api/v1/projects/2/discussions", r.URL.Path)
 		}
 		if got := r.URL.Query().Get("per_page"); got != "10" {
 			t.Fatalf("per_page = %q, want 10", got)
@@ -577,8 +582,8 @@ func TestBoxesFilesGetsListAndSearchesDocuments(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/api/v1/boxes/2/files" {
-			t.Fatalf("path = %s, want /api/v1/boxes/2/files", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/2/files" {
+			t.Fatalf("path = %s, want /api/v1/projects/2/files", r.URL.Path)
 		}
 		if got := r.URL.Query().Get("query"); got != "runbook" {
 			t.Fatalf("query = %q, want runbook", got)
@@ -611,8 +616,8 @@ func TestBoxesFilesListWithoutFolderIDIsUnchanged(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/api/v1/boxes/2/files" {
-			t.Fatalf("path = %s, want /api/v1/boxes/2/files", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/2/files" {
+			t.Fatalf("path = %s, want /api/v1/projects/2/files", r.URL.Path)
 		}
 		if got := r.URL.Query().Get("folder_id"); got != "" {
 			t.Fatalf("folder_id = %q, want empty", got)
@@ -634,9 +639,9 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/77":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/2/files/77":
 			_, _ = w.Write([]byte(`{"file":{"id":77,"type":"file"}}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/boxes/2/files":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/2/files":
 			sawUpload = true
 			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
 				t.Fatalf("parse multipart: %v", err)
@@ -651,7 +656,7 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 				t.Fatalf("file count = %d, want 1", len(r.MultipartForm.File["file"]))
 			}
 			_, _ = w.Write([]byte(`{"file":{"id":78}}`))
-		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/boxes/2/files/78":
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/projects/2/files/78":
 			sawUpdate = true
 			var payload map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -661,13 +666,13 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 				t.Fatalf("description = %q", payload["description"])
 			}
 			_, _ = w.Write([]byte(`{"file":{"id":78}}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/78/download":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/2/files/78/download":
 			sawDownload = true
 			_, _ = w.Write([]byte("download-body"))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/78/versions":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/2/files/78/versions":
 			sawVersions = true
 			_, _ = w.Write([]byte(`{"versions":[{"id":5,"version_number":1}]}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/boxes/2/files/78/versions":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects/2/files/78/versions":
 			sawUploadVersion = true
 			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
 				t.Fatalf("parse version multipart: %v", err)
@@ -676,7 +681,7 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 				t.Fatalf("version file count = %d, want 1", len(r.MultipartForm.File["file"]))
 			}
 			_, _ = w.Write([]byte(`{"version":{"id":6}}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/boxes/2/files/78/versions/5/download":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/2/files/78/versions/5/download":
 			sawDownloadVersion = true
 			_, _ = w.Write([]byte("old-version-body"))
 		default:
@@ -724,7 +729,7 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 func TestBoxesFilesCreateArtifact(t *testing.T) {
 	var sawArtifact bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/boxes/2/files" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/projects/2/files" {
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		sawArtifact = true
@@ -776,15 +781,15 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	})
 	for _, want := range []string{
 		"[--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]",
-		"boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
-		"boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]",
+		"projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"projects files create-artifact <project-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]",
 		"sandboxed interactive HTML with persisted JSON state",
-		"boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]",
-		"boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)",
-		"boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT]",
-		"boxes files versions <box-id> <file-id>",
-		"boxes files upload-version <box-id> <file-id> --file PATH",
-		"boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]",
+		"projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]",
+		"projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)",
+		"projects files update <project-id> <file-id> [--title TITLE] [--description TEXT]",
+		"projects files versions <project-id> <file-id>",
+		"projects files upload-version <project-id> <file-id> --file PATH",
+		"projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("top-level help missing %q in:\n%s", want, stdout)
@@ -797,11 +802,11 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 		}
 	})
 	for _, want := range []string{
-		"missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
-		"missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]",
+		"missionbase-agent projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"missionbase-agent projects files create-artifact <project-id> (--file PATH|--stdin) --title TITLE [--description TEXT] [--folder FOLDER_ID|--root]",
 		"loadState()/saveState(data)",
-		"missionbase-agent boxes files update <box-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
-		"missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH",
+		"missionbase-agent projects files update <project-id> <file-id> [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]",
+		"missionbase-agent projects files upload-version <project-id> <file-id> --file PATH",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("boxes files help missing %q in:\n%s", want, stdout)
@@ -813,7 +818,7 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 			t.Fatalf("run upload --help: %v", err)
 		}
 	})
-	if want := "missionbase-agent boxes files upload <box-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]"; !strings.Contains(stdout, want) {
+	if want := "missionbase-agent projects files upload <project-id> --file PATH [--title TITLE] [--description TEXT] [--folder FOLDER_ID|--root]"; !strings.Contains(stdout, want) {
 		t.Fatalf("upload help missing %q in:\n%s", want, stdout)
 	}
 
@@ -822,7 +827,7 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 			t.Fatalf("run upload-version --help: %v", err)
 		}
 	})
-	if want := "missionbase-agent boxes files upload-version <box-id> <file-id> --file PATH"; !strings.Contains(stdout, want) {
+	if want := "missionbase-agent projects files upload-version <project-id> <file-id> --file PATH"; !strings.Contains(stdout, want) {
 		t.Fatalf("upload-version help missing %q in:\n%s", want, stdout)
 	}
 
@@ -831,7 +836,7 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 			t.Fatalf("run create-artifact --help: %v", err)
 		}
 	})
-	for _, want := range []string{"missionbase-agent boxes files create-artifact <box-id> (--file PATH|--stdin) --title TITLE", "sandboxed interactive HTML", "loadState()", "Static .html uploads remain static previews"} {
+	for _, want := range []string{"missionbase-agent projects files create-artifact <project-id> (--file PATH|--stdin) --title TITLE", "sandboxed interactive HTML", "loadState()", "Static .html uploads remain static previews"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("create-artifact help missing %q in:\n%s", want, stdout)
 		}
@@ -842,11 +847,11 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"show", []string{"boxes", "files", "show", "--help"}, "missionbase-agent boxes files show <box-id> <file-id>"},
-		{"mkdir", []string{"boxes", "files", "mkdir", "--help"}, "missionbase-agent boxes files mkdir <box-id> --title TITLE [--folder FOLDER_ID|--root]"},
-		{"mv", []string{"boxes", "files", "mv", "--help"}, "missionbase-agent boxes files mv <box-id> <file-id> (--folder FOLDER_ID|--root)"},
-		{"versions", []string{"boxes", "files", "versions", "--help"}, "missionbase-agent boxes files versions <box-id> <file-id>"},
-		{"download", []string{"boxes", "files", "download", "--help"}, "missionbase-agent boxes files download <box-id> <file-id> --output PATH [--version VERSION_ID]"},
+		{"show", []string{"boxes", "files", "show", "--help"}, "missionbase-agent projects files show <project-id> <file-id>"},
+		{"mkdir", []string{"boxes", "files", "mkdir", "--help"}, "missionbase-agent projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]"},
+		{"mv", []string{"boxes", "files", "mv", "--help"}, "missionbase-agent projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)"},
+		{"versions", []string{"boxes", "files", "versions", "--help"}, "missionbase-agent projects files versions <project-id> <file-id>"},
+		{"download", []string{"boxes", "files", "download", "--help"}, "missionbase-agent projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]"},
 	} {
 		stdout := captureStdout(t, func() {
 			if err := run(tc.args); err != nil {
@@ -865,13 +870,13 @@ func TestBoxesCreateHelp(t *testing.T) {
 			t.Fatalf("run boxes create --help: %v", err)
 		}
 	})
-	if !strings.Contains(stdout, "missionbase-agent boxes create --name NAME --team TEAM_ID") {
+	if !strings.Contains(stdout, "missionbase-agent projects create --name NAME --team TEAM_ID") {
 		t.Fatalf("help missing boxes create usage:\n%s", stdout)
 	}
 }
 
 func TestBoxesFilesRequiresBoxIDAndOptionValues(t *testing.T) {
-	if err := run([]string{"boxes", "files"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes files <box-id>") {
+	if err := run([]string{"boxes", "files"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects files <project-id>") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
 	if err := run([]string{"boxes", "files", "2", "--query"}); err == nil || !strings.Contains(err.Error(), "--query requires a value") {
@@ -887,8 +892,8 @@ func TestBoxesCreatePostsTeamBox(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/api/v1/boxes" {
-			t.Fatalf("path = %s, want /api/v1/boxes", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects" {
+			t.Fatalf("path = %s, want /api/v1/projects", r.URL.Path)
 		}
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
@@ -930,7 +935,7 @@ func TestBoxesCreateValidatesRequiredOptions(t *testing.T) {
 }
 
 func TestBoxesDiscussionsRequiresBoxID(t *testing.T) {
-	if err := run([]string{"boxes", "discussions"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes discussions <box-id>") {
+	if err := run([]string{"boxes", "discussions"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects discussions <project-id>") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
 }
@@ -940,8 +945,8 @@ func TestBoxesDiscussionsCreatePostsDiscussion(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/api/v1/boxes/2/discussions" {
-			t.Fatalf("path = %s, want /api/v1/boxes/2/discussions", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/2/discussions" {
+			t.Fatalf("path = %s, want /api/v1/projects/2/discussions", r.URL.Path)
 		}
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
@@ -980,8 +985,8 @@ func TestBoxesDiscussionsCreateRequiresTitleAndBody(t *testing.T) {
 
 func TestBoxesStatusesAliasGetsBoxTaskStatuses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/boxes/box-2/task_statuses" {
-			t.Fatalf("path = %s, want /api/v1/boxes/box-2/task_statuses", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/box-2/task_statuses" {
+			t.Fatalf("path = %s, want /api/v1/projects/box-2/task_statuses", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"task_statuses":[]}`))
@@ -995,7 +1000,7 @@ func TestBoxesStatusesAliasGetsBoxTaskStatuses(t *testing.T) {
 }
 
 func TestBoxesTaskStatusesRequiresBoxID(t *testing.T) {
-	if err := run([]string{"boxes", "task-statuses"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent boxes task-statuses <box-id>") {
+	if err := run([]string{"boxes", "task-statuses"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects task-statuses <project-id>") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
 }
@@ -1931,8 +1936,8 @@ func TestDocumentCreatePostsFileBody(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/api/v1/boxes/2/documents" {
-			t.Fatalf("path = %s, want /api/v1/boxes/2/documents", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/2/documents" {
+			t.Fatalf("path = %s, want /api/v1/projects/2/documents", r.URL.Path)
 		}
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
@@ -2037,8 +2042,8 @@ func TestTaskMovePatchesBoxID(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["box_id"] != "42" {
-			t.Fatalf("box_id = %q, want 42", payload["box_id"])
+		if payload["project_id"] != "42" || payload["box_id"] != "42" {
+			t.Fatalf("payload = %#v, want project_id and box_id 42", payload)
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"task":{"id":123,"box":{"id":42}}}`))
@@ -2046,13 +2051,16 @@ func TestTaskMovePatchesBoxID(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "move", "123", "--box", "42"}); err != nil {
+	if err := run([]string{"task", "move", "123", "--project", "42"}); err != nil {
 		t.Fatalf("run task move: %v", err)
+	}
+	if err := run([]string{"task", "move", "123", "--box", "42"}); err != nil {
+		t.Fatalf("run task move --box: %v", err)
 	}
 }
 
 func TestTaskMoveRequiresBox(t *testing.T) {
-	if err := run([]string{"task", "move", "123"}); err == nil || !strings.Contains(err.Error(), "task move <task-id> --box BOX_ID") {
+	if err := run([]string{"task", "move", "123"}); err == nil || !strings.Contains(err.Error(), "task move <task-id> --project PROJECT_ID") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
 	if err := run([]string{"task", "move", "123", "--status", "todo"}); err == nil || !strings.Contains(err.Error(), "unknown task move option") {
@@ -2068,8 +2076,8 @@ func TestDocumentCommandsRequireFileBody(t *testing.T) {
 	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook"}); err == nil || !strings.Contains(err.Error(), "--body is required") {
 		t.Fatalf("err = %v, want body required", err)
 	}
-	if err := run([]string{"document", "create", "--title", "Runbook", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--box is required") {
-		t.Fatalf("err = %v, want box required", err)
+	if err := run([]string{"document", "create", "--title", "Runbook", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--project is required") {
+		t.Fatalf("err = %v, want project required", err)
 	}
 	if err := run([]string{"document", "edit", "77", "--body-file", "-"}); err == nil || !strings.Contains(err.Error(), "stdin body input is not supported") {
 		t.Fatalf("err = %v, want stdin unsupported", err)
@@ -2164,7 +2172,7 @@ func TestActivityCommandBuildsBoxQueryAndPrintsSummary(t *testing.T) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
-		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/boxes/2/activity_events" {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/projects/2/activity_events" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.String())
 		}
 		query := r.URL.Query()
@@ -2203,7 +2211,7 @@ func TestActivityCommandBuildsBoxQueryAndPrintsSummary(t *testing.T) {
 
 func TestBoxesActivityAliasAndJSONOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/boxes/2/activity_events" {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/projects/2/activity_events" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.String())
 		}
 		if got := r.URL.Query().Get("limit"); got != "1" {
@@ -2255,7 +2263,7 @@ func TestActivityHelpMentionsJSONAndFilters(t *testing.T) {
 			t.Fatalf("run activity help: %v", err)
 		}
 	})
-	for _, want := range []string{"missionbase-agent activity <box|team> <id>", "--since TIME", "--cursor ID", "--json"} {
+	for _, want := range []string{"missionbase-agent activity <project|team> <id>", "--since TIME", "--cursor ID", "--json"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}
