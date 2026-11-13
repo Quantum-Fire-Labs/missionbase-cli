@@ -18,6 +18,7 @@ import (
 
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/statuses"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/textbody"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/update"
 )
@@ -996,7 +997,7 @@ func conversation(args []string) error {
 }
 
 func discussionConvert(args []string) error {
-	usage := "usage: missionbase-agent discussion convert <discussion-id> [--title TITLE] [--description-file PATH] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]"
+	usage := "usage: missionbase-agent discussion convert <discussion-id> [--title TITLE] [--description-file PATH] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--assign-agent ID_OR_SLUG]"
 	if len(args) < 1 {
 		return fmt.Errorf("%s", usage)
 	}
@@ -1004,11 +1005,13 @@ func discussionConvert(args []string) error {
 	payload := map[string]string{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--title", "--deadline", "--status", "--task-status-id", "--assign-user", "--assign-agent":
+		case "--task-status-id":
+			return statuses.RemovedIDFlag(args[i])
+		case "--title", "--deadline", "--status", "--assign-user", "--assign-agent":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			key := map[string]string{"--title": "title", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
+			key := map[string]string{"--title": "title", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--description-file", "--body-file":
@@ -2413,7 +2416,7 @@ func boxTaskStatuses(args []string) error {
 
 func boxTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS|--status-category open|done|canceled|--task-status-ids IDS] [--scheduled actionable|future|all] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase-agent boxes tasks <box-id> [--status STATUS[,STATUS]|--status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]")
 	}
 
 	boxID := args[0]
@@ -2433,11 +2436,7 @@ func boxTasks(args []string) error {
 			values.Set("status_category", args[i+1])
 			i++
 		case "--task-status-ids":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--task-status-ids requires a value")
-			}
-			values.Set("task_status_ids", args[i+1])
-			i++
+			return statuses.RemovedIDFlag(args[i])
 		case "--scheduled":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--scheduled requires a value: actionable, future, or all")
@@ -3895,7 +3894,7 @@ Commands:
   task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
-  task status <task-id> <status>      Set status (server validates box-specific statuses)
+  task status <task-id> <status>      Set status by key: backlog, todo, in_progress, needs_attention, complete, not_doing
   task move <task-id> --box BOX_ID    Move a task to another accessible box
   task complete <task-id>             Mark a task complete
   task messages <task-id> [--limit N] Show task discussion messages
@@ -3948,7 +3947,7 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
       [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]
                                       Create a team-owned box
   boxes tasks <box-id>                Show open-category tasks in an accessible box by default
-      [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
+      [--status STATUS[,STATUS]] [--status-category open|done|canceled]
       [--scheduled actionable|future|all] [--page N] [--per-page N]
   boxes discussions <box-id>          List standalone box discussions (not task conversations)
       [--page N] [--per-page N]
@@ -3983,7 +3982,7 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Pin a supported page to a user's sidebar
   sidebar unpin --user ID|@mention --type box_file --id ID
                                       Unpin a supported page from a user's sidebar
-  boxes task-statuses <box-id>        List all configured task statuses for a box as JSON
+  boxes task-statuses <box-id>        List the fixed task statuses (key, name, category, color, position) as JSON
                                       Fields: id, key, name, category, position, color,
                                       default_open, primary_done, primary_canceled, archived
   boxes statuses <box-id>             Alias for boxes task-statuses

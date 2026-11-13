@@ -18,6 +18,7 @@ import (
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/resolve"
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/statuses"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/textbody"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/update"
 )
@@ -455,7 +456,7 @@ func box(args []string) error {
 
 func boxTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase boxes tasks <box-id> [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase boxes tasks <box-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]")
 	}
 	boxID := args[0]
 	values := url.Values{}
@@ -477,11 +478,7 @@ func boxTasks(args []string) error {
 			values.Set("status_category", args[i+1])
 			i++
 		case "--task-status-ids":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--task-status-ids requires a value")
-			}
-			values.Set("task_status_ids", args[i+1])
-			i++
+			return statuses.RemovedIDFlag(args[i])
 		case "--page":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--page requires a value")
@@ -495,7 +492,7 @@ func boxTasks(args []string) error {
 			values.Set("per_page", args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase boxes tasks <box-id> [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS] [--page N] [--per-page N]")
+			fmt.Println("usage: missionbase boxes tasks <box-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]")
 			return nil
 		default:
 			return fmt.Errorf("unknown boxes tasks option %q", args[i])
@@ -1041,7 +1038,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|messages> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|messages> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -1284,7 +1281,7 @@ func discussion(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase discussion show <discussion-id> [--limit N]\n       missionbase discussion message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
+		fmt.Println("usage: missionbase discussion show <discussion-id> [--limit N]\n       missionbase discussion message <discussion-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
 		return nil
 	default:
 		return fmt.Errorf("unknown discussion command %q", args[0])
@@ -1548,11 +1545,13 @@ func taskCreate(args []string) error {
 	var attaches, blobs []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--title", "--body", "--box", "--deadline", "--status", "--task-status-id", "--assign-user":
+		case "--task-status-id":
+			return statuses.RemovedIDFlag(args[i])
+		case "--title", "--body", "--box", "--deadline", "--status", "--assign-user":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			key := map[string]string{"--title": "title", "--body": "body", "--box": "box_id", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id"}[args[i]]
+			key := map[string]string{"--title": "title", "--body": "body", "--box": "box_id", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--attach":
@@ -1568,7 +1567,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -1588,21 +1587,23 @@ func taskCreate(args []string) error {
 
 func taskUpdate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]")
+		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS]")
 	}
 	taskID := args[0]
 	payload := map[string]string{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--title", "--box", "--status", "--task-status-id":
+		case "--task-status-id":
+			return statuses.RemovedIDFlag(args[i])
+		case "--title", "--box", "--status":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			key := map[string]string{"--title": "title", "--box": "box_id", "--status": "status", "--task-status-id": "task_status_id"}[args[i]]
+			key := map[string]string{"--title": "title", "--box": "box_id", "--status": "status"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]")
+			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task update option %q", args[i])
@@ -1660,21 +1661,23 @@ func discussionMessage(args []string, commandName string) error {
 
 func discussionConvert(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
+		return fmt.Errorf("usage: missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
 	}
 	discussionID := args[0]
 	payload := map[string]string{}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--title", "--description", "--body", "--deadline", "--status", "--task-status-id", "--assign-user", "--assign-agent":
+		case "--task-status-id":
+			return statuses.RemovedIDFlag(args[i])
+		case "--title", "--description", "--body", "--deadline", "--status", "--assign-user", "--assign-agent":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
-			key := map[string]string{"--title": "title", "--description": "description", "--body": "description", "--deadline": "deadline", "--status": "status", "--task-status-id": "task_status_id", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
+			key := map[string]string{"--title": "title", "--description": "description", "--body": "description", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id", "--assign-agent": "assign_to_agent_slug"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
+			fmt.Println("usage: missionbase discussion convert <discussion-id> [--title TITLE] [--description TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--assign-agent ID_OR_SLUG]")
 			return nil
 		default:
 			return fmt.Errorf("unknown discussion convert option %q", args[i])
@@ -1987,7 +1990,7 @@ Commands:
   boxes [--team TEAM_ID]              List boxes visible to the current user
   box show <box-id>                   Show a box
   boxes tasks <box-id>                List tasks in a box
-      [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS]
+      [--status STATUS[,STATUS]] [--status-category open|done|canceled]
       [--page N] [--per-page N]
   boxes discussions <box-id>          List standalone box discussions
       [--page N] [--per-page N]
@@ -2003,7 +2006,7 @@ Commands:
   boxes files download <box-id> <file-id> --output PATH
                                       Download an uploaded file
   boxes statuses <box-id>             Alias for boxes task-statuses
-  boxes task-statuses <box-id>        List configured task statuses for a box
+  boxes task-statuses <box-id>        List the fixed task statuses (key, name, category, color, position)
   notes search <query> [--team ID]    Search your notes
   scratchpad show|fetch               Show current user's scratchpad
   scratchpad update|edit --body TEXT  Update current user's scratchpad

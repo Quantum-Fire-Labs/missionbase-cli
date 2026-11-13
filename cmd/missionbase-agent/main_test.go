@@ -537,7 +537,7 @@ func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task_statuses":[{"id":1,"key":"todo","name":"To Do","category":"open","position":2,"color":"amber","default_open":true,"primary_done":false,"primary_canceled":false,"archived":false}]}`))
+		_, _ = w.Write([]byte(`{"task_statuses":[{"key":"todo","name":"To Do","category":"open","color":"amber","position":2,"default_open":true,"primary_done":false,"primary_canceled":false}]}`))
 	}))
 	defer server.Close()
 
@@ -2389,5 +2389,31 @@ func TestTaskUpdateBodyFileRejectsInlineStdinAndEmptyBodies(t *testing.T) {
 		if err := run(args); err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("run %v: err = %v, want %q", args, err, want)
 		}
+	}
+}
+
+func TestRemovedTaskStatusIDFlagsFailBeforeSending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s", r.Method, r.URL.String())
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"boxes", "tasks", "2", "--task-status-ids", "7,8"}, "--task-status-ids was removed"},
+		{[]string{"discussion", "convert", "5", "--task-status-id", "9"}, "--task-status-id was removed"},
+	} {
+		err := run(tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "--status") {
+			t.Fatalf("%v: err = %v, want %q pointing to --status", tc.args, err, tc.want)
+		}
+	}
+
+	stdout := captureStdout(t, func() { printHelp() })
+	if strings.Contains(stdout, "task-status-id") || strings.Contains(stdout, "box-specific statuses") {
+		t.Fatalf("help still mentions task status ids or per-box statuses:\n%s", stdout)
 	}
 }

@@ -223,7 +223,7 @@ missionbase team show <team-id>
 missionbase team members <team-id>
 missionbase boxes [--team <team-id>]
 missionbase box show <box-id>
-missionbase boxes tasks <box-id> [--status STATUS] [--status-category open|done|canceled] [--task-status-ids IDS] [--page N] [--per-page N]
+missionbase boxes tasks <box-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]
 missionbase boxes discussions <box-id> [--page N] [--per-page N]
 missionbase boxes discussions create <box-id> --title TITLE --body TEXT
 missionbase boxes documents create <box-id> --title TITLE --body TEXT
@@ -252,8 +252,8 @@ missionbase document message <document-id> --body TEXT [--attach PATH]
 missionbase document update <document-id> [--title TITLE] --body TEXT
 missionbase tasks assigned [--page N] [--per-page N]
 missionbase tasks visible [--page N] [--per-page N]
-missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--task-status-id ID] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS] [--task-status-id ID]
+missionbase task create --title TITLE [--box ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+missionbase task update <task-id> [--title TITLE] [--box ID] [--status STATUS]
 missionbase task status <task-id> <status>
 missionbase task complete <task-id>
 missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
@@ -346,7 +346,7 @@ missionbase-agent members [--box ID]
 missionbase-agent activity <box|team> <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]
 missionbase-agent boxes activity <box-id> [same filters]
 missionbase-agent boxes create --name "Project Delivery" --team <team-id> [--description-file /tmp/description.md] [--kind project] [--status in_progress] [--visibility team]
-missionbase-agent boxes tasks <box-id> [--status STATUS | --status-category open|done|canceled | --task-status-ids IDS] [--scheduled actionable|future|all] [--page N] [--per-page N]
+missionbase-agent boxes tasks <box-id> [--status STATUS[,STATUS] | --status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]
 missionbase-agent boxes discussions <box-id> [--page N] [--per-page N]
 missionbase-agent boxes discussions create <box-id> --title TITLE --body-file /tmp/body.md
 missionbase-agent boxes files <box-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]
@@ -411,9 +411,9 @@ When file content accidentally contains escaped newline sequences (`\n`, `\r`, o
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
-`missionbase-agent task move <task-id> --box <box-id>` moves an existing task to another agent-accessible box through the task update API. Missionbase preserves the task record, discussion messages, attachments, participants, and assignments; the server remaps the task status to a safe status in the destination box when workflows differ.
+`missionbase-agent task move <task-id> --box <box-id>` moves an existing task to another agent-accessible box through the task update API. Missionbase preserves the task record, discussion messages, attachments, participants, and assignments. The status is kept as it is, because every project has the same statuses.
 
-`missionbase-agent boxes task-statuses <box-id>` (alias: `boxes statuses`) prints all configured task statuses for an agent-accessible box as JSON, including custom and archived statuses. Each status includes `id`, `key`, `name`, `category`, `position`, `color`, `default_open`, `primary_done`, `primary_canceled`, and `archived`.
+`missionbase-agent boxes task-statuses <box-id>` (alias: `boxes statuses`) prints the task statuses as JSON. They are fixed and the same in every project: `backlog`, `todo`, `in_progress`, `needs_attention` (open), `complete` (done) and `not_doing` (canceled). Each entry has `key`, `name`, `category`, `color`, `position`, `default_open`, `primary_done` and `primary_canceled`. There are no status ids; commands take status keys (`--status KEY`) or categories (`--status-category open|done|canceled`).
 
 Task create/message and discussion/document/file message accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, WEBP, HEIC, and HEIF images up to 5 MB each. Attachments are appended inline to the task description or message rich text so they are visible in the Missionbase UI.
 
@@ -459,7 +459,7 @@ missionbase-agent task message 123 --body-file /tmp/comment.md --attach-blob "<s
 
 `missionbase-agent agent instructions show AGENT` reads the active managed instruction version and requires `agents:read`. `agent instructions publish AGENT --body-file PATH [--title TITLE]` publishes and activates a new version, while `agent instructions activate AGENT VERSION_ID` reactivates an existing version; both writes require `agents:update`. Responses include the version id and number, active state, title, and exact content. Publish reads content directly from the required body file without newline normalization so callers can hash-verify the response. These operations do not change agent execution mode or provisioning state.
 
-`missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and box membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks according to each box's configured task-status categories, so hand off or close that work first.
+`missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and box membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks (any status in the open category), so hand off or close that work first.
 
 `missionbase-agent agent restore ... --yes` restores/reactivates an archived agent with its existing identity and box memberships so it can be assigned and used for new work again. Restoring does not recreate agent-owned API keys that were revoked during archival; create new credentials if the restored agent needs to authenticate.
 
@@ -524,7 +524,7 @@ Use `missionbase-agent task show <task-id>`, `missionbase-agent discussion show 
 
 ### Other agent commands
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` updates a task status and relies on the server to validate the task's box-specific statuses; `task move <task-id> --box <box-id>` moves a task to another accessible box and relies on the server to remap the task status safely for the destination box; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status-category`, `--task-status-ids`, legacy `--status`, `--page`, and `--per-page` to refine results. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `discussion show/message` is the generic canonical-id surface for standalone discussions and other readable discussion threads (`conversation show/message` is deprecated). `missionbase-agent boxes files <box-id>` lists and searches unified box files/documents as JSON; use `--query`, `--filter`, `--sort`, `--folder-id`, `--root`, `--recursive`, `--page`, and `--per-page` to filter or paginate, plus `show`, `mkdir`, `mv`, `upload`, `update`, `versions`, `upload-version`, and `download` subcommands for file/folder workflows. Box/task API responses include `task_statuses`/`task_status_id`, `status_label`, `status_category`, `task_status_position`, and `status_color` so clients can discover and display allowed custom statuses. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` sets a task's status by key (`backlog`, `todo`, `in_progress`, `needs_attention`, `complete`, `not_doing`); `task move <task-id> --box <box-id>` moves a task to another accessible box and keeps its status; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent boxes tasks <box-id>` lists open-category tasks in an accessible box by default; use `--status KEY[,KEY]`, `--status-category`, `--page`, and `--per-page` to refine results. The old `--task-status-ids` / `--task-status-id` flags were removed along with status ids and now fail with a pointer to `--status`. `missionbase-agent boxes discussions <box-id>` lists standalone box discussions only, while `discussion show/message` is the generic canonical-id surface for standalone discussions and other readable discussion threads (`conversation show/message` is deprecated). `missionbase-agent boxes files <box-id>` lists and searches unified box files/documents as JSON; use `--query`, `--filter`, `--sort`, `--folder-id`, `--root`, `--recursive`, `--page`, and `--per-page` to filter or paginate, plus `show`, `mkdir`, `mv`, `upload`, `update`, `versions`, `upload-version`, and `download` subcommands for file/folder workflows. Task payloads carry `status` (the key), `status_label`, `status_category`, `task_status_position` and `status_color`; box payloads list the fixed `task_statuses`. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
 
 ## Agent check helper
 
