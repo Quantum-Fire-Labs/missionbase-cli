@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Removed the `needs_attention` status (statuses: `backlog`, `planning`, `todo`, `in_progress`, `complete`, `not_doing`). "Needs you" is now the `needs_you` flag on task payloads (open questions or a live permission prompt). `task status <id> needs_attention` and `missionbase task create|update --status needs_attention` fail before sending, pointing to `task ask`; `tasks ls --status needs_attention` points to `--needs-you`.
+- Added `tasks ls --needs-you` (`needs_you=true`). The text output of `tasks ls` and `tasks changes` marks tasks that need you, with the oldest open question when there is one.
+- `task attention` asks one question and `task attention clear` dismisses the open questions; neither changes the status. `task ask` prints the unchanged status.
+- Added the `planning` task status, between `backlog` and `todo`: the task is being planned with its owner, not built. `task status <id> planning`, `missionbase task create|update --status planning` and `tasks ls --status planning` accept it, the help and README list it, and `task next` never picks a Planning task (the server skips it). `task start` leaves a Planning task in Planning.
 - Added `missionbase-agent task ask <task-id> "question" [--context TEXT] [--option TEXT]...` and `task ask <task-id> --file PATH` (a JSON array of 1 to 5 `{"body", "context", "options"}` objects) to ask the task's owner questions. The task moves to Needs Attention; the output lists the questions, the new status and the task page link.
 - Added `missionbase-agent task questions <task-id> [--status open|answered|dismissed[,...]]` to list a task's questions with their answers, and `--wait [--timeout DURATION]` to poll every 20s until none are open. A `--wait` timeout exits with code 6.
 - `tasks ls`, `tasks changes` and `task next` show "N questions" for tasks with open questions.

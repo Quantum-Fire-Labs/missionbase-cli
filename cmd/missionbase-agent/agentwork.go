@@ -1,6 +1,6 @@
 package main
 
-// Agent work commands: start/stop work on a task, Needs Attention, project-scoped
+// Agent work commands: start/stop work on a task, the attention shortcut, project-scoped
 // task listings, the changes feed and the next task. See README "Agent work".
 
 import (
@@ -21,6 +21,7 @@ import (
 
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/statuses"
 )
 
 // Exit codes. Everything not listed here exits 1.
@@ -342,12 +343,19 @@ type workTask struct {
 		Worker string `json:"worker"`
 		State  string `json:"state"`
 	} `json:"live_status"`
+	NeedsYou  bool `json:"needs_you"`
 	Attention *struct {
 		Reason *string `json:"reason"`
 	} `json:"attention"`
 	Questions *struct {
 		OpenCount int `json:"open_count"`
 	} `json:"questions"`
+}
+
+// needsYou: the task waits on its owner (open questions or a permission
+// prompt). Servers before needs_you only sent attention.
+func (t workTask) needsYou() bool {
+	return t.NeedsYou || t.Attention != nil
 }
 
 // openQuestions is "N questions" when the task has open questions, else "".
@@ -437,8 +445,12 @@ func printTaskTable(tasks []rawTask, showBox bool) {
 		if t.LiveStatus != nil && t.LiveStatus.State == "permission" {
 			extra = append(extra, "needs permission ("+t.LiveStatus.Worker+")")
 		}
-		if t.Attention != nil && t.Attention.Reason != nil {
-			extra = append(extra, "waiting on you: "+oneLine(*t.Attention.Reason, 80))
+		if t.needsYou() {
+			mark := "needs you"
+			if t.Attention != nil && t.Attention.Reason != nil {
+				mark += ": " + oneLine(*t.Attention.Reason, 80)
+			}
+			extra = append(extra, mark)
 		}
 		if questions := t.openQuestions(); questions != "" {
 			extra = append(extra, questions)
@@ -794,22 +806,22 @@ func taskAttention(args []string) error {
 		return fmt.Errorf("unexpected task attention response: %w", err)
 	}
 	if clear {
-		fmt.Printf("#%d %q is %s\n", response.Task.ID, response.Task.Title, response.Task.label())
+		fmt.Printf("#%d %q: open questions dismissed (%s)\n", response.Task.ID, response.Task.Title, response.Task.label())
 	} else {
-		fmt.Printf("#%d %q needs attention: %s\n", response.Task.ID, response.Task.Title, oneLine(reason, 120))
+		fmt.Printf("#%d %q needs you: %s (%s)\n", response.Task.ID, response.Task.Title, oneLine(reason, 120), response.Task.label())
 	}
 	return nil
 }
 
 // ---- tasks ls ---------------------------------------------------------------------
 
-const tasksLsUsage = "usage: missionbase-agent tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]"
+const tasksLsUsage = "usage: missionbase-agent tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--needs-you] [--cwd DIR | --project ID] [--json]"
 
 const maxPages = 1000
 
 func tasksLs(args []string) error {
 	var pf projectFlags
-	all, status, jsonOut := false, "", false
+	all, status, jsonOut, needsYou := false, "", false, false
 	for i := 0; i < len(args); i++ {
 		if handled, err := pf.parse(args, &i); handled {
 			if err != nil {
@@ -825,7 +837,12 @@ func tasksLs(args []string) error {
 				return fmt.Errorf("--status requires a value")
 			}
 			status = strings.TrimSpace(args[i+1])
+			if err := statuses.RefuseFilter(status, "--needs-you"); err != nil {
+				return err
+			}
 			i++
+		case "--needs-you":
+			needsYou = true
 		case "--json":
 			jsonOut = true
 		case "--help", "-h":
@@ -842,6 +859,9 @@ func tasksLs(args []string) error {
 		return fmt.Errorf("use --all or --cwd/--project, not both")
 	}
 	query := statusQuery(status)
+	if needsYou {
+		query.Set("needs_you", "true")
+	}
 	var project resolvedProject
 	if !all {
 		var ok bool

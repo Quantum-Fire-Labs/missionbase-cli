@@ -2903,6 +2903,9 @@ func taskStatus(args []string) error {
 	if strings.TrimSpace(status) == "" {
 		return fmt.Errorf("status is required")
 	}
+	if err := statuses.RefuseSet(status); err != nil {
+		return err
+	}
 	if status == "complete" {
 		return taskComplete([]string{taskID})
 	}
@@ -3898,7 +3901,7 @@ Commands:
   task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
-  task status <task-id> <status>      Set status by key: backlog, todo, in_progress, needs_attention, complete, not_doing
+  task status <task-id> <status>      Set status by key: backlog, planning, todo, in_progress, complete, not_doing
   task move <task-id> --box BOX_ID    Move a task to another accessible box
   task complete <task-id>             Mark a task complete
   task messages <task-id> [--limit N] Show task discussion messages
@@ -3917,12 +3920,13 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Stop your running work (default reason: manual); stays assigned
   task attention <task-id> "reason" [--json]
   task attention <task-id> --body-file PATH [--json]
-                                      Set Needs Attention; the reason is asked as one question
+                                      Ask the owner the reason as one question (status unchanged;
+                                      the task needs you until it's answered)
   task attention clear <task-id> [--json]
-                                      Clear Needs Attention (back to In Progress)
+                                      Dismiss the task's open questions (status unchanged)
   task ask <task-id> "question" [--context TEXT] [--option TEXT]... [--json]
   task ask <task-id> --file PATH [--json]
-                                      Ask the owner 1-5 questions (task moves to Needs Attention).
+                                      Ask the owner 1-5 questions (status unchanged; needs_you while open).
                                       --option is repeatable (max 4). --file is a JSON array:
                                       [{"body": "...", "context": "...", "options": ["..."]}]
   task questions <task-id> [--status open|answered|dismissed[,...]] [--json]
@@ -3932,8 +3936,9 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       (exit 6 on timeout; DURATION like 90s, 10m, 1h or seconds)
   task next [--cwd DIR | --project ID] [--json]
                                       Next To Do task here that is free or yours and not running
-  tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--cwd DIR | --project ID] [--json]
-                                      List this project's tasks (open by default), or every project with --all
+  tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--needs-you] [--cwd DIR | --project ID] [--json]
+                                      List this project's tasks (open by default), or every project with --all;
+                                      --needs-you keeps tasks with open questions or a permission prompt
   tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
                                       Tasks changed since a cursor, plus deletions and the next cursor
   project [show] [--cwd DIR | --project ID] [--json]

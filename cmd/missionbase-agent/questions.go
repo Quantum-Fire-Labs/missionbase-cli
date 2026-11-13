@@ -257,7 +257,7 @@ func taskAsk(args []string) error {
 	for _, q := range result.Questions {
 		printQuestion(q, "  ", false)
 	}
-	fmt.Printf("Status: %s\n", result.Task.label())
+	fmt.Printf("Status: %s (unchanged; the task needs you until the questions are answered)\n", result.Task.label())
 	if link := taskPageURL(result.Task.ID); link != "" {
 		fmt.Println(link)
 	}

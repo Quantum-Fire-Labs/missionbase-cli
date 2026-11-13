@@ -322,8 +322,8 @@ func TestTaskStopReportsNothingRunning(t *testing.T) {
 
 func TestTaskAttentionPostsReasonAndClears(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"POST /api/v1/tasks/42/attention":   fixed(201, `{"task":{"id":42,"title":"Ship it","status":"needs_attention","status_label":"Needs Attention","attention":{"reason":"Short or long copy?"}}}`),
-		"DELETE /api/v1/tasks/42/attention": fixed(200, `{"task":{"id":42,"title":"Ship it","status":"in_progress","status_label":"In Progress","attention":null}}`),
+		"POST /api/v1/tasks/42/attention":   fixed(201, `{"task":{"id":42,"title":"Ship it","status":"in_progress","status_label":"In Progress","needs_you":true,"attention":{"reason":"Short or long copy?"}}}`),
+		"DELETE /api/v1/tasks/42/attention": fixed(200, `{"task":{"id":42,"title":"Ship it","status":"in_progress","status_label":"In Progress","needs_you":false,"attention":null}}`),
 	})
 	setAgentEnv(t, server.URL)
 
@@ -334,7 +334,7 @@ func TestTaskAttentionPostsReasonAndClears(t *testing.T) {
 	if got := (*requests)[0]; got.method != "POST" || got.payload["reason"] != "Short or long copy?" || got.slug != "missionbase-dev" {
 		t.Fatalf("request = %#v", got)
 	}
-	if !strings.Contains(out, `#42 "Ship it" needs attention: Short or long copy?`) {
+	if !strings.Contains(out, `#42 "Ship it" needs you: Short or long copy? (In Progress)`) {
 		t.Fatalf("output = %q", out)
 	}
 
@@ -345,7 +345,7 @@ func TestTaskAttentionPostsReasonAndClears(t *testing.T) {
 	if got := (*requests)[1]; got.method != "DELETE" || got.payload != nil {
 		t.Fatalf("clear request = %#v", got)
 	}
-	if !strings.Contains(out, `#42 "Ship it" is In Progress`) {
+	if !strings.Contains(out, `#42 "Ship it": open questions dismissed (In Progress)`) {
 		t.Fatalf("clear output = %q", out)
 	}
 
@@ -406,7 +406,7 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 			if r.URL.Query().Get("page") == "1" {
 				return 200, `{"tasks":[` + boxTask(1, "todo", 1, "") + `],"meta":{"total":2,"page":1,"per_page":500,"has_more":true,"cursor":"1.1000.0.42"}}`
 			}
-			return 200, `{"tasks":[` + boxTask(2, "needs_attention", 1, `,"attention":{"reason":"Pick one"}`) + `],"meta":{"total":2,"page":2,"per_page":500,"has_more":false,"cursor":"1.2000.0.43"}}`
+			return 200, `{"tasks":[` + boxTask(2, "planning", 1, `,"needs_you":true,"attention":{"reason":"Pick one"}`) + `],"meta":{"total":2,"page":2,"per_page":500,"has_more":false,"cursor":"1.2000.0.43"}}`
 		},
 	})
 	setAgentEnv(t, server.URL)
@@ -439,7 +439,7 @@ func TestTasksLsResolvesNearestProjectFileAndPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Engage Spot (2 tasks, from ", "#1", "Task 1", "waiting on you: Pick one"} {
+	for _, want := range []string{"Engage Spot (2 tasks, from ", "#1", "Task 1", "needs you: Pick one"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("text output missing %q:\n%s", want, out)
 		}
@@ -500,7 +500,8 @@ func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 	for _, tc := range []struct{ status, key, value string }{
 		{"all", "status_category", "open,done,canceled"},
 		{"done", "status_category", "done"},
-		{"needs_attention", "status", "needs_attention"},
+		{"planning", "status", "planning"},
+		{"planning,todo", "status", "planning,todo"},
 		{"todo,in_progress", "status", "todo,in_progress"},
 	} {
 		before := len(*requests)
@@ -518,6 +519,7 @@ func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 		"use --all or --cwd/--project, not both": {"tasks", "ls", "--all", "--project", "9"},
 		"--project must be a project (box) id":   {"tasks", "ls", "--project", "abc"},
 		`unknown tasks ls option "--done"`:       {"tasks", "ls", "--done"},
+		"use --needs-you to list tasks waiting":  {"tasks", "ls", "--project", "9", "--status", "todo,needs_attention"},
 	} {
 		if _, err := runCapture(t, args...); err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("%v: err = %v, want %q", args, err, want)
@@ -528,7 +530,7 @@ func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 func TestTasksLsAllUsesAccessibleTasksInServerOrder(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
 		"GET /api/v1/tasks/accessible": fixed(200, `{"tasks":[
-			{"id":3,"title":"Waiting","status":"needs_attention","status_category":"open","box":{"id":1,"name":"A"},"box_position":1},
+			{"id":3,"title":"Waiting","status":"in_progress","needs_you":true,"status_category":"open","box":{"id":1,"name":"A"},"box_position":1},
 			{"id":1,"title":"Open","status":"todo","status_category":"open","box":{"id":2,"name":"B"},"box_position":2}
 		],"meta":{"total":2,"page":1,"per_page":500,"has_more":false,"cursor":"1.1794529810123456.0.42"}}`),
 	})
@@ -807,5 +809,58 @@ func TestAgentWorkCommandsShowTheAPIErrorMessage(t *testing.T) {
 	// A body that is not the standard envelope keeps the raw message.
 	if _, err := runCapture(t, "task", "stop", "8"); err == nil || !strings.Contains(err.Error(), "HTTP 502: <html>Bad gateway</html>") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// ---- task status ----
+
+func TestTaskStatusSendsPlanningKey(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PATCH /api/v1/tasks/42": fixed(200, `{"task":{"id":42,"status":"planning","status_label":"Planning"}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	if _, err := runCapture(t, "task", "status", "42", "planning"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*requests) != 1 || fmt.Sprint((*requests)[0].payload) != fmt.Sprint(map[string]any{"status": "planning"}) {
+		t.Fatalf("requests = %+v, want one PATCH with status planning", *requests)
+	}
+}
+
+func TestTasksLsNeedsYouFiltersAndMarksTasks(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/tasks/accessible": fixed(200, `{"tasks":[
+			{"id":5,"title":"Pick a plan","status":"planning","status_label":"Planning","needs_you":true,"attention":{"reason":"Which plan?"},"questions":{"open_count":1}},
+			{"id":6,"title":"Deploy","status":"in_progress","status_label":"In Progress","needs_you":true,"attention":null,"live_status":{"worker":"claude","state":"permission"}}
+		],"meta":{"total":2,"page":1,"per_page":500,"has_more":false}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "tasks", "ls", "--project", "9", "--needs-you")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := mustParseQuery(t, (*requests)[0].query)
+	if query.Get("needs_you") != "true" || query.Get("box_ids") != "9" || query.Get("status") != "" {
+		t.Fatalf("query = %s", (*requests)[0].query)
+	}
+	for _, want := range []string{"#5  Planning", "needs you: Which plan? 1 question", "#6  In Progress", "needs permission (claude) needs you"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestTaskStatusRefusesNeedsAttention(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){})
+	setAgentEnv(t, server.URL)
+
+	_, err := runCapture(t, "task", "status", "42", "needs_attention")
+	if err == nil || !strings.Contains(err.Error(), "needs_attention is no longer a status") || !strings.Contains(err.Error(), "task ask") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*requests) != 0 {
+		t.Fatalf("requests = %+v, want none", *requests)
 	}
 }
