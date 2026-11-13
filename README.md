@@ -456,6 +456,10 @@ missionbase-agent activity <project|team> <id> [--since TIME|--duration DURATION
 missionbase-agent projects activity <project-id> [same filters]
 missionbase-agent projects create --name "Project Delivery" --team <team-id> [--description-file /tmp/description.md] [--kind project] [--status in_progress] [--visibility team]
 missionbase-agent projects tasks <project-id> [--status STATUS[,STATUS] | --status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]
+missionbase-agent projects notes show [project-id] [--json]
+missionbase-agent projects notes edit [project-id] --body-file /tmp/notes.md [--base-version VERSION_ID] [--json]
+missionbase-agent projects notes append [project-id] --body-file /tmp/entry.md [--date YYYY-MM-DD] [--json]
+missionbase-agent projects notes history [project-id] [--limit N] [--before VERSION_ID] [--json]
 missionbase-agent projects discussions <project-id> [--page N] [--per-page N]
 missionbase-agent projects discussions create <project-id> --title TITLE --body-file /tmp/body.md
 missionbase-agent projects files <project-id> [--query QUERY] [--filter all|docs|files] [--sort newest|name|type] [--page N] [--per-page N] [--folder-id FOLDER_ID|--folder FOLDER_ID|--root] [--recursive]
@@ -486,6 +490,8 @@ Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar p
 `missionbase users lookup <query>` calls user lookup directly. `missionbase users lookup @mention --team <team-id>` resolves a team member mention. Task assignment and participant commands accept numeric user ids directly; when resolving `@mention`, pass `--team` or let the CLI derive the team from the task when the task response includes box/team context. If team context cannot be inferred, the CLI asks for `--team` or a numeric user id.
 
 `missionbase-agent activity project <project-id>` and `missionbase-agent projects activity <project-id>` query agent-visible project activity from `/api/v1/projects/:project_id/activity_events`; `missionbase-agent activity team <team-id>` queries `/api/v1/teams/:team_id/activity_events`. Activity output is concise text by default, including timestamp, scope, actor, action, subject, summary, source, route, useful metadata, and `Next cursor` when more results may be available. Add `--json` to print the raw API response for tooling. Filters include `--since`, `--until`, `--duration`/`--last`, `--actor TYPE:ID`, `--actor-type`, `--actor-id`, `--subject-type`, `--subject-id`, `--action`, `--cursor`, and `--limit`; the API enforces normal box/team permissions and only returns accessible activity.
+
+`missionbase-agent projects notes ...` reads and writes a project's notes: one Markdown page per project, with version history (`/api/v1/projects/:id/notes`). Without a project id it uses `--project`, then the nearest `.missionbase/project.json` (from `--cwd` or the current folder), then the machine's default project (exit code 5 when none resolves). `show` prints the Markdown, preceded by a `<!-- version N: who what -->` line. `edit` replaces the whole page; pass `--base-version` with the version you read to keep entries appended since then, and a different change since then is refused (HTTP 409, exit code 3). `append` adds a dated entry under `## Log` (newest first, under the day's `### Nov 13, 2026` heading, today on this machine unless `--date`) as its own version attributed to the agent, without rewriting the rest of the page. `history` lists versions newest first: id, time, who and what, and +/- line counts.
 
 `missionbase-agent projects create ...` creates a team-owned project and prints the created project JSON. `--name` and `--team` are required; optional kind, status, and visibility values are validated by Missionbase. Use `--description-file` for a Markdown description.
 
