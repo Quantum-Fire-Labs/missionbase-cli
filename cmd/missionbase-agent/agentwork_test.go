@@ -501,6 +501,8 @@ func TestTasksLsStatusFiltersAndFlagValidation(t *testing.T) {
 		{"all", "status_category", "open,done,canceled"},
 		{"done", "status_category", "done"},
 		{"needs_attention", "status", "needs_attention"},
+		{"planning", "status", "planning"},
+		{"planning,todo", "status", "planning,todo"},
 		{"todo,in_progress", "status", "todo,in_progress"},
 	} {
 		before := len(*requests)
@@ -807,5 +809,21 @@ func TestAgentWorkCommandsShowTheAPIErrorMessage(t *testing.T) {
 	// A body that is not the standard envelope keeps the raw message.
 	if _, err := runCapture(t, "task", "stop", "8"); err == nil || !strings.Contains(err.Error(), "HTTP 502: <html>Bad gateway</html>") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// ---- task status ----
+
+func TestTaskStatusSendsPlanningKey(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PATCH /api/v1/tasks/42": fixed(200, `{"task":{"id":42,"status":"planning","status_label":"Planning"}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	if _, err := runCapture(t, "task", "status", "42", "planning"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*requests) != 1 || fmt.Sprint((*requests)[0].payload) != fmt.Sprint(map[string]any{"status": "planning"}) {
+		t.Fatalf("requests = %+v, want one PATCH with status planning", *requests)
 	}
 }

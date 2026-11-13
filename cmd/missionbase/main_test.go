@@ -816,3 +816,25 @@ func TestRemovedTaskStatusIDFlagsFailBeforeSending(t *testing.T) {
 		t.Fatalf("help still mentions task status ids:\n%s", stdout)
 	}
 }
+
+func TestTaskCreateAndStatusSendPlanningKey(t *testing.T) {
+	var payloads []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		payloads = append(payloads, r.Method+" "+r.URL.Path+" "+string(body))
+		_, _ = w.Write([]byte(`{"task":{"id":123,"status":"planning"}}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+
+	if err := run([]string{"task", "create", "--title", "Plan it", "--box", "2", "--status", "planning"}); err != nil {
+		t.Fatalf("run task create: %v", err)
+	}
+	if err := run([]string{"task", "status", "123", "planning"}); err != nil {
+		t.Fatalf("run task status: %v", err)
+	}
+	if len(payloads) != 2 || !strings.HasPrefix(payloads[0], "POST /api/v1/tasks ") || !strings.Contains(payloads[0], `"status":"planning"`) ||
+		payloads[1] != `PATCH /api/v1/tasks/123 {"status":"planning"}` {
+		t.Fatalf("requests = %q", payloads)
+	}
+}

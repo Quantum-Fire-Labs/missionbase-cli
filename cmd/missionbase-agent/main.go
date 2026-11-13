@@ -3898,7 +3898,7 @@ Commands:
   task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
-  task status <task-id> <status>      Set status by key: backlog, todo, in_progress, needs_attention, complete, not_doing
+  task status <task-id> <status>      Set status by key: backlog, planning, todo, in_progress, needs_attention, complete, not_doing
   task move <task-id> --box BOX_ID    Move a task to another accessible box
   task complete <task-id>             Mark a task complete
   task messages <task-id> [--limit N] Show task discussion messages

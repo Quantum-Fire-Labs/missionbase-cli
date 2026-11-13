@@ -1,5 +1,9 @@
 // Package statuses holds Missionbase's fixed task status keys. Every project
-// has the same six statuses; there are no per-project status ids.
+// has the same seven statuses; there are no per-project status ids.
+//
+// planning means the task is being planned with its owner, not built: the
+// agent asks questions and writes the plan into the task, then moves it to
+// todo once the plan is agreed. task next never hands out a planning task.
 package statuses
 
 import (
@@ -8,7 +12,7 @@ import (
 )
 
 // Keys are the task status keys, in display order.
-var Keys = []string{"backlog", "todo", "in_progress", "needs_attention", "complete", "not_doing"}
+var Keys = []string{"backlog", "planning", "todo", "in_progress", "needs_attention", "complete", "not_doing"}
 
 // RemovedIDFlag explains that a task status id flag (--task-status-id or
 // --task-status-ids) no longer exists and what to use instead.
