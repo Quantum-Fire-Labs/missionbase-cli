@@ -1551,6 +1551,11 @@ func taskCreate(args []string) error {
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
+			if args[i] == "--status" {
+				if err := statuses.RefuseSet(args[i+1]); err != nil {
+					return err
+				}
+			}
 			key := map[string]string{"--title": "title", "--body": "body", "--box": "box_id", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id"}[args[i]]
 			payload[key] = args[i+1]
 			i++
@@ -1599,6 +1604,11 @@ func taskUpdate(args []string) error {
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
+			if args[i] == "--status" {
+				if err := statuses.RefuseSet(args[i+1]); err != nil {
+					return err
+				}
+			}
 			key := map[string]string{"--title": "title", "--box": "box_id", "--status": "status"}[args[i]]
 			payload[key] = args[i+1]
 			i++
@@ -1618,6 +1628,9 @@ func taskUpdate(args []string) error {
 func taskStatus(args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("usage: missionbase task status <task-id> <status>")
+	}
+	if err := statuses.RefuseSet(args[1]); err != nil {
+		return err
 	}
 	if args[1] == "complete" {
 		return taskComplete([]string{args[0]})

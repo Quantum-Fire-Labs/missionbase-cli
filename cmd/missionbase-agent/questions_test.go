@@ -12,7 +12,7 @@ import (
 const (
 	testAskedBy        = `{"type":"Agent","id":5,"name":"Publisher","slug":"publisher","handle":"publisher"}`
 	testOwner          = `{"type":"User","id":9,"name":"John Doe","handle":"JohnDoe"}`
-	testAskTaskJSON    = `{"id":42,"title":"Ship it","status":"needs_attention","status_label":"Needs Attention","attention":{"reason":null,"comment_id":null,"since":"2026-11-13T05:12:40Z"},"questions":{"open_count":2,"latest_batch_at":"2026-11-13T05:12:40Z"}}`
+	testAskTaskJSON    = `{"id":42,"title":"Ship it","status":"planning","status_label":"Planning","needs_you":true,"attention":{"reason":null,"comment_id":null,"since":"2026-11-13T05:12:40Z"},"questions":{"open_count":2,"latest_batch_at":"2026-11-13T05:12:40Z"}}`
 	testAskResponse    = `{"batch":"b1","questions":[` + testQuestionQ1Open + `,` + testQuestionQ2Open + `],"task":` + testAskTaskJSON + `}`
 	testQuestionQ0     = `{"id":1,"task_id":42,"batch":"b0","position":1,"body":"Old question?","context":null,"options":[],"status":"answered","asked_by":` + testAskedBy + `,"asked_at":"2026-11-12T09:00:00Z","answer_body":"Old answer","answered_by":` + testOwner + `,"answered_at":"2026-11-12T10:00:00Z","dismissed_by":null,"dismissed_at":null}`
 	testQuestionQ1Open = `{"id":2,"task_id":42,"batch":"b1","position":1,"body":"Should a 409 count as delivered?","context":"Optimus returns 409\nfor duplicates.","options":["Yes","No"],"status":"open","asked_by":` + testAskedBy + `,"asked_at":"2026-11-13T05:12:40Z","answer_body":null,"answered_by":null,"answered_at":null,"dismissed_by":null,"dismissed_at":null}`
@@ -76,7 +76,7 @@ func TestTaskAskOneQuestionSendsBodyAndPrintsBatch(t *testing.T) {
 		"     Context: Optimus returns 409\n       for duplicates.\n",
 		"     Options: Yes · No\n",
 		"  2. Cap retries at 1h or 24h?\n",
-		"Status: Needs Attention\n",
+		"Status: Planning (unchanged; the task needs you until the questions are answered)\n",
 		server.URL+"/tasks/42\n",
 		"missionbase-agent task questions 42 --wait",
 	)
@@ -403,12 +403,12 @@ func TestTaskQuestionsWaitStopsOnClientErrors(t *testing.T) {
 // ---- open questions on task listings ----
 
 func TestTaskListingsShowOpenQuestionCount(t *testing.T) {
-	withQuestions := `,"attention":{"reason":null},"questions":{"open_count":2,"latest_batch_at":"2026-11-13T05:12:40Z"}`
+	withQuestions := `,"needs_you":true,"attention":{"reason":null},"questions":{"open_count":2,"latest_batch_at":"2026-11-13T05:12:40Z"}`
 	oneQuestion := `,"questions":{"open_count":1,"latest_batch_at":null}`
 	noneOpen := `,"questions":{"open_count":0,"latest_batch_at":"2026-11-13T05:12:40Z"}`
 	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/tasks/accessible":   fixed(200, `{"tasks":[`+boxTask(1, "needs_attention", 1, withQuestions)+`,`+boxTask(2, "in_progress", 2, noneOpen)+`],"meta":{"has_more":false}}`),
-		"GET /api/v1/boxes/9/tasks/next": fixed(200, `{"has_work":true,"task":`+boxTask(5, "needs_attention", 3, oneQuestion)+`}`),
+		"GET /api/v1/tasks/accessible":   fixed(200, `{"tasks":[`+boxTask(1, "in_progress", 1, withQuestions)+`,`+boxTask(2, "in_progress", 2, noneOpen)+`],"meta":{"has_more":false}}`),
+		"GET /api/v1/boxes/9/tasks/next": fixed(200, `{"has_work":true,"task":`+boxTask(5, "todo", 3, oneQuestion)+`}`),
 	})
 	setAgentEnv(t, server.URL)
 
@@ -417,12 +417,12 @@ func TestTaskListingsShowOpenQuestionCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 3 || !strings.HasSuffix(lines[1], "Task 1  2 questions") || strings.Contains(lines[2], "question") {
+	if len(lines) != 3 || !strings.HasSuffix(lines[1], "Task 1  needs you 2 questions") || strings.Contains(lines[2], "question") {
 		t.Fatalf("tasks ls output:\n%s", out)
 	}
 
 	out, err = runCapture(t, "task", "next", "--project", "9")
-	if err != nil || !strings.Contains(out, `#5 "Task 5" (needs_attention, 1 question)`) {
+	if err != nil || !strings.Contains(out, `#5 "Task 5" (todo, 1 question)`) {
 		t.Fatalf("task next output = %q, err = %v", out, err)
 	}
 }

@@ -838,3 +838,21 @@ func TestTaskCreateAndStatusSendPlanningKey(t *testing.T) {
 		t.Fatalf("requests = %q", payloads)
 	}
 }
+
+func TestTaskCommandsRefuseNeedsAttentionBeforeSending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+
+	for _, args := range [][]string{
+		{"task", "status", "123", "needs_attention"},
+		{"task", "create", "--title", "Plan it", "--status", "needs_attention"},
+		{"task", "update", "123", "--status", "needs_attention"},
+	} {
+		if err := run(args); err == nil || !strings.Contains(err.Error(), "needs_attention is no longer a status") {
+			t.Fatalf("%v: err = %v", args, err)
+		}
+	}
+}
