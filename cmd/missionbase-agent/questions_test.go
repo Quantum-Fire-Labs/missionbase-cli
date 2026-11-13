@@ -399,3 +399,30 @@ func TestTaskQuestionsWaitStopsOnClientErrors(t *testing.T) {
 		t.Fatalf("err = %v (exit %d), polls = %d", err, exitCodeFor(err), len(*requests))
 	}
 }
+
+// ---- open questions on task listings ----
+
+func TestTaskListingsShowOpenQuestionCount(t *testing.T) {
+	withQuestions := `,"attention":{"reason":null},"questions":{"open_count":2,"latest_batch_at":"2026-11-13T05:12:40Z"}`
+	oneQuestion := `,"questions":{"open_count":1,"latest_batch_at":null}`
+	noneOpen := `,"questions":{"open_count":0,"latest_batch_at":"2026-11-13T05:12:40Z"}`
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/tasks/accessible":   fixed(200, `{"tasks":[`+boxTask(1, "needs_attention", 1, withQuestions)+`,`+boxTask(2, "in_progress", 2, noneOpen)+`],"meta":{"has_more":false}}`),
+		"GET /api/v1/boxes/9/tasks/next": fixed(200, `{"has_work":true,"task":`+boxTask(5, "needs_attention", 3, oneQuestion)+`}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "tasks", "ls", "--project", "9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 || !strings.HasSuffix(lines[1], "Task 1  2 questions") || strings.Contains(lines[2], "question") {
+		t.Fatalf("tasks ls output:\n%s", out)
+	}
+
+	out, err = runCapture(t, "task", "next", "--project", "9")
+	if err != nil || !strings.Contains(out, `#5 "Task 5" (needs_attention, 1 question)`) {
+		t.Fatalf("task next output = %q, err = %v", out, err)
+	}
+}

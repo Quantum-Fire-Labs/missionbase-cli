@@ -345,6 +345,17 @@ type workTask struct {
 	Attention *struct {
 		Reason *string `json:"reason"`
 	} `json:"attention"`
+	Questions *struct {
+		OpenCount int `json:"open_count"`
+	} `json:"questions"`
+}
+
+// openQuestions is "N questions" when the task has open questions, else "".
+func (t workTask) openQuestions() string {
+	if t.Questions == nil || t.Questions.OpenCount <= 0 {
+		return ""
+	}
+	return plural(t.Questions.OpenCount, "question")
 }
 
 func (t workTask) label() string {
@@ -428,6 +439,9 @@ func printTaskTable(tasks []rawTask, showBox bool) {
 		}
 		if t.Attention != nil && t.Attention.Reason != nil {
 			extra = append(extra, "waiting on you: "+oneLine(*t.Attention.Reason, 80))
+		}
+		if questions := t.openQuestions(); questions != "" {
+			extra = append(extra, questions)
 		}
 		columns = append(columns, strings.Join(extra, " "))
 		fmt.Fprintln(w, strings.TrimRight(strings.Join(columns, "\t"), "\t"))
@@ -1134,7 +1148,11 @@ func taskNext(args []string) error {
 		}
 		return nil
 	}
-	fmt.Printf("#%d %q (%s)\n", next.task.ID, next.task.Title, next.task.label())
+	state := next.task.label()
+	if questions := next.task.openQuestions(); questions != "" {
+		state += ", " + questions
+	}
+	fmt.Printf("#%d %q (%s)\n", next.task.ID, next.task.Title, state)
 	fmt.Printf("Start it with: missionbase-agent task start %d\n", next.task.ID)
 	return nil
 }
