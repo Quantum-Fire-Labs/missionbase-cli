@@ -380,3 +380,125 @@ func TestProjectUnlinkKeepsOtherKeys(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// ---- projects update ----
+
+const testUpdatedProjectJSON = `{"box":{"id":5,"name":"Missionbase","kind":"ongoing","status":"in_progress"},"project":{"id":5,"name":"Missionbase","kind":"ongoing","status":"in_progress"}}`
+
+func TestProjectsUpdateSendsOnlyTheFlagsGiven(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PATCH /api/v1/projects/5": fixed(200, testUpdatedProjectJSON),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "projects", "update", "5", "--kind", "ongoing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out) != testUpdatedProjectJSON {
+		t.Fatalf("out = %q, want the server's JSON", out)
+	}
+	req := (*requests)[0]
+	if req.method != "PATCH" || req.path != "/api/v1/projects/5" || req.slug != "missionbase-dev" {
+		t.Fatalf("request = %#v", req)
+	}
+	if len(req.payload) != 1 || req.payload["kind"] != "ongoing" {
+		t.Fatalf("payload = %#v, want only kind", req.payload)
+	}
+}
+
+func TestProjectsUpdateSendsNameDescriptionAndStatus(t *testing.T) {
+	description := writeTextFile(t, "description.md", "Ship the **API**\n")
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PATCH /api/v1/projects/5": fixed(200, testUpdatedProjectJSON),
+	})
+	setAgentEnv(t, server.URL)
+
+	if _, err := runCapture(t, "projects", "update", "5", "--name", "Missionbase", "--description-file", description, "--status", "on_hold", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"name": "Missionbase", "description": "Ship the **API**\n", "status": "on_hold"}
+	got := (*requests)[0].payload
+	if len(got) != len(want) {
+		t.Fatalf("payload = %#v, want %#v", got, want)
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Fatalf("payload[%s] = %#v, want %#v", key, got[key], value)
+		}
+	}
+}
+
+func TestProjectsUpdateAliasesCallTheSameRoute(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PATCH /api/v1/projects/5": fixed(200, testUpdatedProjectJSON),
+	})
+	setAgentEnv(t, server.URL)
+
+	for _, args := range [][]string{
+		{"projects", "edit", "5", "--name", "One"},
+		{"boxes", "update", "5", "--name", "Two"},
+	} {
+		if _, err := runCapture(t, args...); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+	}
+	if len(*requests) != 2 || (*requests)[1].path != "/api/v1/projects/5" || (*requests)[1].payload["name"] != "Two" {
+		t.Fatalf("requests = %#v", *requests)
+	}
+}
+
+func TestProjectsUpdateRefusesBadArgumentsBeforeSending(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1") // nothing listens: any request would fail differently
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{}, "a project id is required"},
+		{[]string{"--name", "X"}, "a project id is required"},
+		{[]string{"5"}, "nothing to update"},
+		{[]string{"5", "6", "--name", "X"}, "takes one project id"},
+		{[]string{"5", "--kind", "forever"}, `--kind must be project or ongoing, not "forever"`},
+		{[]string{"5", "--name"}, "--name requires a value"},
+		{[]string{"5", "--name", " "}, "--name requires a value"},
+		{[]string{"5", "--description", "text"}, "use --description-file PATH"},
+		{[]string{"5", "--visibility", "team"}, `unknown projects update option "--visibility"`},
+		{[]string{"5", "--description-file", "/nonexistent/description.md"}, "read body file"},
+	} {
+		_, err := runCapture(t, append([]string{"projects", "update"}, tc.args...)...)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || exitCodeFor(err) != 1 {
+			t.Fatalf("%v: err = %v (exit %d), want %q", tc.args, err, exitCodeFor(err), tc.want)
+		}
+	}
+}
+
+func TestProjectsUpdateHelp(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1")
+	out, err := runCapture(t, "projects", "update", "--help")
+	if err != nil || !strings.Contains(out, "projects update <project-id> [--name NAME] [--description-file PATH] [--kind project|ongoing]") {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+}
+
+func TestProjectsUpdateReportsServerErrors(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PATCH /api/v1/projects/5": fixed(422, `{"error":{"code":"validation_error","message":"Failed to update project","details":["Status must be one of: proposed, planning, in_progress, on_hold, complete, not_doing, archived"]}}`),
+		"PATCH /api/v1/projects/9": fixed(404, `{"error":{"code":"not_found","message":"Project not found","details":{}}}`),
+		"PATCH /api/v1/projects/7": fixed(403, `{"error":{"code":"forbidden","message":"Insufficient permissions for this action","details":{}}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	for id, want := range map[string]string{
+		"5": "Status must be one of",
+		"9": "Project not found",
+		"7": "Insufficient permissions",
+	} {
+		out, err := runCapture(t, "projects", "update", id, "--status", "someday")
+		if err == nil || !strings.Contains(err.Error(), want) || exitCodeFor(err) != 1 {
+			t.Fatalf("%s: err = %v (exit %d), want %q", id, err, exitCodeFor(err), want)
+		}
+		if out != "" {
+			t.Fatalf("%s: out = %q, want nothing on stdout", id, out)
+		}
+	}
+}

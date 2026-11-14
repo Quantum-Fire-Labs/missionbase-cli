@@ -1539,7 +1539,7 @@ func readWorkspaceStdinIfPiped() ([]byte, error) {
 
 func boxes(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		fmt.Println("usage: missionbase-agent projects <create|tasks|notes|discussions|activity|files|statuses|task-statuses>")
+		fmt.Println("usage: missionbase-agent projects <create|update|tasks|notes|discussions|activity|files|statuses|task-statuses>")
 		return nil
 	}
 
@@ -1547,6 +1547,9 @@ func boxes(args []string) error {
 	case "create":
 		rest, _ := withoutJSONFlag(args[1:]) // always prints the created project's JSON
 		return boxCreate(rest)
+	case "update", "edit":
+		rest, _ := withoutJSONFlag(args[1:]) // always prints the updated project's JSON
+		return boxUpdate(rest)
 	case "tasks":
 		return boxTasks(args[1:])
 	case "notes":
@@ -1616,6 +1619,61 @@ func boxCreate(args []string) error {
 	}
 
 	return apiPostJSON("/api/v1/projects", payload)
+}
+
+const projectsUpdateUsage = "usage: missionbase-agent projects update <project-id> [--name NAME] [--description-file PATH] [--kind project|ongoing] [--status STATUS] [--json]"
+
+// boxUpdate changes a project's name, description, kind or status. Only the
+// flags given are sent, so the rest of the project stays as it is.
+func boxUpdate(args []string) error {
+	projectID := ""
+	payload := map[string]string{}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name", "--kind", "--status":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+			payload[strings.TrimPrefix(args[i], "--")] = args[i+1]
+			i++
+		case "--description-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--description-file requires a value")
+			}
+			description, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["description"] = normalizeAgentAuthoredBody(description)
+			i++
+		case "--description":
+			return fmt.Errorf("--description is not supported; use --description-file PATH")
+		case "--help", "-h":
+			fmt.Println(projectsUpdateUsage)
+			return nil
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return fmt.Errorf("unknown projects update option %q", args[i])
+			}
+			if projectID != "" {
+				return fmt.Errorf("projects update takes one project id\n%s", projectsUpdateUsage)
+			}
+			projectID = args[i]
+		}
+	}
+
+	if projectID == "" {
+		return fmt.Errorf("a project id is required\n%s", projectsUpdateUsage)
+	}
+	if kind, ok := payload["kind"]; ok && kind != "project" && kind != "ongoing" {
+		return fmt.Errorf("--kind must be project or ongoing, not %q", kind)
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("nothing to update; pass --name, --description-file, --kind or --status\n%s", projectsUpdateUsage)
+	}
+
+	return apiPatchJSON("/api/v1/projects/"+url.PathEscape(projectID), payload)
 }
 
 type activityResponse struct {
@@ -4032,7 +4090,7 @@ Commands:
                                       Add a user participant to a task
   task participants add <task-id> --agent slug
                                       Add an agent participant to a task
-  task show through task participants, and projects create, always print the server's JSON (task
+  task show through task participants, projects create and projects update always print the server's JSON (task
   create: {"task": {...}}, read .task.id); they accept --json and print the same thing either way.
 
 Agent work (text output by default; --json for scripts and the Herdr panel):
@@ -4104,6 +4162,10 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   projects create --name NAME --team TEAM_ID
       [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]
                                       Create a team-owned project
+  projects update <project-id> [--name NAME] [--description-file PATH]
+      [--kind project|ongoing] [--status STATUS] [--json]
+                                      Rename a project, replace its description, or change its kind
+                                      or status (alias: projects edit); only the flags given change
   projects tasks <project-id>         Show open-category tasks in an accessible project by default
       [--status STATUS[,STATUS]] [--status-category open|done|canceled]
       [--scheduled actionable|future|all] [--page N] [--per-page N]
