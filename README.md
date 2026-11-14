@@ -273,8 +273,8 @@ Each question in the API carries `answer_attachments: [{"filename", "content_typ
 | 0 | Success |
 | 1 | Any other error: bad arguments, network failure, or an API error other than 409 |
 | 3 | Conflict: the API answered HTTP 409 (for example `task start` while another agent runs the task elsewhere). Applies to every command. |
-| 4 | `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
-| 5 | No project resolved (`tasks ls` and `project` without `--project`, a `.missionbase/project.json` or a default project) |
+| 4 | (`task start`, `task create --start`) `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
+| 5 | No project resolved (`tasks ls`, `task create` and `project` without `--project`, a `.missionbase/project.json` or a default project) |
 | 6 | `task questions --wait --timeout` ran out with questions still open |
 
 ### Local Pi sessions
@@ -427,7 +427,7 @@ missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
 missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaults to current week
 missionbase-agent task show <task-id> [--json] # task show/create/update/message/assign/unassign/status/move/complete/messages/participants always print JSON; --json is accepted
-missionbase-agent task create --title "Task title" --project <project-id> [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
 missionbase-agent task update <task-id> --title "New task title"
 missionbase-agent task update <task-id> --body-file /tmp/description.md # replaces the task description
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
@@ -521,6 +521,15 @@ missionbase-agent task message 123 --body-file /tmp/missionbase-comment.md
 When file content accidentally contains escaped newline sequences (`\n`, `\r`, or `\r\n`), the CLI continues to normalize them to real line breaks outside quoted/backticked code contexts. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
 
 **JSON output.** `task show`, `task create`, `task update`, `task message`, `task assign`, `task unassign`, `task status`, `task move`, `task complete`, `task messages`, `task participants` and `projects create` always print the server's JSON response, so a script can read `.task.id` from `task create` (`{"task": {...}}`, the same envelope as `task show`). They accept `--json` and print the same thing with or without it. The agent-work commands (`task start/stop/attention/ask/questions/next`, `tasks ls/changes`, `project`), `activity`, `members`, `pi` and `projects notes` print text unless `--json` is given. Other commands don't take `--json`; most of them print the server's JSON (`document show` prints the document body).
+
+`missionbase-agent task create` finds its project like `tasks ls` and `task next`: `--project ID` (`--box` is the old name), then the nearest `.missionbase/project.json` from `--cwd DIR` or the current folder, then the machine's default project. When none resolves it exits 5 without sending anything. `--cwd` lets an orchestrator create a task in another repo's project.
+
+`task create ... --start [--terminal [machine/]tN] [--force]` creates the task and then starts work on it, exactly like `task start` (assigns the acting agent, records the machine and terminal, moves the task to In Progress). Without `--terminal` it uses `$HC_TERMINAL_ID` on this machine. The terminal is resolved with `hc` before the task is created, so when `hc` is missing or can't resolve it the command exits 4 and nothing is created. On success it prints the `task start --json` response (`{"task": {...}, "stopped": [...]}`, so `.task.id` still works). If the task is created but starting fails, it prints the created task's JSON, then the error, and exits with the start's code (3 when the work is running elsewhere; `--force` takes it over). `--start` wins over `--status`: the status is ignored, with a note on stderr.
+
+```bash
+# Create a task in another repo's project and start it in terminal t7 on omarchy-intel
+missionbase-agent task create --cwd ~/Projects/other-repo --title "Fix the flaky spec" --body-file /tmp/body.md --start --terminal omarchy-intel/t7
+```
 
 `missionbase-agent task create --status KEY` sets the new task's status: `backlog`, `planning`, `todo`, `in_progress`, `complete` or `not_doing` (without it, To Do). The server checks the key and the CLI shows its error for an unknown one; `needs_attention` is refused before sending, pointing to `task ask`.
 

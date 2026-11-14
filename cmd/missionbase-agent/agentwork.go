@@ -652,24 +652,15 @@ func taskStart(args []string) error {
 	if taskID == "" {
 		return fmt.Errorf("%s", taskStartUsage)
 	}
-	path, err := taskPath(taskID, "/work")
-	if err != nil {
+	if _, err := taskPath(taskID, "/work"); err != nil {
 		return err
 	}
 	machine, terminal, err := resolveWorkTerminal(terminalSpec)
 	if err != nil {
 		return err
 	}
-
-	payload := map[string]any{"machine_id": machine.ID, "machine_name": machine.Name, "terminal": terminal}
-	if force {
-		payload["force"] = true
-	}
-	body, err := agentDo(http.MethodPost, path, payload)
+	body, err := startWork(taskID, machine, terminal, force, jsonOut)
 	if err != nil {
-		if httpErr, _ := apiErrorMessage(err); httpErr != nil && httpErr.StatusCode == http.StatusConflict {
-			return startConflict(taskID, httpErr, jsonOut)
-		}
 		return err
 	}
 	if jsonOut {
@@ -689,6 +680,28 @@ func taskStart(args []string) error {
 		fmt.Printf("Took over from %s\n", stopped.chip())
 	}
 	return nil
+}
+
+// startWork starts the acting agent's work on a task at a resolved terminal
+// (POST /api/v1/tasks/:id/work) and returns the response body. A 409 becomes
+// the conflict error (exit 3); with jsonOut its body is printed first.
+func startWork(taskID string, machine hcMachine, terminal string, force, jsonOut bool) ([]byte, error) {
+	path, err := taskPath(taskID, "/work")
+	if err != nil {
+		return nil, err
+	}
+	payload := map[string]any{"machine_id": machine.ID, "machine_name": machine.Name, "terminal": terminal}
+	if force {
+		payload["force"] = true
+	}
+	body, err := agentDo(http.MethodPost, path, payload)
+	if err != nil {
+		if httpErr, _ := apiErrorMessage(err); httpErr != nil && httpErr.StatusCode == http.StatusConflict {
+			return nil, startConflict(taskID, httpErr, jsonOut)
+		}
+		return nil, err
+	}
+	return body, nil
 }
 
 func startConflict(taskID string, httpErr *httpclient.HTTPError, jsonOut bool) error {

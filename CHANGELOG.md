@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `missionbase-agent task create ... --start [--terminal [machine/]tN] [--force]`, which creates the task and then starts work on it like `task start` (default terminal `$HC_TERMINAL_ID`). The terminal is resolved before the task is created (exit 4 and no task when `hc` can't); a start conflict after creating exits 3. It prints the `task start --json` response. `--start` wins over `--status`.
+- `task create` no longer needs `--project`: the project resolves from `--project`, then `.missionbase/project.json` from `--cwd DIR` or the current folder, then the machine default, like `tasks ls` (exit 5 when none does).
 - Added `missionbase-agent task create --status KEY` (`backlog`, `planning`, `todo`, `in_progress`, `complete`, `not_doing`) to create a task in a status other than To Do. The server validates the key; `needs_attention` is refused before sending.
 - `missionbase-agent task create` and the other older commands that always print the server's JSON (`task show`, `update`, `message`, `assign`, `unassign`, `status`, `move`, `complete`, `messages`, `participants`, and `projects create`) now accept `--json` instead of rejecting it, and print the same JSON with or without it. `task create` prints `{"task": {...}}`, so scripts can read `.task.id`.
 
