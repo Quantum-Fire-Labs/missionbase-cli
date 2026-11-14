@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -288,36 +289,75 @@ func parseProjectFile(path string, data []byte) (resolvedProject, error) {
 	return resolvedProject{ID: projectID, Name: name, Source: "project_file", Path: path}, nil
 }
 
-// writeProjectFile links dir to a project in dir/.missionbase/project.json.
-// It writes project_id and project_name, and box_id and box_name for CLIs
-// and Herdr panels from before the rename, keeping any other keys in the file.
-func writeProjectFile(dir string, id int64, name string, teamID int64, teamName string) (string, error) {
-	path := filepath.Join(dir, projectFileName)
-	file := map[string]any{}
-	if data, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(data, &file); err != nil {
-			return "", fmt.Errorf("%s is not valid JSON: %w", path, err)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("read %s: %w", path, err)
-	}
-	if teamID != 0 {
-		file["team_id"] = teamID
-		file["team_name"] = teamName
-	}
-	file["project_id"] = id
-	file["project_name"] = name
-	file["box_id"] = id
-	file["box_name"] = name
+// projectLinkKeys are the keys project link writes, in the order it writes
+// them. box_id and box_name repeat the project for CLIs and Herdr panels from
+// before the rename.
+var projectLinkKeys = []string{"team_id", "team_name", "project_id", "project_name", "box_id", "box_name"}
 
-	data, err := json.MarshalIndent(file, "", "  ")
-	if err != nil {
-		return "", err
+// linkDir is where a folder's project link lives: the root of the git
+// repository or worktree containing dir (the nearest folder with a .git
+// entry), or dir itself outside git.
+func linkDir(dir string) string {
+	for d := dir; ; {
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return dir
+		}
+		d = parent
 	}
+}
+
+// readProjectLinkFile reads path's keys. exists is false when there is no file.
+func readProjectLinkFile(path string) (keys map[string]json.RawMessage, exists bool, err error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]json.RawMessage{}, false, nil
+	} else if err != nil {
+		return nil, true, fmt.Errorf("read %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, &keys); err != nil || keys == nil {
+		return nil, true, fmt.Errorf("%s is not a JSON object", path)
+	}
+	return keys, true, nil
+}
+
+// writeProjectLinkFile writes the link keys in projectLinkKeys order, then any
+// other keys sorted by name, so the file reads the same on every machine.
+func writeProjectLinkFile(path string, keys map[string]json.RawMessage) error {
+	var others []string
+	for key := range keys {
+		if !contains(projectLinkKeys, key) {
+			others = append(others, key)
+		}
+	}
+	sort.Strings(others)
+	var buf bytes.Buffer
+	buf.WriteString("{")
+	n := 0
+	for _, key := range append(append([]string{}, projectLinkKeys...), others...) {
+		raw, ok := keys[key]
+		if !ok {
+			continue
+		}
+		var value bytes.Buffer
+		if err := json.Indent(&value, raw, "  ", "  "); err != nil {
+			return err
+		}
+		if n > 0 {
+			buf.WriteString(",")
+		}
+		name, _ := json.Marshal(key)
+		fmt.Fprintf(&buf, "\n  %s: %s", name, value.Bytes())
+		n++
+	}
+	buf.WriteString("\n}\n")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
+		return err
 	}
-	return path, os.WriteFile(path, append(data, '\n'), 0o644)
+	return os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
 func isPositiveInteger(value string) bool {
@@ -1280,7 +1320,8 @@ func fetchNext(path string) (*rawTask, error) {
 // ---- project ---------------------------------------------------------------------------
 
 const projectUsage = `usage: missionbase-agent project [show] [--cwd DIR | --project ID] [--json]
-       missionbase-agent project link ID [--cwd DIR]
+       missionbase-agent project link ID [--cwd DIR] [--force] [--json]
+       missionbase-agent project unlink [--cwd DIR] [--json]
        missionbase-agent project default [ID | --clear]
        missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project ID] [--json]`
 
@@ -1294,6 +1335,9 @@ func projectCommand(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "link" {
 		return projectLink(args[1:])
+	}
+	if len(args) > 0 && args[0] == "unlink" {
+		return projectUnlink(args[1:])
 	}
 	if len(args) > 0 && args[0] == "watch" {
 		return projectWatchCommand(args[1:])
@@ -1341,10 +1385,32 @@ func projectCommand(args []string) error {
 	return nil
 }
 
-// projectLink writes .missionbase/project.json in --cwd (or the current
-// folder) for a project, with its name and team from the server.
+// linkTarget returns the folder whose link project link and unlink change: the git root above --cwd (or the current folder),
+// or the folder itself outside git.
+func linkTarget(cwd string) (string, error) {
+	dir := cwd
+	if dir == "" {
+		var err error
+		if dir, err = os.Getwd(); err != nil {
+			return "", err
+		}
+	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return "", fmt.Errorf("--cwd %q is not a directory", cwd)
+	}
+	return linkDir(dir), nil
+}
+
+// projectLink writes .missionbase/project.json at the git root above --cwd
+// (or the current folder) for a project the agent can reach, with its name
+// and team from the server. It keeps other keys in the file and refuses to
+// replace a link to a different project without --force. It doesn't commit.
 func projectLink(args []string) error {
-	id, cwd := "", ""
+	id, cwd, force, jsonOut := "", "", false, false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--cwd":
@@ -1353,6 +1419,10 @@ func projectLink(args []string) error {
 			}
 			cwd = args[i+1]
 			i++
+		case "--force":
+			force = true
+		case "--json":
+			jsonOut = true
 		case "--help", "-h":
 			fmt.Println(projectUsage)
 			return nil
@@ -1366,32 +1436,123 @@ func projectLink(args []string) error {
 	if id == "" {
 		return fmt.Errorf("%s", projectUsage)
 	}
-	dir := cwd
-	if dir == "" {
-		var err error
-		if dir, err = os.Getwd(); err != nil {
-			return err
-		}
+	dir, err := linkTarget(cwd)
+	if err != nil {
+		return err
 	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return fmt.Errorf("--cwd %q is not a directory", dir)
+	path := filepath.Join(dir, projectFileName)
+	keys, exists, err := readProjectLinkFile(path)
+	if err != nil {
+		if !force {
+			return fmt.Errorf("%w; pass --force to replace it", err)
+		}
+		keys = map[string]json.RawMessage{}
+	} else if exists && !force {
+		data, _ := os.ReadFile(path)
+		if current, err := parseProjectFile(path, data); err == nil && current.ID != id {
+			name := ""
+			if current.Name != "" {
+				name = " " + current.Name
+			}
+			return fmt.Errorf("%s already links project %s%s; pass --force to link project %s instead", path, current.ID, name, id)
+		}
 	}
 
 	project, err := fetchProject(id)
 	if err != nil {
-		return err
-	}
-	var teamID int64
-	teamName := ""
-	if project.Owner.Type == "Team" {
-		teamID, teamName = project.Owner.ID, project.Owner.Name
+		return fmt.Errorf("can't link project %s: %w", id, err)
 	}
 
-	path, err := writeProjectFile(dir, project.ID, project.Name, teamID, teamName)
+	delete(keys, "team_id")
+	delete(keys, "team_name")
+	if project.Owner.Type == "Team" && project.Owner.ID != 0 {
+		keys["team_id"] = mustJSON(project.Owner.ID)
+		keys["team_name"] = mustJSON(project.Owner.Name)
+	}
+	for _, key := range []string{"project_id", "box_id"} {
+		keys[key] = mustJSON(project.ID)
+	}
+	for _, key := range []string{"project_name", "box_name"} {
+		keys[key] = mustJSON(project.Name)
+	}
+	if err := writeProjectLinkFile(path, keys); err != nil {
+		return err
+	}
+
+	if jsonOut {
+		return printJSON(map[string]any{"project": resolvedProject{ID: strconv.FormatInt(project.ID, 10), Name: project.Name, Source: "project_file", Path: path}})
+	}
+	fmt.Printf("Linked %s to project %d %s\n", path, project.ID, project.Name)
+	return nil
+}
+
+func mustJSON(value any) json.RawMessage {
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+// projectUnlink removes the link written by project link at the git root
+// above --cwd (or the current folder). Other keys in the file are kept; the
+// file, and an empty .missionbase folder, are removed when nothing is left.
+func projectUnlink(args []string) error {
+	cwd, jsonOut := "", false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--cwd":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return fmt.Errorf("--cwd requires a directory")
+			}
+			cwd = args[i+1]
+			i++
+		case "--json":
+			jsonOut = true
+		case "--help", "-h":
+			fmt.Println(projectUsage)
+			return nil
+		default:
+			return fmt.Errorf("unknown project unlink option %q\n%s", args[i], projectUsage)
+		}
+	}
+	dir, err := linkTarget(cwd)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Linked %s to project %d %s\n", path, project.ID, project.Name)
+	path := filepath.Join(dir, projectFileName)
+	keys, exists, err := readProjectLinkFile(path)
+	if err != nil {
+		return err
+	}
+	removed := false
+	for _, key := range projectLinkKeys {
+		if _, ok := keys[key]; ok {
+			delete(keys, key)
+			removed = true
+		}
+	}
+	switch {
+	case !removed:
+	case len(keys) > 0:
+		if err := writeProjectLinkFile(path, keys); err != nil {
+			return err
+		}
+	default:
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		_ = os.Remove(filepath.Dir(path)) // only succeeds when .missionbase is empty
+	}
+
+	if jsonOut {
+		return printJSON(map[string]any{"removed": removed, "path": path})
+	}
+	if !exists || !removed {
+		fmt.Printf("No project link in %s\n", path)
+		return nil
+	}
+	fmt.Printf("Unlinked %s\n", path)
 	return nil
 }
 

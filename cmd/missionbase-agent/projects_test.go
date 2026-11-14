@@ -117,7 +117,7 @@ func TestProjectLinkWritesProjectAndBoxKeys(t *testing.T) {
 	root := t.TempDir()
 	writeTestProjectFile(t, root, `{"box_id":3,"box_name":"Old","notes":"kept"}`)
 
-	out, err := runCapture(t, "project", "link", "5", "--cwd", root)
+	out, err := runCapture(t, "project", "link", "5", "--cwd", root, "--force") // the file links project 3
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,8 +170,213 @@ func TestProjectLinkReadsAnOlderServersBoxKey(t *testing.T) {
 func TestProjectLinkRequiresAnID(t *testing.T) {
 	setAgentEnv(t, "http://127.0.0.1:1")
 	for _, args := range [][]string{{"project", "link"}, {"project", "link", "abc"}, {"project", "link", "1", "2"}} {
-		if _, err := runCapture(t, args...); err == nil || !strings.Contains(err.Error(), "project link ID") {
+		if _, err := runCapture(t, args...); err == nil || !strings.Contains(err.Error(), "project link ID [--cwd DIR] [--force] [--json]") {
 			t.Fatalf("%v: err = %v, want usage", args, err)
 		}
+	}
+}
+
+func readLinkFile(t *testing.T, root string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, ".missionbase", "project.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func TestProjectLinkWritesTheKeysInTheSetupOrderAtTheGitRoot(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/projects/5": fixed(200, testProjectFiveJSON),
+	})
+	setAgentEnv(t, server.URL)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, ".git"), []byte("gitdir: /elsewhere\n"), 0o644); err != nil { // a worktree's .git file
+		t.Fatal(err)
+	}
+	nested := filepath.Join(repo, "cmd", "tool")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCapture(t, "project", "link", "5", "--cwd", nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{
+  "team_id": 1,
+  "team_name": "Quantum Fire Labs",
+  "project_id": 5,
+  "project_name": "Missionbase",
+  "box_id": 5,
+  "box_name": "Missionbase"
+}
+`
+	if got := readLinkFile(t, repo); got != want {
+		t.Fatalf("file =\n%s\nwant\n%s", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(nested, ".missionbase")); !os.IsNotExist(err) {
+		t.Fatalf("link was written in the nested folder: %v", err)
+	}
+	if !strings.Contains(out, "Linked "+filepath.Join(repo, ".missionbase", "project.json")+" to project 5 Missionbase") {
+		t.Fatalf("out = %q", out)
+	}
+}
+
+func TestProjectLinkOutsideGitWritesInTheFolderAndPrintsJSON(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/projects/5": fixed(200, testProjectFiveJSON),
+	})
+	setAgentEnv(t, server.URL)
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	out, err := runCapture(t, "project", "link", "5", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Project struct {
+			projectOutput
+			Source string `json:"source"`
+			Path   string `json:"path"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("out = %q: %v", out, err)
+	}
+	p := result.Project
+	wantPath := filepath.Join(dir, ".missionbase", "project.json")
+	if p.ProjectID != "5" || p.BoxID != "5" || p.ProjectName != "Missionbase" || p.Source != "project_file" || p.Path != wantPath {
+		t.Fatalf("project = %+v, want project 5 at %s", p, wantPath)
+	}
+	if !strings.Contains(readLinkFile(t, dir), `"project_id": 5`) {
+		t.Fatal("link file not written")
+	}
+}
+
+func TestProjectLinkRefusesToReplaceADifferentProjectWithoutForce(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/projects/5": fixed(200, testProjectFiveJSON),
+	})
+	setAgentEnv(t, server.URL)
+	root := t.TempDir()
+	original := `{"team_id":2,"box_id":113,"box_name":"Dev database"}`
+	writeTestProjectFile(t, root, original)
+
+	_, err := runCapture(t, "project", "link", "5", "--cwd", root)
+	if err == nil || !strings.Contains(err.Error(), "already links project 113 Dev database; pass --force to link project 5 instead") || exitCodeFor(err) != 1 {
+		t.Fatalf("err = %v (exit %d)", err, exitCodeFor(err))
+	}
+	if len(*requests) != 0 || readLinkFile(t, root) != original {
+		t.Fatalf("requests = %#v, file = %s; want nothing sent or changed", *requests, readLinkFile(t, root))
+	}
+
+	// Relinking the same project refreshes it without --force.
+	writeTestProjectFile(t, root, `{"project_id":5,"project_name":"Old name","box_id":5}`)
+	if _, err := runCapture(t, "project", "link", "5", "--cwd", root); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readLinkFile(t, root), `"project_name": "Missionbase"`) {
+		t.Fatalf("file = %s", readLinkFile(t, root))
+	}
+}
+
+func TestProjectLinkReplacesAnUnreadableFileOnlyWithForce(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/projects/5": fixed(200, testProjectFiveJSON),
+	})
+	setAgentEnv(t, server.URL)
+	root := t.TempDir()
+	writeTestProjectFile(t, root, `{not json`)
+
+	if _, err := runCapture(t, "project", "link", "5", "--cwd", root); err == nil || !strings.Contains(err.Error(), "is not a JSON object; pass --force to replace it") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := runCapture(t, "project", "link", "5", "--cwd", root, "--force"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(readLinkFile(t, root), "{\n  \"team_id\": 1,") {
+		t.Fatalf("file = %s", readLinkFile(t, root))
+	}
+}
+
+func TestProjectLinkForPersonalProjectDropsStaleTeamKeys(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/projects/8": fixed(200, `{"project":{"id":8,"name":"Personal","owner":{"type":"User","id":3,"name":"Someone"}}}`),
+	})
+	setAgentEnv(t, server.URL)
+	root := t.TempDir()
+	writeTestProjectFile(t, root, `{"team_id":1,"team_name":"Quantum Fire Labs","project_id":5,"box_id":5}`)
+
+	if _, err := runCapture(t, "project", "link", "8", "--cwd", root, "--force"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readLinkFile(t, root); strings.Contains(got, "team_") || !strings.Contains(got, `"box_id": 8`) {
+		t.Fatalf("file = %s", got)
+	}
+}
+
+func TestProjectLinkReportsAnUnreachableProjectWithoutWriting(t *testing.T) {
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/projects/9": fixed(404, `{"error":{"code":"not_found","message":"Project not found"}}`),
+	})
+	setAgentEnv(t, server.URL)
+	root := t.TempDir()
+
+	_, err := runCapture(t, "project", "link", "9", "--cwd", root)
+	if err == nil || !strings.Contains(err.Error(), "can't link project 9: Project not found (HTTP 404 not_found)") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".missionbase")); !os.IsNotExist(err) {
+		t.Fatalf(".missionbase was created: %v", err)
+	}
+}
+
+func TestProjectUnlinkRemovesTheLink(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1") // unlink sends nothing
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestProjectFile(t, repo, `{"team_id":1,"team_name":"Quantum Fire Labs","project_id":5,"project_name":"Missionbase","box_id":5,"box_name":"Missionbase"}`)
+	nested := filepath.Join(repo, "app")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCapture(t, "project", "unlink", "--cwd", nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Unlinked "+filepath.Join(repo, ".missionbase", "project.json")) {
+		t.Fatalf("out = %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".missionbase")); !os.IsNotExist(err) {
+		t.Fatalf(".missionbase still exists: %v", err)
+	}
+
+	out, err = runCapture(t, "project", "unlink", "--cwd", nested, "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"path":"` + filepath.Join(repo, ".missionbase", "project.json") + `","removed":false}`; strings.TrimSpace(out) != want {
+		t.Fatalf("out = %q, want %q", out, want)
+	}
+}
+
+func TestProjectUnlinkKeepsOtherKeys(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1")
+	root := t.TempDir()
+	writeTestProjectFile(t, root, `{"project_id":5,"box_id":5,"notes":"kept"}`)
+
+	if _, err := runCapture(t, "project", "unlink", "--cwd", root); err != nil {
+		t.Fatal(err)
+	}
+	if got := readLinkFile(t, root); got != "{\n  \"notes\": \"kept\"\n}\n" {
+		t.Fatalf("file = %q", got)
+	}
+	if _, err := runCapture(t, "project", "unlink", "--cwd", root, "--bogus"); err == nil || !strings.Contains(err.Error(), `unknown project unlink option "--bogus"`) {
+		t.Fatalf("err = %v", err)
 	}
 }

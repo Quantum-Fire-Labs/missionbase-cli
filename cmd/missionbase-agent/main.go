@@ -4066,6 +4066,12 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Tasks changed since a cursor, plus deletions and the next cursor
   project [show] [--cwd DIR | --project ID] [--json]
                                       Show which project "here" resolves to
+  project link <project-id> [--cwd DIR] [--force] [--json]
+                                      Link this repo to a project: write .missionbase/project.json at the git
+                                      root (or the folder outside git) with team_id, team_name, project_id,
+                                      project_name, box_id and box_name from the server. Refuses to replace a
+                                      link to a different project unless --force. Doesn't commit
+  project unlink [--cwd DIR] [--json] Remove that link (other keys in the file are kept)
   project default [ID | --clear]      Show, set or clear this machine's default project
   project watch --terminal tN [--cwd DIR | --project ID] [--json]
                                       Sign this machine's terminal tN up for the project's activity: the Herdr

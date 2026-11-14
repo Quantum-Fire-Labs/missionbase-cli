@@ -146,7 +146,8 @@ missionbase-agent task next [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--needs-you] [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
 missionbase-agent project [show] [--cwd DIR | --project ID] [--json]
-missionbase-agent project link <project-id> [--cwd DIR]
+missionbase-agent project link <project-id> [--cwd DIR] [--force] [--json]
+missionbase-agent project unlink [--cwd DIR] [--json]
 missionbase-agent project default [ID | --clear]
 missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project ID] [--json]
 ```
@@ -173,7 +174,7 @@ missionbase-agent tasks changes --since "$cursor" --json      # {"tasks", "delet
 2. the nearest `.missionbase/project.json` (its `project_id`, or `box_id` in a file written before the rename) from `--cwd DIR` or the current folder, searching parent folders
 3. this machine's default project, set with `missionbase-agent project default ID` and stored as `default_project` in `~/.config/missionbase-agent/credentials`
 
-`project link <project-id>` writes `.missionbase/project.json` in `--cwd DIR` (or the current folder) with the project's name and team from the server, keeping any other keys in the file: `{"team_id", "team_name", "project_id", "project_name", "box_id", "box_name"}`. The `box_*` pair is for CLIs and Herdr panels from before the rename. The `project` object in `--json` output also carries both pairs: `{"project_id", "project_name", "box_id", "box_name", "source", "path"}`.
+`project link <project-id>` links a repo to a project: it writes `.missionbase/project.json` at the root of the git repository (or worktree) containing `--cwd DIR` or the current folder, or in that folder when it isn't in git. It first reads the project (`GET /api/v1/projects/:id`), so a project that doesn't exist or that the agent can't reach is reported and nothing is written. The file gets the project's name and team from the server, in this order, keeping any other keys: `{"team_id", "team_name", "project_id", "project_name", "box_id", "box_name"}` (no team keys for a personal project). Linking the same project again refreshes the names; a file that links a different project (or isn't valid JSON) is left alone unless you pass `--force`. `--json` prints `{"project": {...}}` like `project --json`. It doesn't commit the file. `project unlink [--cwd DIR]` removes those keys from the same file, deleting it (and an empty `.missionbase/`) when nothing else is left; `--json` prints `{"removed", "path"}`. The `box_*` pair is for CLIs and Herdr panels from before the rename. The `project` object in `--json` output also carries both pairs: `{"project_id", "project_name", "box_id", "box_name", "source", "path"}`.
 
 **Watching a project** (for orchestrators): `project watch --terminal t9d` signs up terminal `t9d` on this machine for the current project's activity. The [missionbase-herdr](https://github.com/Quantum-Fire-Labs/missionbase-herdr) bridge then types one short digest into that terminal when its agent is idle: the owner's (users', not agents') new tasks, replies, question answers and status changes in the project, and replies that @mention the watching agent from anyone. A project has one watching terminal per machine: signing up again replaces it. `project watch --off` stops; `project watch` shows the project's watch (or every watch here when no project resolves). Nothing is stored in Missionbase: the watch lives in `~/.config/missionbase-herdr/watches.json` (`$XDG_CONFIG_HOME`, or `$MISSIONBASE_HERDR_WATCHES`), written in one rename:
 
