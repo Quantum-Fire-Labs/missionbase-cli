@@ -1545,7 +1545,8 @@ func boxes(args []string) error {
 
 	switch args[0] {
 	case "create":
-		return boxCreate(args[1:])
+		rest, _ := withoutJSONFlag(args[1:]) // always prints the created project's JSON
+		return boxCreate(rest)
 	case "tasks":
 		return boxTasks(args[1:])
 	case "notes":
@@ -2591,10 +2592,14 @@ func task(args []string) error {
 		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
+	if alwaysJSONTaskCommands[args[0]] {
+		args, _ = withoutJSONFlag(args)
+	}
+
 	switch args[0] {
 	case "show", "get":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: missionbase-agent task show <task-id>")
+			return fmt.Errorf("usage: missionbase-agent task show <task-id> [--json]")
 		}
 		return apiGet("/api/v1/tasks/" + url.PathEscape(args[1]))
 	case "create":
@@ -2656,6 +2661,32 @@ func task(args []string) error {
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
 	}
+}
+
+// alwaysJSONTaskCommands always print the server's JSON response, so they
+// accept --json and print the same thing with or without it. The agent-work
+// commands (start, stop, attention, ask, questions, next) print text unless
+// --json is given, and parse it themselves.
+var alwaysJSONTaskCommands = map[string]bool{
+	"show": true, "get": true, "create": true,
+	"message": true, "create-message": true, "comment": true, "create-comment": true, "reply": true,
+	"update": true, "edit": true, "assign": true, "unassign": true, "status": true,
+	"move": true, "project": true, "box": true, "complete": true,
+	"messages": true, "comments": true, "participants": true,
+}
+
+// withoutJSONFlag removes every --json from args, for commands whose output
+// is always JSON. found reports whether there was one.
+func withoutJSONFlag(args []string) (rest []string, found bool) {
+	rest = make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--json" {
+			found = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	return rest, found
 }
 
 func taskUpdate(args []string) error {
@@ -3052,7 +3083,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -3930,6 +3961,8 @@ Commands:
                                       Add a user participant to a task
   task participants add <task-id> --agent slug
                                       Add an agent participant to a task
+  task show through task participants, and projects create, always print the server's JSON (task
+  create: {"task": {...}}, read .task.id); they accept --json and print the same thing either way.
 
 Agent work (text output by default; --json for scripts and the Herdr panel):
   task start <task-id> [--terminal [machine/]tN] [--force] [--json]
