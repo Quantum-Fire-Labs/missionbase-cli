@@ -96,3 +96,61 @@ func TestTaskMessageAcceptsJSON(t *testing.T) {
 		t.Fatalf("out = %q, requests = %#v", out, *requests)
 	}
 }
+
+// ---- task create --status ----
+
+func TestTaskCreateStatusSendsTheKey(t *testing.T) {
+	for _, status := range []string{"backlog", "planning", "in_progress", "not_doing"} {
+		server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+			"POST /api/v1/tasks": fixed(201, testCreatedTaskJSON),
+		})
+		setAgentEnv(t, server.URL)
+		if _, err := runCapture(t, "task", "create", "--title", "New work", "--project", "5", "--status", status); err != nil {
+			t.Fatalf("%s: %v", status, err)
+		}
+		if got := (*requests)[0].payload["status"]; got != status {
+			t.Fatalf("status = %#v, want %q", got, status)
+		}
+	}
+}
+
+func TestTaskCreateWithoutStatusSendsNone(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"POST /api/v1/tasks": fixed(201, testCreatedTaskJSON),
+	})
+	setAgentEnv(t, server.URL)
+	if _, err := runCapture(t, "task", "create", "--title", "New work", "--project", "5"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := (*requests)[0].payload["status"]; ok {
+		t.Fatalf("payload = %#v, want no status", (*requests)[0].payload)
+	}
+}
+
+func TestTaskCreateStatusLeavesUnknownKeysToTheServer(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"POST /api/v1/tasks": fixed(422, `{"error":{"code":"validation_failed","message":"status must be one of: backlog, planning, todo, in_progress, complete, not_doing"}}`),
+	})
+	setAgentEnv(t, server.URL)
+	_, err := runCapture(t, "task", "create", "--title", "New work", "--project", "5", "--status", "someday")
+	if err == nil || !strings.Contains(err.Error(), "status must be one of") || exitCodeFor(err) != 1 {
+		t.Fatalf("err = %v (exit %d), want the server's validation error", err, exitCodeFor(err))
+	}
+	if len(*requests) != 1 || (*requests)[0].payload["status"] != "someday" {
+		t.Fatalf("requests = %#v", *requests)
+	}
+}
+
+func TestTaskCreateStatusRefusesNeedsAttentionAndBlankKeys(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1")
+	_, err := runCapture(t, "task", "create", "--title", "New work", "--project", "5", "--status", "needs_attention")
+	if err == nil || !strings.Contains(err.Error(), "task ask") {
+		t.Fatalf("err = %v, want the needs_attention pointer to task ask", err)
+	}
+	for _, args := range [][]string{{"--status"}, {"--status", " "}} {
+		_, err := runCapture(t, append([]string{"task", "create", "--title", "New work", "--project", "5"}, args...)...)
+		if err == nil || !strings.Contains(err.Error(), "--status requires a status key: backlog, planning, todo") {
+			t.Fatalf("%v: err = %v", args, err)
+		}
+	}
+}

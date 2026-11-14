@@ -2589,7 +2589,7 @@ func week(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --project ID [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	if alwaysJSONTaskCommands[args[0]] {
@@ -3044,6 +3044,16 @@ func taskCreate(args []string) error {
 			}
 			payload["scheduled_at"] = scheduledAt
 			i++
+		case "--status":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return fmt.Errorf("--status requires a status key: %s", strings.Join(statuses.Keys, ", "))
+			}
+			status := strings.TrimSpace(args[i+1])
+			if err := statuses.RefuseSet(status); err != nil {
+				return err
+			}
+			payload["status"] = status // the server validates the key
+			i++
 		case "--assign-agent":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--assign-agent requires a value")
@@ -3083,7 +3093,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]")
+			fmt.Println("usage: missionbase-agent task create --title TITLE --project ID [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -3932,10 +3942,12 @@ Commands:
                                       Convenience due-date task listings
   week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
   task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
-  task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
+  task create --title TITLE --project ID [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
       [--assign-agent slug | --assign-user ID|@mention]
       [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-                                      Create a task and print the created task JSON
+                                      Create a task and print the created task JSON. --status sets the
+                                      starting status (backlog, planning, todo, in_progress, complete,
+                                      not_doing; default todo)
   task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
       [--scheduled-at DATETIME | --no-scheduled-at]
                                       Update task title, description, deadline, or schedule and print the updated task JSON

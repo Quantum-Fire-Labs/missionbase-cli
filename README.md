@@ -427,7 +427,7 @@ missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
 missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaults to current week
 missionbase-agent task show <task-id> [--json] # task show/create/update/message/assign/unassign/status/move/complete/messages/participants always print JSON; --json is accepted
-missionbase-agent task create --title "Task title" --project <project-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent task create --title "Task title" --project <project-id> [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
 missionbase-agent task update <task-id> --title "New task title"
 missionbase-agent task update <task-id> --body-file /tmp/description.md # replaces the task description
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
@@ -521,6 +521,8 @@ missionbase-agent task message 123 --body-file /tmp/missionbase-comment.md
 When file content accidentally contains escaped newline sequences (`\n`, `\r`, or `\r\n`), the CLI continues to normalize them to real line breaks outside quoted/backticked code contexts. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
 
 **JSON output.** `task show`, `task create`, `task update`, `task message`, `task assign`, `task unassign`, `task status`, `task move`, `task complete`, `task messages`, `task participants` and `projects create` always print the server's JSON response, so a script can read `.task.id` from `task create` (`{"task": {...}}`, the same envelope as `task show`). They accept `--json` and print the same thing with or without it. The agent-work commands (`task start/stop/attention/ask/questions/next`, `tasks ls/changes`, `project`), `activity`, `members`, `pi` and `projects notes` print text unless `--json` is given. Other commands don't take `--json`; most of them print the server's JSON (`document show` prints the document body).
+
+`missionbase-agent task create --status KEY` sets the new task's status: `backlog`, `planning`, `todo`, `in_progress`, `complete` or `not_doing` (without it, To Do). The server checks the key and the CLI shows its error for an unknown one; `needs_attention` is refused before sending, pointing to `task ask`.
 
 `missionbase-agent task create --scheduled-at DATETIME` and `missionbase-agent task update <task-id> --scheduled-at DATETIME` set `scheduled_at` separately from `deadline`; use `--no-scheduled-at` (or `--clear-scheduled-at`) to clear scheduling without changing the deadline. The API parses schedule datetimes in the acting user's timezone when no offset is included, so include an ISO-8601 offset or `Z` for an absolute instant. Normal agent work/task endpoints keep the API default scheduled filter, hiding future scheduled tasks until actionable; use `--scheduled future` or `--scheduled all` on supported task listings only when explicitly discovering scheduled tasks.
 
