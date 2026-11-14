@@ -1545,7 +1545,8 @@ func boxes(args []string) error {
 
 	switch args[0] {
 	case "create":
-		return boxCreate(args[1:])
+		rest, _ := withoutJSONFlag(args[1:]) // always prints the created project's JSON
+		return boxCreate(rest)
 	case "tasks":
 		return boxTasks(args[1:])
 	case "notes":
@@ -2588,13 +2589,17 @@ func week(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+	}
+
+	if alwaysJSONTaskCommands[args[0]] {
+		args, _ = withoutJSONFlag(args)
 	}
 
 	switch args[0] {
 	case "show", "get":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: missionbase-agent task show <task-id>")
+			return fmt.Errorf("usage: missionbase-agent task show <task-id> [--json]")
 		}
 		return apiGet("/api/v1/tasks/" + url.PathEscape(args[1]))
 	case "create":
@@ -2656,6 +2661,32 @@ func task(args []string) error {
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
 	}
+}
+
+// alwaysJSONTaskCommands always print the server's JSON response, so they
+// accept --json and print the same thing with or without it. The agent-work
+// commands (start, stop, attention, ask, questions, next) print text unless
+// --json is given, and parse it themselves.
+var alwaysJSONTaskCommands = map[string]bool{
+	"show": true, "get": true, "create": true,
+	"message": true, "create-message": true, "comment": true, "create-comment": true, "reply": true,
+	"update": true, "edit": true, "assign": true, "unassign": true, "status": true,
+	"move": true, "project": true, "box": true, "complete": true,
+	"messages": true, "comments": true, "participants": true,
+}
+
+// withoutJSONFlag removes every --json from args, for commands whose output
+// is always JSON. found reports whether there was one.
+func withoutJSONFlag(args []string) (rest []string, found bool) {
+	rest = make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--json" {
+			found = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	return rest, found
 }
 
 func taskUpdate(args []string) error {
@@ -2961,13 +2992,36 @@ func taskComplete(args []string) error {
 	return apiPatch("/api/v1/tasks/"+url.PathEscape(args[0])+"/complete", nil)
 }
 
+const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
+       missionbase-agent task create --title TITLE ... --start [--terminal [machine/]tN] [--force] [--json]`
+
 func taskCreate(args []string) error {
 	payload := map[string]string{}
 	var participantUsers []string
 	var attaches, blobs []string
+	var pf projectFlags
+	start, force, terminalSpec, terminalSet := false, false, "", false
 
 	for i := 0; i < len(args); i++ {
+		if handled, err := pf.parse(args, &i); handled {
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		switch args[i] {
+		case "--start":
+			start = true
+		case "--terminal":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return fmt.Errorf("--terminal requires a value like t7 or machine/t7")
+			}
+			terminalSpec, terminalSet = args[i+1], true
+			i++
+		case "--force":
+			force = true
+		case "--json":
+			// task create always prints JSON.
 		case "--title":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--title requires a value")
@@ -2985,13 +3039,6 @@ func taskCreate(args []string) error {
 				return err
 			}
 			payload["body"] = body
-			i++
-		case "--project", "--box":
-			if i+1 >= len(args) {
-				return fmt.Errorf("%s requires a value", args[i])
-			}
-			payload["project_id"] = args[i+1]
-			payload["box_id"] = args[i+1] // for servers from before the rename
 			i++
 		case "--deadline":
 			if i+1 >= len(args) {
@@ -3012,6 +3059,16 @@ func taskCreate(args []string) error {
 				return err
 			}
 			payload["scheduled_at"] = scheduledAt
+			i++
+		case "--status":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return fmt.Errorf("--status requires a status key: %s", strings.Join(statuses.Keys, ", "))
+			}
+			status := strings.TrimSpace(args[i+1])
+			if err := statuses.RefuseSet(status); err != nil {
+				return err
+			}
+			payload["status"] = status // the server validates the key
 			i++
 		case "--assign-agent":
 			if i+1 >= len(args) {
@@ -3052,25 +3109,52 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println(taskCreateUsage)
 			return nil
 		default:
-			return fmt.Errorf("unknown task create option %q", args[i])
+			return fmt.Errorf("unknown task create option %q\n%s", args[i], taskCreateUsage)
 		}
 	}
 
 	if strings.TrimSpace(payload["title"]) == "" {
 		return fmt.Errorf("--title is required")
 	}
-	if strings.TrimSpace(payload["project_id"]) == "" {
-		return fmt.Errorf("--project is required")
-	}
 	if payload["assign_to_agent_slug"] != "" && payload["assign_to_user_id"] != "" {
 		return fmt.Errorf("use only one of --assign-agent or --assign-user")
 	}
+	if !start && (terminalSet || force) {
+		return fmt.Errorf("--terminal and --force only apply with --start")
+	}
+	if err := pf.validate(); err != nil {
+		return err
+	}
+	project, ok, err := resolveProject(pf.project, pf.cwd)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return withExitCode(exitProjectUnresolved, fmt.Errorf("no project here: pass --project ID or --cwd DIR, add %s, or set a machine default with `missionbase-agent project default ID`", projectFileName))
+	}
+	payload["project_id"] = project.ID
+	payload["box_id"] = project.ID // for servers from before the rename
+
+	// --start wins over --status: the task is created in the default status and
+	// starting work moves it to In Progress. The terminal is resolved before
+	// anything is created, so an hc failure leaves no task behind.
+	var machine hcMachine
+	var terminal string
+	if start {
+		if status, ok := payload["status"]; ok {
+			fmt.Fprintf(os.Stderr, "--status %s is ignored with --start; the task starts In Progress\n", status)
+			delete(payload, "status")
+		}
+		if machine, terminal, err = resolveWorkTerminal(terminalSpec); err != nil {
+			return err
+		}
+	}
 
 	var responseBody []byte
-	var err error
+	createdID := ""
 	if len(attaches) > 0 || len(blobs) > 0 {
 		responseBody, err = apiPostMultipartBody("/api/v1/tasks", payload, attaches, blobs)
 	} else {
@@ -3085,7 +3169,7 @@ func taskCreate(args []string) error {
 		return err
 	}
 
-	if len(participantUsers) > 0 {
+	if len(participantUsers) > 0 || start {
 		var response struct {
 			Task struct {
 				ID int `json:"id"`
@@ -3097,6 +3181,7 @@ func taskCreate(args []string) error {
 		if response.Task.ID == 0 {
 			return fmt.Errorf("created task response did not include task.id")
 		}
+		createdID = strconv.Itoa(response.Task.ID)
 		for _, userID := range participantUsers {
 			participantBody, err := json.Marshal(map[string]string{"user_id": userID})
 			if err != nil {
@@ -3106,6 +3191,15 @@ func taskCreate(args []string) error {
 				return err
 			}
 		}
+	}
+
+	if start {
+		startBody, err := startWork(createdID, machine, terminal, force, false)
+		if err != nil {
+			fmt.Println(string(responseBody)) // the task exists; show it so its id isn't lost
+			return fmt.Errorf("created task #%s but did not start it: %w", createdID, err)
+		}
+		responseBody = startBody
 	}
 
 	fmt.Println(string(responseBody))
@@ -3901,10 +3995,18 @@ Commands:
                                       Convenience due-date task listings
   week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
   task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
-  task create --title TITLE --project ID [--deadline YYYY-MM-DD] [--scheduled-at DATETIME]
-      [--assign-agent slug | --assign-user ID|@mention]
-      [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-                                      Create a task and print the created task JSON
+  task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD]
+      [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention]
+      [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+      [--start [--terminal [machine/]tN] [--force]] [--json]
+                                      Create a task and print the created task JSON. The project resolves
+                                      like tasks ls (--project, then .missionbase/project.json from --cwd or
+                                      here, then the machine default; exit 5 when none). --status sets the
+                                      starting status (backlog, planning, todo, in_progress, complete,
+                                      not_doing; default todo). --start then starts work on it like task
+                                      start (default terminal $HC_TERMINAL_ID; --status is ignored) and
+                                      prints the task start --json response; exit 3 if it's running
+                                      elsewhere, 4 if hc can't resolve the terminal (nothing is created)
   task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
       [--scheduled-at DATETIME | --no-scheduled-at]
                                       Update task title, description, deadline, or schedule and print the updated task JSON
@@ -3930,6 +4032,8 @@ Commands:
                                       Add a user participant to a task
   task participants add <task-id> --agent slug
                                       Add an agent participant to a task
+  task show through task participants, and projects create, always print the server's JSON (task
+  create: {"task": {...}}, read .task.id); they accept --json and print the same thing either way.
 
 Agent work (text output by default; --json for scripts and the Herdr panel):
   task start <task-id> [--terminal [machine/]tN] [--force] [--json]
@@ -3962,6 +4066,12 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Tasks changed since a cursor, plus deletions and the next cursor
   project [show] [--cwd DIR | --project ID] [--json]
                                       Show which project "here" resolves to
+  project link <project-id> [--cwd DIR] [--force] [--json]
+                                      Link this repo to a project: write .missionbase/project.json at the git
+                                      root (or the folder outside git) with team_id, team_name, project_id,
+                                      project_name, box_id and box_name from the server. Refuses to replace a
+                                      link to a different project unless --force. Doesn't commit
+  project unlink [--cwd DIR] [--json] Remove that link (other keys in the file are kept)
   project default [ID | --clear]      Show, set or clear this machine's default project
   project watch --terminal tN [--cwd DIR | --project ID] [--json]
                                       Sign this machine's terminal tN up for the project's activity: the Herdr

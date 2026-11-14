@@ -146,7 +146,8 @@ missionbase-agent task next [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--needs-you] [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
 missionbase-agent project [show] [--cwd DIR | --project ID] [--json]
-missionbase-agent project link <project-id> [--cwd DIR]
+missionbase-agent project link <project-id> [--cwd DIR] [--force] [--json]
+missionbase-agent project unlink [--cwd DIR] [--json]
 missionbase-agent project default [ID | --clear]
 missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project ID] [--json]
 ```
@@ -173,7 +174,7 @@ missionbase-agent tasks changes --since "$cursor" --json      # {"tasks", "delet
 2. the nearest `.missionbase/project.json` (its `project_id`, or `box_id` in a file written before the rename) from `--cwd DIR` or the current folder, searching parent folders
 3. this machine's default project, set with `missionbase-agent project default ID` and stored as `default_project` in `~/.config/missionbase-agent/credentials`
 
-`project link <project-id>` writes `.missionbase/project.json` in `--cwd DIR` (or the current folder) with the project's name and team from the server, keeping any other keys in the file: `{"team_id", "team_name", "project_id", "project_name", "box_id", "box_name"}`. The `box_*` pair is for CLIs and Herdr panels from before the rename. The `project` object in `--json` output also carries both pairs: `{"project_id", "project_name", "box_id", "box_name", "source", "path"}`.
+`project link <project-id>` links a repo to a project: it writes `.missionbase/project.json` at the root of the git repository (or worktree) containing `--cwd DIR` or the current folder, or in that folder when it isn't in git. It first reads the project (`GET /api/v1/projects/:id`), so a project that doesn't exist or that the agent can't reach is reported and nothing is written. The file gets the project's name and team from the server, in this order, keeping any other keys: `{"team_id", "team_name", "project_id", "project_name", "box_id", "box_name"}` (no team keys for a personal project). Linking the same project again refreshes the names; a file that links a different project (or isn't valid JSON) is left alone unless you pass `--force`. `--json` prints `{"project": {...}}` like `project --json`. It doesn't commit the file. `project unlink [--cwd DIR]` removes those keys from the same file, deleting it (and an empty `.missionbase/`) when nothing else is left; `--json` prints `{"removed", "path"}`. The `box_*` pair is for CLIs and Herdr panels from before the rename. The `project` object in `--json` output also carries both pairs: `{"project_id", "project_name", "box_id", "box_name", "source", "path"}`.
 
 **Watching a project** (for orchestrators): `project watch --terminal t9d` signs up terminal `t9d` on this machine for the current project's activity. The [missionbase-herdr](https://github.com/Quantum-Fire-Labs/missionbase-herdr) bridge then types one short digest into that terminal when its agent is idle: the owner's (users', not agents') new tasks, replies, question answers and status changes in the project, and replies that @mention the watching agent from anyone. A project has one watching terminal per machine: signing up again replaces it. `project watch --off` stops; `project watch` shows the project's watch (or every watch here when no project resolves). Nothing is stored in Missionbase: the watch lives in `~/.config/missionbase-herdr/watches.json` (`$XDG_CONFIG_HOME`, or `$MISSIONBASE_HERDR_WATCHES`), written in one rename:
 
@@ -273,8 +274,8 @@ Each question in the API carries `answer_attachments: [{"filename", "content_typ
 | 0 | Success |
 | 1 | Any other error: bad arguments, network failure, or an API error other than 409 |
 | 3 | Conflict: the API answered HTTP 409 (for example `task start` while another agent runs the task elsewhere). Applies to every command. |
-| 4 | `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
-| 5 | No project resolved (`tasks ls` and `project` without `--project`, a `.missionbase/project.json` or a default project) |
+| 4 | (`task start`, `task create --start`) `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
+| 5 | No project resolved (`tasks ls`, `task create` and `project` without `--project`, a `.missionbase/project.json` or a default project) |
 | 6 | `task questions --wait --timeout` ran out with questions still open |
 
 ### Local Pi sessions
@@ -426,8 +427,8 @@ missionbase-agent document edit <document-id> [--title "New title"] --body-file 
 missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
 missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaults to current week
-missionbase-agent task show <task-id>
-missionbase-agent task create --title "Task title" --project <project-id> [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>]
+missionbase-agent task show <task-id> [--json] # task show/create/update/message/assign/unassign/status/move/complete/messages/participants always print JSON; --json is accepted
+missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
 missionbase-agent task update <task-id> --title "New task title"
 missionbase-agent task update <task-id> --body-file /tmp/description.md # replaces the task description
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
@@ -519,6 +520,19 @@ missionbase-agent task message 123 --body-file /tmp/missionbase-comment.md
 ```
 
 When file content accidentally contains escaped newline sequences (`\n`, `\r`, or `\r\n`), the CLI continues to normalize them to real line breaks outside quoted/backticked code contexts. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
+
+**JSON output.** `task show`, `task create`, `task update`, `task message`, `task assign`, `task unassign`, `task status`, `task move`, `task complete`, `task messages`, `task participants` and `projects create` always print the server's JSON response, so a script can read `.task.id` from `task create` (`{"task": {...}}`, the same envelope as `task show`). They accept `--json` and print the same thing with or without it. The agent-work commands (`task start/stop/attention/ask/questions/next`, `tasks ls/changes`, `project`), `activity`, `members`, `pi` and `projects notes` print text unless `--json` is given. Other commands don't take `--json`; most of them print the server's JSON (`document show` prints the document body).
+
+`missionbase-agent task create` finds its project like `tasks ls` and `task next`: `--project ID` (`--box` is the old name), then the nearest `.missionbase/project.json` from `--cwd DIR` or the current folder, then the machine's default project. When none resolves it exits 5 without sending anything. `--cwd` lets an orchestrator create a task in another repo's project.
+
+`task create ... --start [--terminal [machine/]tN] [--force]` creates the task and then starts work on it, exactly like `task start` (assigns the acting agent, records the machine and terminal, moves the task to In Progress). Without `--terminal` it uses `$HC_TERMINAL_ID` on this machine. The terminal is resolved with `hc` before the task is created, so when `hc` is missing or can't resolve it the command exits 4 and nothing is created. On success it prints the `task start --json` response (`{"task": {...}, "stopped": [...]}`, so `.task.id` still works). If the task is created but starting fails, it prints the created task's JSON, then the error, and exits with the start's code (3 when the work is running elsewhere; `--force` takes it over). `--start` wins over `--status`: the status is ignored, with a note on stderr.
+
+```bash
+# Create a task in another repo's project and start it in terminal t7 on omarchy-intel
+missionbase-agent task create --cwd ~/Projects/other-repo --title "Fix the flaky spec" --body-file /tmp/body.md --start --terminal omarchy-intel/t7
+```
+
+`missionbase-agent task create --status KEY` sets the new task's status: `backlog`, `planning`, `todo`, `in_progress`, `complete` or `not_doing` (without it, To Do). The server checks the key and the CLI shows its error for an unknown one; `needs_attention` is refused before sending, pointing to `task ask`.
 
 `missionbase-agent task create --scheduled-at DATETIME` and `missionbase-agent task update <task-id> --scheduled-at DATETIME` set `scheduled_at` separately from `deadline`; use `--no-scheduled-at` (or `--clear-scheduled-at`) to clear scheduling without changing the deadline. The API parses schedule datetimes in the acting user's timezone when no offset is included, so include an ISO-8601 offset or `Z` for an absolute instant. Normal agent work/task endpoints keep the API default scheduled filter, hiding future scheduled tasks until actionable; use `--scheduled future` or `--scheduled all` on supported task listings only when explicitly discovering scheduled tasks.
 
