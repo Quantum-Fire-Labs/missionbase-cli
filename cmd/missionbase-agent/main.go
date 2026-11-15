@@ -70,6 +70,8 @@ func run(args []string) error {
 		return listen(args[1:])
 	case "dm":
 		return directMessage(args[1:])
+	case "terminal":
+		return terminalCommand(args[1:])
 	case "agent":
 		return agent(args[1:])
 	case "document", "documents", "doc", "docs":
@@ -4014,6 +4016,13 @@ Commands:
                                       Start/send a DM to a user or agent
   dm send --chat <chat-id> --body-file PATH
                                       Reply in an existing DM chat
+  terminal register [--terminal [machine/]tN] [--json]
+                                      Register this agent's Herdr terminal (default: $HC_TERMINAL_ID on
+                                      this machine, sent as machine/tN) so the Herdr bridge there types
+                                      new DMs into it. Run it at session start. Exit 4 if hc can't
+                                      resolve the terminal
+  terminal clear [--json]             Forget this agent's registered terminal
+  terminal show [--json]              Show this agent's registered terminal
   agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT] [--image PATH]
                                       Create an agent on the authenticated team
                                       With --image, also set its profile image (PNG, JPEG, WEBP; max 5 MB)
