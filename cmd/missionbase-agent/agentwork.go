@@ -180,7 +180,7 @@ func resolveWorkTerminal(spec string) (hcMachine, string, error) {
 
 	local, err := hcLocalCore()
 	if err != nil {
-		return hcMachine{}, "", withExitCode(exitHCUnavailable, fmt.Errorf("task start needs hc to find the machine's core id: %w", err))
+		return hcMachine{}, "", withExitCode(exitHCUnavailable, fmt.Errorf("hc is needed to find this machine: %w", err))
 	}
 	if machineName == "" || machineName == local.Name || machineName == local.ID {
 		return local, terminal, nil

@@ -274,7 +274,7 @@ Each question in the API carries `answer_attachments: [{"filename", "content_typ
 | 0 | Success |
 | 1 | Any other error: bad arguments, network failure, or an API error other than 409 |
 | 3 | Conflict: the API answered HTTP 409 (for example `task start` while another agent runs the task elsewhere). Applies to every command. |
-| 4 | (`task start`, `task create --start`) `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
+| 4 | (`task start`, `task create --start`, `terminal register`) `hc` is missing, failed or timed out, `$HC_TERMINAL_ID` is not set, or the machine in `--terminal machine/tN` is unknown |
 | 5 | No project resolved (`tasks ls`, `task create` and `project` without `--project`, a `.missionbase/project.json` or a default project) |
 | 6 | `task questions --wait --timeout` ran out with questions still open |
 
@@ -410,6 +410,9 @@ missionbase-agent dm list [--limit N]
 missionbase-agent dm show <chat-id>
 missionbase-agent dm send --to <handle> --body-file /tmp/body.md
 missionbase-agent dm send --chat <chat-id> --body-file /tmp/body.md
+missionbase-agent terminal register [--terminal [machine/]tN] [--json]
+missionbase-agent terminal clear [--json]
+missionbase-agent terminal show [--json]
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker [--title "Fleet Architect"] [--description "Handles fleet tasks"] [--image avatar.png]
 missionbase-agent agent image set fleet-worker --file avatar.png
 missionbase-agent agent image clear fleet-worker --yes
@@ -643,6 +646,26 @@ missionbase-agent dm send --chat 42 --body-file /tmp/reply.md
 ```
 
 `dm send --to <handle>` creates or reuses a unified Missionbase chat with that recipient. Messages to agents create a `direct_message` update for each recipient agent, so a recipient running `missionbase-agent listen` receives it without periodic `work` polling. Received message payloads include each sender's `handle`, so replies can use the same `--to` form. Human-to-agent and agent-to-agent DMs use the same chat/message backend. DM `--body-file` values support Markdown by default and are sanitized before rendering in Missionbase.
+
+### Agent terminal (DMs typed into Herdr)
+
+An agent that runs in a Herdr terminal can register that terminal with Missionbase. The [missionbase-herdr](https://github.com/Quantum-Fire-Labs/missionbase-herdr) bridge on that machine then types a short note into it for each new DM, once the agent there is idle, so the agent doesn't need a `listen` loop that dies with its session:
+
+```text
+New DM from Daniel in chat 12: Can you check the deploy? Reply with missionbase-prime dm send --chat 12 --body-file PATH
+```
+
+```bash
+missionbase-agent terminal register                           # $HC_TERMINAL_ID on this machine, e.g. omarchy-m3/t2c
+missionbase-agent terminal register --terminal omarchy-intel/t7
+missionbase-agent terminal show [--json]
+missionbase-agent terminal clear [--json]
+```
+
+- **`terminal register`** stores the terminal as `machine/tN` (`PUT /api/v1/agent/terminal`): hc's name for the machine, then the terminal's address on it. Without `--terminal` it uses `$HC_TERMINAL_ID` on this machine; `--terminal t7` is a terminal here and `--terminal omarchy-intel/t7` one on a machine from `hc machine ls` (matched by name, host, target or core id), as for `task start`. Registering again replaces it. Run it at the start of every session, since the terminal can change. Exit 4 when `hc` can't resolve the terminal.
+- **`terminal show`** prints the registered address and when it was set (`GET /api/v1/agent/terminal`), and **`terminal clear`** forgets it (`DELETE /api/v1/agent/terminal`).
+- They act as the selected agent (`MISSIONBASE_AGENT_SLUG`, `missionbase-<slug>`, or `use`), and only on that agent's own terminal. Missionbase keeps only the address and the time, never whether the terminal is working or idle. `me` shows it too, as `terminal`.
+- `--json` prints the server's response: `{"agent": {"id", "slug"}, "terminal": {"address", "machine", "id", "registered_at"} | null}`.
 
 ### Rich text and attachments
 
