@@ -1893,7 +1893,7 @@ func TestDocumentCreatePostsFileBody(t *testing.T) {
 			t.Fatalf("folder_id = %q, want 67", payload["folder_id"])
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","url":"https://dash.missionbase.app/projects/2/files/77","box_file_id":88,"parent_folder_id":67,"version_count":1}}`))
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","url":"https://dash.missionbase.app/projects/2/files/77","project_file_id":88,"parent_folder_id":67,"version_count":1}}`))
 	}))
 	defer server.Close()
 
@@ -1907,8 +1907,8 @@ func TestDocumentCreatePostsFileBody(t *testing.T) {
 	if !strings.Contains(stdout, `"url":"https://dash.missionbase.app/projects/2/files/77"`) {
 		t.Fatalf("stdout = %q, want document url", stdout)
 	}
-	if !strings.Contains(stdout, `"box_file_id":88`) || !strings.Contains(stdout, `"parent_folder_id":67`) {
-		t.Fatalf("stdout = %q, want backing BoxFile metadata", stdout)
+	if !strings.Contains(stdout, `"project_file_id":88`) || !strings.Contains(stdout, `"parent_folder_id":67`) {
+		t.Fatalf("stdout = %q, want backing ProjectFile metadata", stdout)
 	}
 }
 
@@ -1922,7 +1922,7 @@ func TestDocumentCreateRootPlacement(t *testing.T) {
 			t.Fatalf("folder_id = %q, want root", payload["folder_id"])
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","box_file_id":88}}`))
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","project_file_id":88}}`))
 	}))
 	defer server.Close()
 
@@ -2038,8 +2038,8 @@ func TestSidebarSubcommandHelpDoesNotResolveUser(t *testing.T) {
 		want string
 	}{
 		{"pins", []string{"sidebar", "pins", "--help"}, "missionbase-agent sidebar pins --user ID|@mention"},
-		{"pin", []string{"sidebar", "pin", "--help"}, "missionbase-agent sidebar pin --user ID|@mention --type box_file --id ID"},
-		{"unpin", []string{"sidebar", "unpin", "--help"}, "missionbase-agent sidebar unpin --user ID|@mention --type box_file --id ID"},
+		{"pin", []string{"sidebar", "pin", "--help"}, "missionbase-agent sidebar pin --user ID|@mention --type project_file --id ID"},
+		{"unpin", []string{"sidebar", "unpin", "--help"}, "missionbase-agent sidebar unpin --user ID|@mention --type project_file --id ID"},
 	} {
 		stdout := captureStdout(t, func() {
 			if err := run(tc.args); err != nil {
@@ -2070,13 +2070,13 @@ func TestSidebarCommandsUseAgentEndpointWithTargetUser(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			if payload["user_id"] != "7" || payload["type"] != "box_file" || payload["id"] != "42" {
+			if payload["user_id"] != "7" || payload["type"] != "project_file" || payload["id"] != "42" {
 				t.Fatalf("payload = %#v", payload)
 			}
 		case "DELETE /api/v1/sidebar_pins":
 			seen["unpin"] = true
 			query := r.URL.Query()
-			if query.Get("user_id") != "7" || query.Get("type") != "box_file" || query.Get("id") != "42" {
+			if query.Get("user_id") != "7" || query.Get("type") != "project_file" || query.Get("id") != "42" {
 				t.Fatalf("query = %s", r.URL.RawQuery)
 			}
 		default:
@@ -2089,8 +2089,8 @@ func TestSidebarCommandsUseAgentEndpointWithTargetUser(t *testing.T) {
 	setAgentEnv(t, server.URL)
 	commands := [][]string{
 		{"sidebar", "pins", "--user", "7"},
-		{"sidebar", "pin", "--user", "7", "--type", "box_file", "--id", "42"},
-		{"sidebar", "unpin", "--user", "7", "--type", "box_file", "--id", "42"},
+		{"sidebar", "pin", "--user", "7", "--type", "project_file", "--id", "42"},
+		{"sidebar", "unpin", "--user", "7", "--type", "project_file", "--id", "42"},
 	}
 	for _, command := range commands {
 		if err := run(command); err != nil {

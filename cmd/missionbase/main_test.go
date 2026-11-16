@@ -154,12 +154,12 @@ func TestSidebarCommandsUseUserScopedEndpointWithoutAgentHeader(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			if payload["type"] != "box_file" || payload["id"] != "42" {
+			if payload["type"] != "project_file" || payload["id"] != "42" {
 				t.Fatalf("payload = %#v", payload)
 			}
 		case "DELETE /api/v1/sidebar_pins":
 			seen["unpin"] = true
-			if r.URL.Query().Get("type") != "box_file" || r.URL.Query().Get("id") != "42" {
+			if r.URL.Query().Get("type") != "project_file" || r.URL.Query().Get("id") != "42" {
 				t.Fatalf("query = %s", r.URL.RawQuery)
 			}
 		default:
@@ -172,8 +172,8 @@ func TestSidebarCommandsUseUserScopedEndpointWithoutAgentHeader(t *testing.T) {
 	setUserEnv(t, server.URL)
 	commands := [][]string{
 		{"sidebar", "pins"},
-		{"sidebar", "pin", "--type", "box_file", "--id", "42"},
-		{"sidebar", "unpin", "--type", "box_file", "--id", "42"},
+		{"sidebar", "pin", "--type", "project_file", "--id", "42"},
+		{"sidebar", "unpin", "--type", "project_file", "--id", "42"},
 	}
 	for _, command := range commands {
 		if err := run(command); err != nil {
