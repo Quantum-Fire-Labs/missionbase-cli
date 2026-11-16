@@ -78,17 +78,7 @@ func (c Client) Do(method, path string, body []byte) ([]byte, error) {
 }
 
 func (c Client) do(method, path string, body []byte, contentType string) ([]byte, error) {
-	boxPath, isProjectPath := BoxPath(path)
-	if isProjectPath && c.routesOnlyBoxes() {
-		path = boxPath
-	}
-
 	statusCode, respBody, err := c.send(method, path, body, contentType)
-	if err == nil && isProjectPath && path != boxPath && missingRoute(statusCode, respBody) {
-		c.rememberRoutesOnlyBoxes()
-		path = boxPath
-		statusCode, respBody, err = c.send(method, path, body, contentType)
-	}
 	if err != nil {
 		return nil, err
 	}

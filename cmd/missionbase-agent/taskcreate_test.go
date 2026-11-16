@@ -162,7 +162,7 @@ func TestTaskCreateStatusRefusesNeedsAttentionAndBlankKeys(t *testing.T) {
 
 func TestTaskCreateResolvesTheProjectLikeTasksLs(t *testing.T) {
 	linked := t.TempDir()
-	writeTestProjectFile(t, linked, `{"project_id":12,"project_name":"Other repo","box_id":12}`)
+	writeTestProjectFile(t, linked, `{"project_id":12,"project_name":"Other repo"}`)
 	nested := filepath.Join(linked, "app", "models")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
@@ -177,7 +177,7 @@ func TestTaskCreateResolvesTheProjectLikeTasksLs(t *testing.T) {
 		{"--cwd finds the nearest project file", []string{"--cwd", nested}, "", "12"},
 		{"the current folder's project file", nil, nested, "12"},
 		{"--project wins", []string{"--project", "5"}, nested, "5"},
-		{"--box is the old name", []string{"--box", "7"}, "", "7"},
+		{"--project without a project file", []string{"--project", "7"}, "", "7"},
 		{"--project-id", []string{"--project-id", "8"}, "", "8"},
 	}
 	for _, tc := range cases {
@@ -193,8 +193,11 @@ func TestTaskCreateResolvesTheProjectLikeTasksLs(t *testing.T) {
 				t.Fatal(err)
 			}
 			payload := (*requests)[0].payload
-			if payload["project_id"] != tc.want || payload["box_id"] != tc.want {
-				t.Fatalf("payload = %#v, want project_id and box_id %s", payload, tc.want)
+			if payload["project_id"] != tc.want {
+				t.Fatalf("payload = %#v, want project_id %s", payload, tc.want)
+			}
+			if _, ok := payload["box_id"]; ok {
+				t.Fatalf("payload = %#v still sends box_id", payload)
 			}
 		})
 	}
