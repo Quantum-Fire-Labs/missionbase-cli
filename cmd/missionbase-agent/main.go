@@ -3262,7 +3262,7 @@ func taskParticipantsAdd(taskID string, args []string) error {
 
 func sidebar(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		fmt.Println("usage: missionbase-agent sidebar <pins|pin|unpin> --user ID|@mention [--type box_file --id ID]")
+		fmt.Println("usage: missionbase-agent sidebar <pins|pin|unpin> --user ID|@mention [--type project_file --id ID]")
 		return nil
 	}
 
@@ -3281,7 +3281,7 @@ func sidebar(args []string) error {
 		return apiGet("/api/v1/sidebar_pins?" + query.Encode())
 	case "pin":
 		if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
-			fmt.Println("usage: missionbase-agent sidebar pin --user ID|@mention --type box_file --id ID")
+			fmt.Println("usage: missionbase-agent sidebar pin --user ID|@mention --type project_file --id ID")
 			return nil
 		}
 		userID, typeValue, idValue, err := parseAgentSidebarItemArgs(args[1:])
@@ -3295,7 +3295,7 @@ func sidebar(args []string) error {
 		return apiPost("/api/v1/sidebar_pins", body)
 	case "unpin":
 		if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
-			fmt.Println("usage: missionbase-agent sidebar unpin --user ID|@mention --type box_file --id ID")
+			fmt.Println("usage: missionbase-agent sidebar unpin --user ID|@mention --type project_file --id ID")
 			return nil
 		}
 		userID, typeValue, idValue, err := parseAgentSidebarItemArgs(args[1:])
@@ -3362,13 +3362,13 @@ func parseAgentSidebarItemArgs(args []string) (string, string, string, error) {
 			idValue = args[i+1]
 			i++
 		case "--help", "-h":
-			return "", "", "", fmt.Errorf("usage: missionbase-agent sidebar <pin|unpin> --user ID|@mention --type box_file --id ID")
+			return "", "", "", fmt.Errorf("usage: missionbase-agent sidebar <pin|unpin> --user ID|@mention --type project_file --id ID")
 		default:
 			return "", "", "", fmt.Errorf("unknown sidebar option %q", args[i])
 		}
 	}
 	if userValue == "" || typeValue == "" || idValue == "" {
-		return "", "", "", fmt.Errorf("usage: missionbase-agent sidebar <pin|unpin> --user ID|@mention --type box_file --id ID")
+		return "", "", "", fmt.Errorf("usage: missionbase-agent sidebar <pin|unpin> --user ID|@mention --type project_file --id ID")
 	}
 	userID, err := resolveUserID(userValue)
 	if err != nil {
@@ -4184,9 +4184,9 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Download an uploaded file
   sidebar pins --user ID|@mention
                                       List pinned sidebar pages for a user
-  sidebar pin --user ID|@mention --type box_file --id ID
+  sidebar pin --user ID|@mention --type project_file --id ID
                                       Pin a supported page to a user's sidebar
-  sidebar unpin --user ID|@mention --type box_file --id ID
+  sidebar unpin --user ID|@mention --type project_file --id ID
                                       Unpin a supported page from a user's sidebar
   projects task-statuses <project-id>
                                       List the fixed task statuses (key, name, category, color, position) as JSON

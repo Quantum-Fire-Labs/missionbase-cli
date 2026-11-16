@@ -227,7 +227,7 @@ func parseScratchpadBody(args []string, usagePrefix string) (string, error) {
 
 func sidebar(args []string) error {
 	if len(args) == 0 || isHelp(args[0]) {
-		fmt.Println("usage: missionbase sidebar <pins|pin|unpin> [--type box_file --id ID]")
+		fmt.Println("usage: missionbase sidebar <pins|pin|unpin> [--type project_file --id ID]")
 		return nil
 	}
 
@@ -275,13 +275,13 @@ func parseSidebarItemArgs(args []string) (string, string, error) {
 			idValue = args[i+1]
 			i++
 		case "--help", "-h":
-			return "", "", fmt.Errorf("usage: missionbase sidebar <pin|unpin> --type box_file --id ID")
+			return "", "", fmt.Errorf("usage: missionbase sidebar <pin|unpin> --type project_file --id ID")
 		default:
 			return "", "", fmt.Errorf("unknown sidebar option %q", args[i])
 		}
 	}
 	if typeValue == "" || idValue == "" {
-		return "", "", fmt.Errorf("usage: missionbase sidebar <pin|unpin> --type box_file --id ID")
+		return "", "", fmt.Errorf("usage: missionbase sidebar <pin|unpin> --type project_file --id ID")
 	}
 	return typeValue, idValue, nil
 }
@@ -2027,8 +2027,8 @@ Commands:
   scratchpad show|fetch               Show current user's scratchpad
   scratchpad update|edit --body TEXT  Update current user's scratchpad
   sidebar pins                         List pinned sidebar pages for the current user
-  sidebar pin --type box_file --id ID  Pin a supported page to the current user's sidebar
-  sidebar unpin --type box_file --id ID
+  sidebar pin --type project_file --id ID  Pin a supported page to the current user's sidebar
+  sidebar unpin --type project_file --id ID
                                       Unpin a supported page from the current user's sidebar
   document show <document-id> [--format markdown|html|plain-text]
                                       Show a document
