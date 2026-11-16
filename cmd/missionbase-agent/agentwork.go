@@ -201,17 +201,14 @@ type resolvedProject struct {
 	Path   string
 }
 
-// MarshalJSON writes project_id and project_name, plus box_id and box_name
-// with the same values for readers from before the rename (older Herdr panels).
+// MarshalJSON writes project_id and project_name.
 func (p resolvedProject) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ProjectID   string `json:"project_id"`
 		ProjectName string `json:"project_name,omitempty"`
-		BoxID       string `json:"box_id"`
-		BoxName     string `json:"box_name,omitempty"`
 		Source      string `json:"source"`
 		Path        string `json:"path,omitempty"`
-	}{p.ID, p.Name, p.ID, p.Name, p.Source, p.Path})
+	}{p.ID, p.Name, p.Source, p.Path})
 }
 
 const projectFileName = ".missionbase/project.json"
@@ -266,22 +263,16 @@ func resolveProject(projectFlag, cwdFlag string) (resolvedProject, bool, error) 
 	return resolvedProject{}, false, nil
 }
 
-// parseProjectFile reads project_id and project_name, or box_id and box_name
-// from files written before the rename.
+// parseProjectFile reads project_id and project_name.
 func parseProjectFile(path string, data []byte) (resolvedProject, error) {
 	var file struct {
 		ProjectID   json.RawMessage `json:"project_id"`
 		ProjectName string          `json:"project_name"`
-		BoxID       json.RawMessage `json:"box_id"`
-		BoxName     string          `json:"box_name"`
 	}
 	if err := json.Unmarshal(data, &file); err != nil {
 		return resolvedProject{}, fmt.Errorf("%s is not valid JSON: %w", path, err)
 	}
 	id, name := file.ProjectID, file.ProjectName
-	if len(id) == 0 || string(id) == "null" {
-		id, name = file.BoxID, file.BoxName
-	}
 	projectID := strings.Trim(strings.TrimSpace(string(id)), `"`)
 	if !isPositiveInteger(projectID) {
 		return resolvedProject{}, fmt.Errorf("%s has no valid project_id", path)
@@ -290,9 +281,8 @@ func parseProjectFile(path string, data []byte) (resolvedProject, error) {
 }
 
 // projectLinkKeys are the keys project link writes, in the order it writes
-// them. box_id and box_name repeat the project for CLIs and Herdr panels from
-// before the rename.
-var projectLinkKeys = []string{"team_id", "team_name", "project_id", "project_name", "box_id", "box_name"}
+// them.
+var projectLinkKeys = []string{"team_id", "team_name", "project_id", "project_name"}
 
 // linkDir is where a folder's project link lives: the root of the git
 // repository or worktree containing dir (the nearest folder with a .git
@@ -377,7 +367,7 @@ type projectFlags struct {
 
 func (p *projectFlags) parse(args []string, i *int) (bool, error) {
 	switch args[*i] {
-	case "--project", "--project-id", "--box", "--box-id":
+	case "--project", "--project-id":
 		if *i+1 >= len(args) || strings.TrimSpace(args[*i+1]) == "" {
 			return true, fmt.Errorf("%s requires a project id", args[*i])
 		}
@@ -432,7 +422,6 @@ type workTask struct {
 	Status      string       `json:"status"`
 	StatusLabel string       `json:"status_label"`
 	Project     *taskProject `json:"project"`
-	Box         *taskProject `json:"box"` // servers from before the rename send only box
 	Assignees   []workActor  `json:"assignees"`
 	Running     *workRunning `json:"running"`
 	LiveStatus  *struct {
@@ -451,10 +440,7 @@ type workTask struct {
 // needsYou: the task waits on its owner (open questions or a permission
 // prompt). Servers before needs_you only sent attention.
 func (t workTask) project() *taskProject {
-	if t.Project != nil {
-		return t.Project
-	}
-	return t.Box
+	return t.Project
 }
 
 func (t workTask) needsYou() bool {
@@ -989,7 +975,6 @@ func tasksLs(args []string) error {
 			return errNoProject()
 		}
 		query.Set("project_ids", project.ID)
-		query.Set("box_ids", project.ID) // for servers from before the rename
 	}
 	tasks, cursor, err := fetchAccessibleTasks(query)
 	if err != nil {
@@ -1102,7 +1087,7 @@ type changesFeed struct {
 }
 
 func tasksChanges(args []string) error {
-	since, boxIDs, jsonOut := "", "", false
+	since, projectIDs, jsonOut := "", "", false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--since":
@@ -1111,7 +1096,7 @@ func tasksChanges(args []string) error {
 			}
 			since = strings.TrimSpace(args[i+1])
 			i++
-		case "--project", "--box":
+		case "--project":
 			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
 				return fmt.Errorf("%s requires a project id", args[i])
 			}
@@ -1120,7 +1105,7 @@ func tasksChanges(args []string) error {
 					return fmt.Errorf("%s must be project ids separated by commas, got %q", args[i], args[i+1])
 				}
 			}
-			boxIDs = strings.ReplaceAll(args[i+1], " ", "")
+			projectIDs = strings.ReplaceAll(args[i+1], " ", "")
 			i++
 		case "--json":
 			jsonOut = true
@@ -1131,7 +1116,7 @@ func tasksChanges(args []string) error {
 			return fmt.Errorf("unknown tasks changes option %q\n%s", args[i], tasksChangesUsage)
 		}
 	}
-	feed, err := fetchChanges(since, boxIDs)
+	feed, err := fetchChanges(since, projectIDs)
 	if err != nil {
 		return err
 	}
@@ -1154,7 +1139,7 @@ func tasksChanges(args []string) error {
 // fetchChanges follows the changes feed until has_more is false. Tasks are
 // deduped by id (the latest copy wins, in feed order) and tasks reported as
 // deleted are dropped.
-func fetchChanges(since, boxIDs string) (changesFeed, error) {
+func fetchChanges(since, projectIDs string) (changesFeed, error) {
 	var feed changesFeed
 	index := map[int64]int{}
 	deleted := map[int64]bool{}
@@ -1165,9 +1150,8 @@ func fetchChanges(since, boxIDs string) (changesFeed, error) {
 		if cursor != "" {
 			query.Set("since", cursor)
 		}
-		if boxIDs != "" {
-			query.Set("project_ids", boxIDs)
-			query.Set("box_ids", boxIDs) // for servers from before the rename
+		if projectIDs != "" {
+			query.Set("project_ids", projectIDs)
 		}
 		query.Set("limit", "500")
 		body, err := agentDo(http.MethodGet, withQuery("/api/v1/tasks/changes", query), nil)
@@ -1469,12 +1453,8 @@ func projectLink(args []string) error {
 		keys["team_id"] = mustJSON(project.Owner.ID)
 		keys["team_name"] = mustJSON(project.Owner.Name)
 	}
-	for _, key := range []string{"project_id", "box_id"} {
-		keys[key] = mustJSON(project.ID)
-	}
-	for _, key := range []string{"project_name", "box_name"} {
-		keys[key] = mustJSON(project.Name)
-	}
+	keys["project_id"] = mustJSON(project.ID)
+	keys["project_name"] = mustJSON(project.Name)
 	if err := writeProjectLinkFile(path, keys); err != nil {
 		return err
 	}
@@ -1574,15 +1554,11 @@ func fetchProject(id string) (*projectPayload, error) {
 	}
 	var response struct {
 		Project *projectPayload `json:"project"`
-		Box     *projectPayload `json:"box"` // servers from before the rename
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("unexpected project response: %w", err)
 	}
 	project := response.Project
-	if project == nil {
-		project = response.Box
-	}
 	if project == nil || project.ID == 0 {
 		return nil, fmt.Errorf("unexpected project response: no project")
 	}

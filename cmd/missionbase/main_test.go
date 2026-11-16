@@ -187,7 +187,7 @@ func TestSidebarCommandsUseUserScopedEndpointWithoutAgentHeader(t *testing.T) {
 	}
 }
 
-func TestBoxesTasksBuildsQuery(t *testing.T) {
+func TestProjectsTasksBuildsQuery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/projects/42/tasks" {
 			t.Fatalf("path = %s, want /api/v1/projects/42/tasks", r.URL.Path)
@@ -211,8 +211,8 @@ func TestBoxesTasksBuildsQuery(t *testing.T) {
 	defer server.Close()
 
 	setUserEnv(t, server.URL)
-	if err := run([]string{"boxes", "tasks", "42", "--status", "todo", "--status-category", "open", "--page", "2", "--per-page", "25"}); err != nil {
-		t.Fatalf("run boxes tasks: %v", err)
+	if err := run([]string{"projects", "tasks", "42", "--status", "todo", "--status-category", "open", "--page", "2", "--per-page", "25"}); err != nil {
+		t.Fatalf("run projects tasks: %v", err)
 	}
 }
 
@@ -226,13 +226,11 @@ func TestReadOnlyCommandDispatchRepresentativeEndpoints(t *testing.T) {
 		{"team show", []string{"team", "show", "12"}, "/api/v1/teams/12"},
 		{"team members", []string{"team", "members", "12"}, "/api/v1/teams/12/members"},
 		{"projects", []string{"projects", "--team", "12"}, "/api/v1/projects"},
-		{"boxes", []string{"boxes", "--team", "12"}, "/api/v1/projects"},
 		{"project show", []string{"project", "show", "4"}, "/api/v1/projects/4"},
-		{"box show", []string{"box", "show", "4"}, "/api/v1/projects/4"},
 		{"project tasks", []string{"projects", "tasks", "4"}, "/api/v1/projects/4/tasks"},
-		{"box discussions", []string{"boxes", "discussions", "4", "--page", "3", "--per-page", "10"}, "/api/v1/projects/4/discussions"},
-		{"box statuses", []string{"boxes", "statuses", "4"}, "/api/v1/projects/4/task_statuses"},
-		{"box task-statuses", []string{"boxes", "task-statuses", "4"}, "/api/v1/projects/4/task_statuses"},
+		{"project discussions", []string{"projects", "discussions", "4", "--page", "3", "--per-page", "10"}, "/api/v1/projects/4/discussions"},
+		{"project statuses", []string{"projects", "statuses", "4"}, "/api/v1/projects/4/task_statuses"},
+		{"project task-statuses", []string{"projects", "task-statuses", "4"}, "/api/v1/projects/4/task_statuses"},
 		{"tasks assigned", []string{"tasks", "assigned", "--page", "1"}, "/api/v1/tasks/assigned"},
 		{"tasks visible", []string{"tasks", "visible", "--per-page", "5"}, "/api/v1/tasks"},
 		{"task show", []string{"task", "show", "99"}, "/api/v1/tasks/99"},
@@ -329,7 +327,7 @@ func TestDocumentCommandsCreateShowUpdate(t *testing.T) {
 	defer server.Close()
 
 	setUserEnv(t, server.URL)
-	if err := run([]string{"boxes", "documents", "create", "42", "--title", "Plan", "--body", `line1\nline2`}); err != nil {
+	if err := run([]string{"projects", "documents", "create", "42", "--title", "Plan", "--body", `line1\nline2`}); err != nil {
 		t.Fatalf("run document create: %v", err)
 	}
 	if err := run([]string{"document", "show", "9", "--format", "html"}); err != nil {
@@ -456,7 +454,7 @@ func TestTaskAssignMentionDerivesTeamAndUsesTeamMembers(t *testing.T) {
 		paths = append(paths, r.URL.Path)
 		switch r.URL.Path {
 		case "/api/v1/tasks/123":
-			_, _ = w.Write([]byte(`{"task":{"box":{"team":{"id":2}}}}`))
+			_, _ = w.Write([]byte(`{"task":{"project":{"team":{"id":2}}}}`))
 		case "/api/v1/teams/2/members":
 			_, _ = w.Write([]byte(`{"members":[{"user_id":42,"mention":"DanielLemky"}]}`))
 		case "/api/v1/tasks/123/assignments":
@@ -540,8 +538,8 @@ func TestTaskParticipantsListAndAddUser(t *testing.T) {
 func TestUsageErrors(t *testing.T) {
 	tests := [][]string{
 		{"team", "show"},
-		{"boxes", "tasks"},
-		{"boxes", "tasks", "1", "--status-category", "later"},
+		{"projects", "tasks"},
+		{"projects", "tasks", "1", "--status-category", "later"},
 		{"task", "messages"},
 		{"conversations", "--page"},
 		{"conversation", "show"},
@@ -553,7 +551,7 @@ func TestUsageErrors(t *testing.T) {
 	}
 }
 
-func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
+func TestProjectsFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
 	var sawVersions, sawUploadVersion, sawDownloadVersion bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
@@ -602,26 +600,26 @@ func TestBoxesFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
 	}
 	output := filepath.Join(t.TempDir(), "download.txt")
 
-	if err := run([]string{"boxes", "files", "2", "--filter", "files"}); err != nil {
+	if err := run([]string{"projects", "files", "2", "--filter", "files"}); err != nil {
 		t.Fatalf("run list: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "upload", "2", "--file", upload}); err != nil {
+	if err := run([]string{"projects", "files", "upload", "2", "--file", upload}); err != nil {
 		t.Fatalf("run upload: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "download", "2", "88", "--output", output}); err != nil {
+	if err := run([]string{"projects", "files", "download", "2", "88", "--output", output}); err != nil {
 		t.Fatalf("run download: %v", err)
 	}
 	if got, err := os.ReadFile(output); err != nil || string(got) != "user-download" {
 		t.Fatalf("download output = %q, %v", got, err)
 	}
-	if err := run([]string{"boxes", "files", "versions", "2", "88"}); err != nil {
+	if err := run([]string{"projects", "files", "versions", "2", "88"}); err != nil {
 		t.Fatalf("run versions: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "upload-version", "2", "88", "--file", upload}); err != nil {
+	if err := run([]string{"projects", "files", "upload-version", "2", "88", "--file", upload}); err != nil {
 		t.Fatalf("run upload-version: %v", err)
 	}
 	versionOutput := filepath.Join(t.TempDir(), "version.txt")
-	if err := run([]string{"boxes", "files", "download", "2", "88", "--output", versionOutput, "--version", "9"}); err != nil {
+	if err := run([]string{"projects", "files", "download", "2", "88", "--output", versionOutput, "--version", "9"}); err != nil {
 		t.Fatalf("run version download: %v", err)
 	}
 	if got, err := os.ReadFile(versionOutput); err != nil || string(got) != "user-version-download" {
@@ -678,10 +676,13 @@ func TestTaskCreatePostsJSON(t *testing.T) {
 			t.Fatalf("content type = %q", got)
 		}
 		body, _ := io.ReadAll(r.Body)
-		for _, want := range []string{`"title":"Write"`, `"project_id":"2"`, `"box_id":"2"`, `"body":"line1\nline2"`} {
+		for _, want := range []string{`"title":"Write"`, `"project_id":"2"`, `"body":"line1\nline2"`} {
 			if !strings.Contains(string(body), want) {
 				t.Fatalf("body missing %s: %s", want, body)
 			}
+		}
+		if strings.Contains(string(body), "box") {
+			t.Fatalf("body still names a box: %s", body)
 		}
 		_, _ = w.Write([]byte(`{"task":{"id":123}}`))
 	}))
@@ -690,8 +691,8 @@ func TestTaskCreatePostsJSON(t *testing.T) {
 	if err := run([]string{"task", "create", "--title", "Write", "--project", "2", "--body", `line1\nline2`}); err != nil {
 		t.Fatalf("run task create: %v", err)
 	}
-	if err := run([]string{"task", "create", "--title", "Write", "--box", "2", "--body", `line1\nline2`}); err != nil {
-		t.Fatalf("run task create --box: %v", err)
+	if err := run([]string{"task", "create", "--title", "Write", "--box", "2"}); err == nil || !strings.Contains(err.Error(), `unknown task create option "--box"`) {
+		t.Fatalf("task create --box: err = %v, want unknown option", err)
 	}
 }
 
@@ -806,8 +807,8 @@ func TestRemovedTaskStatusIDFlagsFailBeforeSending(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"boxes", "tasks", "42", "--task-status-ids", "7,8"}, "--task-status-ids was removed"},
-		{[]string{"task", "create", "--title", "T", "--box", "2", "--task-status-id", "9"}, "--task-status-id was removed"},
+		{[]string{"projects", "tasks", "42", "--task-status-ids", "7,8"}, "--task-status-ids was removed"},
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--task-status-id", "9"}, "--task-status-id was removed"},
 		{[]string{"task", "update", "5", "--task-status-id", "9"}, "--task-status-id was removed"},
 		{[]string{"discussion", "convert", "5", "--task-status-id", "9"}, "--task-status-id was removed"},
 	} {
@@ -833,7 +834,7 @@ func TestTaskCreateAndStatusSendPlanningKey(t *testing.T) {
 	defer server.Close()
 	setUserEnv(t, server.URL)
 
-	if err := run([]string{"task", "create", "--title", "Plan it", "--box", "2", "--status", "planning"}); err != nil {
+	if err := run([]string{"task", "create", "--title", "Plan it", "--project", "2", "--status", "planning"}); err != nil {
 		t.Fatalf("run task create: %v", err)
 	}
 	if err := run([]string{"task", "status", "123", "planning"}); err != nil {
@@ -863,7 +864,7 @@ func TestTaskCommandsRefuseNeedsAttentionBeforeSending(t *testing.T) {
 	}
 }
 
-func TestTaskUpdateProjectSendsProjectAndBoxIDs(t *testing.T) {
+func TestTaskUpdateProjectSendsOnlyProjectID(t *testing.T) {
 	var payloads []map[string]string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch || r.URL.Path != "/api/v1/tasks/5" {
@@ -879,14 +880,26 @@ func TestTaskUpdateProjectSendsProjectAndBoxIDs(t *testing.T) {
 	defer server.Close()
 	setUserEnv(t, server.URL)
 
-	for _, flag := range []string{"--project", "--box"} {
-		if err := run([]string{"task", "update", "5", flag, "9"}); err != nil {
-			t.Fatalf("run task update %s: %v", flag, err)
-		}
+	if err := run([]string{"task", "update", "5", "--project", "9"}); err != nil {
+		t.Fatalf("run task update --project: %v", err)
 	}
-	for _, payload := range payloads {
-		if len(payload) != 2 || payload["project_id"] != "9" || payload["box_id"] != "9" {
-			t.Fatalf("payload = %#v, want project_id and box_id 9", payload)
+	if len(payloads) != 1 || len(payloads[0]) != 1 || payloads[0]["project_id"] != "9" {
+		t.Fatalf("payloads = %#v, want only project_id 9", payloads)
+	}
+	if err := run([]string{"task", "update", "5", "--box", "9"}); err == nil || !strings.Contains(err.Error(), `unknown task update option "--box"`) {
+		t.Fatalf("task update --box: err = %v, want unknown option", err)
+	}
+	if len(payloads) != 1 {
+		t.Fatalf("task update --box sent a request")
+	}
+}
+
+// Boxes are projects with no old names left: the box commands are unknown.
+func TestBoxCommandsAreGone(t *testing.T) {
+	setUserEnv(t, "http://127.0.0.1:1")
+	for _, args := range [][]string{{"boxes"}, {"boxes", "tasks", "4"}, {"box", "show", "4"}} {
+		if err := run(args); err == nil || !strings.Contains(err.Error(), `unknown command "`+args[0]+`"`) {
+			t.Fatalf("run %v: err = %v, want unknown command", args, err)
 		}
 	}
 }

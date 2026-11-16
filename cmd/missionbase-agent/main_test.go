@@ -101,8 +101,8 @@ func TestTasksUserDueBuildsTaskListQuery(t *testing.T) {
 		if got := query.Get("due"); got != "today" {
 			t.Fatalf("due query = %q, want today", got)
 		}
-		if got := query.Get("box"); got != "2" {
-			t.Fatalf("box query = %q, want 2", got)
+		if got := query.Get("project"); got != "2" || query.Has("box") {
+			t.Fatalf("project query = %q (box %q), want only project 2", got, query.Get("box"))
 		}
 		if got := query.Get("status_category"); got != "open" {
 			t.Fatalf("status_category query = %q, want open", got)
@@ -110,8 +110,8 @@ func TestTasksUserDueBuildsTaskListQuery(t *testing.T) {
 		if got := query.Get("include_closed"); got != "true" {
 			t.Fatalf("include_closed query = %q, want true", got)
 		}
-		if got := query.Get("scheduled"); got != "future" {
-			t.Fatalf("scheduled query = %q, want future", got)
+		if query.Has("scheduled") {
+			t.Fatalf("query still sends scheduled: %s", r.URL.RawQuery)
 		}
 		if got := query.Get("page"); got != "2" {
 			t.Fatalf("page query = %q, want 2", got)
@@ -125,7 +125,7 @@ func TestTasksUserDueBuildsTaskListQuery(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"tasks", "--user", "@DanielLemky", "--due", "today", "--box", "2", "--status-category", "open", "--include-closed", "--scheduled", "future", "--page", "2", "--per-page", "25", "--json"}); err != nil {
+	if err := run([]string{"tasks", "--user", "@DanielLemky", "--due", "today", "--project", "2", "--status-category", "open", "--include-closed", "--page", "2", "--per-page", "25", "--json"}); err != nil {
 		t.Fatalf("run tasks: %v", err)
 	}
 }
@@ -167,7 +167,7 @@ func TestWorkNextGetsSelectedTaskEndpoint(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"has_work":true,"task":{"id":2420,"box":{"id":2,"name":"Missionbase","working_directory":"/workspace/missionbase"}}}`))
+		_, _ = w.Write([]byte(`{"has_work":true,"task":{"id":2420,"project":{"id":2,"name":"Missionbase","working_directory":"/workspace/missionbase"}}}`))
 	}))
 	defer server.Close()
 
@@ -407,7 +407,7 @@ func TestAgentRestoreRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestAgentBoxesAddPostsBoxIDs(t *testing.T) {
+func TestAgentProjectsAddPostsProjectIDs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
@@ -419,10 +419,8 @@ func TestAgentBoxesAddPostsBoxIDs(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		for _, key := range []string{"project_ids", "box_ids"} {
-			if got := payload[key]; len(got) != 2 || got[0] != "2" || got[1] != "3" {
-				t.Fatalf("%s = %#v", key, got)
-			}
+		if got := payload["project_ids"]; len(payload) != 1 || len(got) != 2 || got[0] != "2" || got[1] != "3" {
+			t.Fatalf("payload = %#v, want only project_ids [2 3]", payload)
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"agent":{"id":42,"slug":"fleet-worker"},"memberships":[{"status":"created"}]}`))
@@ -433,14 +431,14 @@ func TestAgentBoxesAddPostsBoxIDs(t *testing.T) {
 	if err := run([]string{"agent", "projects", "add", "fleet-worker", "--project", "2", "--project", "3"}); err != nil {
 		t.Fatalf("run agent projects add: %v", err)
 	}
-	if err := run([]string{"agent", "boxes", "add", "fleet-worker", "--box", "2", "--box-id", "3"}); err != nil {
-		t.Fatalf("run agent boxes add: %v", err)
+	if err := run([]string{"agent", "projects", "add", "fleet-worker", "--project", "2", "--project-id", "3"}); err != nil {
+		t.Fatalf("run agent projects add: %v", err)
 	}
 }
 
-func TestAgentBoxesAddRequiresBox(t *testing.T) {
-	if err := run([]string{"agent", "boxes", "add", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "at least one --project") {
-		t.Fatalf("err = %v, want box required", err)
+func TestAgentProjectsAddRequiresProject(t *testing.T) {
+	if err := run([]string{"agent", "projects", "add", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "at least one --project") {
+		t.Fatalf("err = %v, want project required", err)
 	}
 }
 
@@ -530,7 +528,7 @@ func TestAgentInstructionsActivatePatchesVersionWithoutSelectedAgent(t *testing.
 	}
 }
 
-func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
+func TestProjectsTaskStatusesGetsProjectTaskStatuses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
@@ -547,12 +545,12 @@ func TestBoxesTaskStatusesGetsBoxTaskStatuses(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "task-statuses", "2"}); err != nil {
-		t.Fatalf("run boxes task-statuses: %v", err)
+	if err := run([]string{"projects", "task-statuses", "2"}); err != nil {
+		t.Fatalf("run projects task-statuses: %v", err)
 	}
 }
 
-func TestBoxesDiscussionsGetsStandaloneDiscussions(t *testing.T) {
+func TestProjectsDiscussionsGetsStandaloneDiscussions(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
@@ -572,12 +570,12 @@ func TestBoxesDiscussionsGetsStandaloneDiscussions(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "discussions", "2", "--per-page", "10"}); err != nil {
-		t.Fatalf("run boxes discussions: %v", err)
+	if err := run([]string{"projects", "discussions", "2", "--per-page", "10"}); err != nil {
+		t.Fatalf("run projects discussions: %v", err)
 	}
 }
 
-func TestBoxesFilesGetsListAndSearchesDocuments(t *testing.T) {
+func TestProjectsFilesGetsListAndSearchesDocuments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
@@ -601,17 +599,17 @@ func TestBoxesFilesGetsListAndSearchesDocuments(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"files":[{"id":77,"title":"Runbook","type":"document","kind":"document","url":"https://dash.missionbase.app/boxes/2/files/77","fetch_id":77,"fetch_type":"document"}],"meta":{"total":1,"page":2,"per_page":25,"query":"runbook"}}`))
+		_, _ = w.Write([]byte(`{"files":[{"id":77,"title":"Runbook","type":"document","kind":"document","url":"https://dash.missionbase.app/projects/2/files/77","fetch_id":77,"fetch_type":"document"}],"meta":{"total":1,"page":2,"per_page":25,"query":"runbook"}}`))
 	}))
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "files", "2", "--query", "runbook", "--page", "2", "--per-page", "25", "--folder-id", "67"}); err != nil {
-		t.Fatalf("run boxes files: %v", err)
+	if err := run([]string{"projects", "files", "2", "--query", "runbook", "--page", "2", "--per-page", "25", "--folder-id", "67"}); err != nil {
+		t.Fatalf("run projects files: %v", err)
 	}
 }
 
-func TestBoxesFilesListWithoutFolderIDIsUnchanged(t *testing.T) {
+func TestProjectsFilesListWithoutFolderIDIsUnchanged(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s, want GET", r.Method)
@@ -627,12 +625,12 @@ func TestBoxesFilesListWithoutFolderIDIsUnchanged(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "files", "2"}); err != nil {
-		t.Fatalf("run boxes files: %v", err)
+	if err := run([]string{"projects", "files", "2"}); err != nil {
+		t.Fatalf("run projects files: %v", err)
 	}
 }
 
-func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
+func TestProjectsFilesShowUploadUpdateAndDownload(t *testing.T) {
 	var sawUpload, sawUpdate, sawDownload, sawVersions, sawUploadVersion, sawDownloadVersion bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
@@ -693,29 +691,29 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 	file := writeTextFile(t, "upload.txt", "upload-body")
 	output := filepath.Join(t.TempDir(), "download.txt")
 
-	if err := run([]string{"boxes", "files", "show", "2", "77"}); err != nil {
+	if err := run([]string{"projects", "files", "show", "2", "77"}); err != nil {
 		t.Fatalf("run show: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "upload", "2", "--file", file, "--title", "Upload", "--folder", "67"}); err != nil {
+	if err := run([]string{"projects", "files", "upload", "2", "--file", file, "--title", "Upload", "--folder", "67"}); err != nil {
 		t.Fatalf("run upload: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "update", "2", "78", "--description", "Changed"}); err != nil {
+	if err := run([]string{"projects", "files", "update", "2", "78", "--description", "Changed"}); err != nil {
 		t.Fatalf("run update: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "download", "2", "78", "--output", output}); err != nil {
+	if err := run([]string{"projects", "files", "download", "2", "78", "--output", output}); err != nil {
 		t.Fatalf("run download: %v", err)
 	}
 	if got, err := os.ReadFile(output); err != nil || string(got) != "download-body" {
 		t.Fatalf("download output = %q, %v", got, err)
 	}
-	if err := run([]string{"boxes", "files", "versions", "2", "78"}); err != nil {
+	if err := run([]string{"projects", "files", "versions", "2", "78"}); err != nil {
 		t.Fatalf("run versions: %v", err)
 	}
-	if err := run([]string{"boxes", "files", "upload-version", "2", "78", "--file", file}); err != nil {
+	if err := run([]string{"projects", "files", "upload-version", "2", "78", "--file", file}); err != nil {
 		t.Fatalf("run upload-version: %v", err)
 	}
 	versionOutput := filepath.Join(t.TempDir(), "version.txt")
-	if err := run([]string{"boxes", "files", "download", "2", "78", "--version", "5", "--output", versionOutput}); err != nil {
+	if err := run([]string{"projects", "files", "download", "2", "78", "--version", "5", "--output", versionOutput}); err != nil {
 		t.Fatalf("run version download: %v", err)
 	}
 	if got, err := os.ReadFile(versionOutput); err != nil || string(got) != "old-version-body" {
@@ -726,7 +724,7 @@ func TestBoxesFilesShowUploadUpdateAndDownload(t *testing.T) {
 	}
 }
 
-func TestBoxesFilesCreateArtifact(t *testing.T) {
+func TestProjectsFilesCreateArtifact(t *testing.T) {
 	var sawArtifact bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/projects/2/files" {
@@ -767,7 +765,7 @@ func TestBoxesFilesCreateArtifact(t *testing.T) {
 	setAgentEnv(t, server.URL)
 	file := writeTextFile(t, "artifact.html", "<button onclick=\"saveState({count:1})\">Save</button>")
 
-	if err := run([]string{"boxes", "files", "create-artifact", "2", "--file", file, "--title", "Counter", "--root"}); err != nil {
+	if err := run([]string{"projects", "files", "create-artifact", "2", "--file", file, "--title", "Counter", "--root"}); err != nil {
 		t.Fatalf("run create-artifact: %v", err)
 	}
 	if !sawArtifact {
@@ -775,7 +773,7 @@ func TestBoxesFilesCreateArtifact(t *testing.T) {
 	}
 }
 
-func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
+func TestProjectsFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
@@ -797,8 +795,8 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	}
 
 	stdout = captureStdout(t, func() {
-		if err := run([]string{"boxes", "files", "--help"}); err != nil {
-			t.Fatalf("run boxes files --help: %v", err)
+		if err := run([]string{"projects", "files", "--help"}); err != nil {
+			t.Fatalf("run projects files --help: %v", err)
 		}
 	})
 	for _, want := range []string{
@@ -809,12 +807,12 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 		"missionbase-agent projects files upload-version <project-id> <file-id> --file PATH",
 	} {
 		if !strings.Contains(stdout, want) {
-			t.Fatalf("boxes files help missing %q in:\n%s", want, stdout)
+			t.Fatalf("projects files help missing %q in:\n%s", want, stdout)
 		}
 	}
 
 	stdout = captureStdout(t, func() {
-		if err := run([]string{"boxes", "files", "upload", "--help"}); err != nil {
+		if err := run([]string{"projects", "files", "upload", "--help"}); err != nil {
 			t.Fatalf("run upload --help: %v", err)
 		}
 	})
@@ -823,7 +821,7 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	}
 
 	stdout = captureStdout(t, func() {
-		if err := run([]string{"boxes", "files", "upload-version", "--help"}); err != nil {
+		if err := run([]string{"projects", "files", "upload-version", "--help"}); err != nil {
 			t.Fatalf("run upload-version --help: %v", err)
 		}
 	})
@@ -832,7 +830,7 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	}
 
 	stdout = captureStdout(t, func() {
-		if err := run([]string{"boxes", "files", "create-artifact", "--help"}); err != nil {
+		if err := run([]string{"projects", "files", "create-artifact", "--help"}); err != nil {
 			t.Fatalf("run create-artifact --help: %v", err)
 		}
 	})
@@ -847,11 +845,11 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"show", []string{"boxes", "files", "show", "--help"}, "missionbase-agent projects files show <project-id> <file-id>"},
-		{"mkdir", []string{"boxes", "files", "mkdir", "--help"}, "missionbase-agent projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]"},
-		{"mv", []string{"boxes", "files", "mv", "--help"}, "missionbase-agent projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)"},
-		{"versions", []string{"boxes", "files", "versions", "--help"}, "missionbase-agent projects files versions <project-id> <file-id>"},
-		{"download", []string{"boxes", "files", "download", "--help"}, "missionbase-agent projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]"},
+		{"show", []string{"projects", "files", "show", "--help"}, "missionbase-agent projects files show <project-id> <file-id>"},
+		{"mkdir", []string{"projects", "files", "mkdir", "--help"}, "missionbase-agent projects files mkdir <project-id> --title TITLE [--folder FOLDER_ID|--root]"},
+		{"mv", []string{"projects", "files", "mv", "--help"}, "missionbase-agent projects files mv <project-id> <file-id> (--folder FOLDER_ID|--root)"},
+		{"versions", []string{"projects", "files", "versions", "--help"}, "missionbase-agent projects files versions <project-id> <file-id>"},
+		{"download", []string{"projects", "files", "download", "--help"}, "missionbase-agent projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]"},
 	} {
 		stdout := captureStdout(t, func() {
 			if err := run(tc.args); err != nil {
@@ -864,30 +862,30 @@ func TestBoxesFilesHelpDocumentsFolderPlacement(t *testing.T) {
 	}
 }
 
-func TestBoxesCreateHelp(t *testing.T) {
+func TestProjectsCreateHelp(t *testing.T) {
 	stdout := captureStdout(t, func() {
-		if err := run([]string{"boxes", "create", "--help"}); err != nil {
-			t.Fatalf("run boxes create --help: %v", err)
+		if err := run([]string{"projects", "create", "--help"}); err != nil {
+			t.Fatalf("run projects create --help: %v", err)
 		}
 	})
 	if !strings.Contains(stdout, "missionbase-agent projects create --name NAME --team TEAM_ID") {
-		t.Fatalf("help missing boxes create usage:\n%s", stdout)
+		t.Fatalf("help missing projects create usage:\n%s", stdout)
 	}
 }
 
-func TestBoxesFilesRequiresBoxIDAndOptionValues(t *testing.T) {
-	if err := run([]string{"boxes", "files"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects files <project-id>") {
+func TestProjectsFilesRequiresProjectIDAndOptionValues(t *testing.T) {
+	if err := run([]string{"projects", "files"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects files <project-id>") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
-	if err := run([]string{"boxes", "files", "2", "--query"}); err == nil || !strings.Contains(err.Error(), "--query requires a value") {
+	if err := run([]string{"projects", "files", "2", "--query"}); err == nil || !strings.Contains(err.Error(), "--query requires a value") {
 		t.Fatalf("err = %v, want query value error", err)
 	}
-	if err := run([]string{"boxes", "files", "2", "--folder-id"}); err == nil || !strings.Contains(err.Error(), "--folder-id requires a value") {
+	if err := run([]string{"projects", "files", "2", "--folder-id"}); err == nil || !strings.Contains(err.Error(), "--folder-id requires a value") {
 		t.Fatalf("err = %v, want folder-id value error", err)
 	}
 }
 
-func TestBoxesCreatePostsTeamBox(t *testing.T) {
+func TestProjectsCreatePostsTeamProject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
@@ -911,36 +909,36 @@ func TestBoxesCreatePostsTeamBox(t *testing.T) {
 			}
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"box":{"id":8,"name":"Delivery"}}`))
+		_, _ = w.Write([]byte(`{"project":{"id":8,"name":"Delivery"}}`))
 	}))
 	defer server.Close()
 
 	descriptionFile := writeTextFile(t, "description.md", `Line 1\nLine 2`)
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "create", "--name", "Delivery", "--team", "42", "--description-file", descriptionFile, "--kind", "project", "--status", "in_progress", "--visibility", "team"}); err != nil {
-		t.Fatalf("run boxes create: %v", err)
+	if err := run([]string{"projects", "create", "--name", "Delivery", "--team", "42", "--description-file", descriptionFile, "--kind", "project", "--status", "in_progress", "--visibility", "team"}); err != nil {
+		t.Fatalf("run projects create: %v", err)
 	}
 }
 
-func TestBoxesCreateValidatesRequiredOptions(t *testing.T) {
-	if err := run([]string{"boxes", "create", "--team", "42"}); err == nil || !strings.Contains(err.Error(), "--name is required") {
+func TestProjectsCreateValidatesRequiredOptions(t *testing.T) {
+	if err := run([]string{"projects", "create", "--team", "42"}); err == nil || !strings.Contains(err.Error(), "--name is required") {
 		t.Fatalf("err = %v, want name required", err)
 	}
-	if err := run([]string{"boxes", "create", "--name", "Delivery"}); err == nil || !strings.Contains(err.Error(), "--team is required") {
+	if err := run([]string{"projects", "create", "--name", "Delivery"}); err == nil || !strings.Contains(err.Error(), "--team is required") {
 		t.Fatalf("err = %v, want team required", err)
 	}
-	if err := run([]string{"boxes", "create", "--name", "Delivery", "--team", "42", "--description", "inline"}); err == nil || !strings.Contains(err.Error(), "use --description-file PATH") {
+	if err := run([]string{"projects", "create", "--name", "Delivery", "--team", "42", "--description", "inline"}); err == nil || !strings.Contains(err.Error(), "use --description-file PATH") {
 		t.Fatalf("err = %v, want description-file guidance", err)
 	}
 }
 
-func TestBoxesDiscussionsRequiresBoxID(t *testing.T) {
-	if err := run([]string{"boxes", "discussions"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects discussions <project-id>") {
+func TestProjectsDiscussionsRequiresProjectID(t *testing.T) {
+	if err := run([]string{"projects", "discussions"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects discussions <project-id>") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
 }
 
-func TestBoxesDiscussionsCreatePostsDiscussion(t *testing.T) {
+func TestProjectsDiscussionsCreatePostsDiscussion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
@@ -962,31 +960,31 @@ func TestBoxesDiscussionsCreatePostsDiscussion(t *testing.T) {
 			t.Fatalf("body = %q, want real multiline body", got)
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"discussion":{"id":8,"title":"Planning","box_id":2}}`))
+		_, _ = w.Write([]byte(`{"discussion":{"id":8,"title":"Planning","project_id":2}}`))
 	}))
 	defer server.Close()
 
 	bodyFile := writeTextFile(t, "discussion.md", `Line 1\nLine 2`)
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "discussions", "create", "2", "--title", "Planning", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("run boxes discussions create: %v", err)
+	if err := run([]string{"projects", "discussions", "create", "2", "--title", "Planning", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("run projects discussions create: %v", err)
 	}
 }
 
-func TestBoxesDiscussionsCreateRequiresTitleAndBody(t *testing.T) {
+func TestProjectsDiscussionsCreateRequiresTitleAndBody(t *testing.T) {
 	bodyFile := writeTextFile(t, "discussion.md", "Body")
-	if err := run([]string{"boxes", "discussions", "create", "2", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--title is required") {
+	if err := run([]string{"projects", "discussions", "create", "2", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--title is required") {
 		t.Fatalf("err = %v, want title required", err)
 	}
-	if err := run([]string{"boxes", "discussions", "create", "2", "--title", "Title"}); err == nil || !strings.Contains(err.Error(), "--body is required") {
+	if err := run([]string{"projects", "discussions", "create", "2", "--title", "Title"}); err == nil || !strings.Contains(err.Error(), "--body is required") {
 		t.Fatalf("err = %v, want body required", err)
 	}
 }
 
-func TestBoxesStatusesAliasGetsBoxTaskStatuses(t *testing.T) {
+func TestProjectsStatusesAliasGetsProjectTaskStatuses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/projects/box-2/task_statuses" {
-			t.Fatalf("path = %s, want /api/v1/projects/box-2/task_statuses", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects/project-2/task_statuses" {
+			t.Fatalf("path = %s, want /api/v1/projects/project-2/task_statuses", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"task_statuses":[]}`))
@@ -994,13 +992,13 @@ func TestBoxesStatusesAliasGetsBoxTaskStatuses(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"boxes", "statuses", "box-2"}); err != nil {
-		t.Fatalf("run boxes statuses: %v", err)
+	if err := run([]string{"projects", "statuses", "project-2"}); err != nil {
+		t.Fatalf("run projects statuses: %v", err)
 	}
 }
 
-func TestBoxesTaskStatusesRequiresBoxID(t *testing.T) {
-	if err := run([]string{"boxes", "task-statuses"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects task-statuses <project-id>") {
+func TestProjectsTaskStatusesRequiresProjectID(t *testing.T) {
+	if err := run([]string{"projects", "task-statuses"}); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent projects task-statuses <project-id>") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
 }
@@ -1483,7 +1481,7 @@ func TestTaskCreateReadsMarkdownBodyFile(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "With body", "--box", "2", "--assign-agent", "missionbase-dev", "--body-file", bodyFile}); err != nil {
+	if err := run([]string{"task", "create", "--title", "With body", "--project", "2", "--assign-agent", "missionbase-dev", "--body-file", bodyFile}); err != nil {
 		t.Fatalf("run task create with body file: %v", err)
 	}
 }
@@ -1500,8 +1498,11 @@ func TestTaskCreateWithoutAssigneePostsUnassignedPayload(t *testing.T) {
 		if payload["title"] != "Unassigned" {
 			t.Fatalf("title = %q, want Unassigned", payload["title"])
 		}
-		if payload["box_id"] != "2" {
-			t.Fatalf("box_id = %q, want 2", payload["box_id"])
+		if payload["project_id"] != "2" {
+			t.Fatalf("project_id = %q, want 2", payload["project_id"])
+		}
+		if _, ok := payload["box_id"]; ok {
+			t.Fatalf("box_id unexpectedly present in payload: %#v", payload)
 		}
 		if _, ok := payload["assign_to_agent_slug"]; ok {
 			t.Fatalf("assign_to_agent_slug unexpectedly present in payload: %#v", payload)
@@ -1515,7 +1516,7 @@ func TestTaskCreateWithoutAssigneePostsUnassignedPayload(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "Unassigned", "--box", "2"}); err != nil {
+	if err := run([]string{"task", "create", "--title", "Unassigned", "--project", "2"}); err != nil {
 		t.Fatalf("run task create without assignee: %v", err)
 	}
 }
@@ -1535,41 +1536,13 @@ func TestTaskCreateWithDeadlinePostsDeadline(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "With deadline", "--box", "2", "--deadline", "2026-07-15"}); err != nil {
+	if err := run([]string{"task", "create", "--title", "With deadline", "--project", "2", "--deadline", "2026-07-15"}); err != nil {
 		t.Fatalf("run task create with deadline: %v", err)
 	}
 }
 
-func TestTaskCreateWithScheduledAtPostsScheduledAt(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if payload["scheduled_at"] != "2026-07-15T09:30:00-04:00" {
-			t.Fatalf("scheduled_at = %q, want timestamp", payload["scheduled_at"])
-		}
-		if _, ok := payload["deadline"]; ok {
-			t.Fatalf("deadline unexpectedly present: %#v", payload)
-		}
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"task":{"id":992,"scheduled_at":"2026-07-15T13:30:00Z"}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	stdout := captureStdout(t, func() {
-		if err := run([]string{"task", "create", "--title", "Scheduled", "--box", "2", "--scheduled-at", "2026-07-15T09:30:00-04:00"}); err != nil {
-			t.Fatalf("run task create with scheduled_at: %v", err)
-		}
-	})
-	if !strings.Contains(stdout, `"scheduled_at":"2026-07-15T13:30:00Z"`) {
-		t.Fatalf("stdout missing scheduled_at: %s", stdout)
-	}
-}
-
 func TestTaskCreateRejectsInvalidDeadline(t *testing.T) {
-	if err := run([]string{"task", "create", "--title", "Bad deadline", "--box", "2", "--deadline", "2026-99-99"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
+	if err := run([]string{"task", "create", "--title", "Bad deadline", "--project", "2", "--deadline", "2026-99-99"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
 		t.Fatalf("err = %v, want invalid deadline error", err)
 	}
 }
@@ -1653,61 +1626,6 @@ func TestTaskUpdateNoDeadlinePatchesNullDeadline(t *testing.T) {
 	}
 }
 
-func TestTaskUpdateScheduledAtPatchesScheduledAtWithoutDeadline(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if payload["scheduled_at"] != "2026-07-15 09:30" {
-			t.Fatalf("scheduled_at = %#v, want datetime", payload["scheduled_at"])
-		}
-		if _, ok := payload["deadline"]; ok {
-			t.Fatalf("deadline unexpectedly present: %#v", payload)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task":{"id":123,"scheduled_at":"2026-07-15T13:30:00Z"}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	stdout := captureStdout(t, func() {
-		if err := run([]string{"task", "update", "123", "--scheduled-at", "2026-07-15 09:30"}); err != nil {
-			t.Fatalf("run task update --scheduled-at: %v", err)
-		}
-	})
-	if !strings.Contains(stdout, `"scheduled_at":"2026-07-15T13:30:00Z"`) {
-		t.Fatalf("stdout missing scheduled_at: %s", stdout)
-	}
-}
-
-func TestTaskUpdateNoScheduledAtPatchesNullScheduledAt(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		value, ok := payload["scheduled_at"]
-		if !ok {
-			t.Fatalf("scheduled_at key missing from payload: %#v", payload)
-		}
-		if value != nil {
-			t.Fatalf("scheduled_at = %#v, want nil", value)
-		}
-		if _, ok := payload["deadline"]; ok {
-			t.Fatalf("deadline unexpectedly present: %#v", payload)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task":{"id":123,"scheduled_at":null}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "update", "123", "--no-scheduled-at"}); err != nil {
-		t.Fatalf("run task update --no-scheduled-at: %v", err)
-	}
-}
-
 func TestTaskUpdateRejectsInvalidDeadline(t *testing.T) {
 	if err := run([]string{"task", "update", "123", "--deadline", "not-a-date"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
 		t.Fatalf("err = %v, want invalid deadline error", err)
@@ -1720,19 +1638,38 @@ func TestTaskUpdateRejectsDeadlineAndNoDeadline(t *testing.T) {
 	}
 }
 
-func TestTaskUpdateRejectsScheduledAtAndNoScheduledAt(t *testing.T) {
-	if err := run([]string{"task", "update", "123", "--scheduled-at", "2026-07-15 09:30", "--no-scheduled-at"}); err == nil || !strings.Contains(err.Error(), "use only one of --scheduled-at or --no-scheduled-at") {
-		t.Fatalf("err = %v, want mutually exclusive scheduled_at error", err)
-	}
-}
-
-func TestTaskHelpDocumentsDeadlineAndSchedulingOptions(t *testing.T) {
+func TestTaskHelpDocumentsDeadlineOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline or recurrence", "--title TITLE", "--deadline YYYY-MM-DD", "--no-deadline"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(strings.ToLower(stdout), "schedul") {
+		t.Fatalf("help still mentions task scheduling:\n%s", stdout)
+	}
+}
+
+// Task scheduling is retired (the API answers its params with 422): the flags are unknown and
+// nothing is sent.
+func TestSchedulingFlagsAreRejectedBeforeSending(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1") // nothing listens: any request would fail differently
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--scheduled-at", "2026-07-15T09:30:00Z"}, `"--scheduled-at"`},
+		{[]string{"task", "update", "123", "--scheduled-at", "2026-07-15 09:30"}, `unknown task update option "--scheduled-at"`},
+		{[]string{"task", "update", "123", "--no-scheduled-at"}, `unknown task update option "--no-scheduled-at"`},
+		{[]string{"task", "update", "123", "--clear-scheduled-at"}, `unknown task update option "--clear-scheduled-at"`},
+		{[]string{"tasks", "--user", "@DanielLemky", "--scheduled", "future"}, `unknown tasks option "--scheduled"`},
+		{[]string{"projects", "tasks", "2", "--scheduled", "all"}, `"--scheduled"`},
+	} {
+		err := run(tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), "127.0.0.1") {
+			t.Fatalf("%v: err = %v, want %s rejected before sending", tc.args, err, tc.want)
 		}
 	}
 }
@@ -1752,22 +1689,22 @@ func TestTaskCreatePreservesAssignedAgentPayload(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "Assigned", "--box", "2", "--assign-agent", "missionbase-dev"}); err != nil {
+	if err := run([]string{"task", "create", "--title", "Assigned", "--project", "2", "--assign-agent", "missionbase-dev"}); err != nil {
 		t.Fatalf("run assigned task create: %v", err)
 	}
 }
 
 func TestTaskCreateRejectsBothAgentAndUserAssignment(t *testing.T) {
-	if err := run([]string{"task", "create", "--title", "Both", "--box", "2", "--assign-agent", "missionbase-dev", "--assign-user", "42"}); err == nil || !strings.Contains(err.Error(), "use only one of --assign-agent or --assign-user") {
+	if err := run([]string{"task", "create", "--title", "Both", "--project", "2", "--assign-agent", "missionbase-dev", "--assign-user", "42"}); err == nil || !strings.Contains(err.Error(), "use only one of --assign-agent or --assign-user") {
 		t.Fatalf("err = %v, want mutually exclusive assignment error", err)
 	}
 }
 
 func TestTaskCreateRejectsInlineBodyAndStdin(t *testing.T) {
-	if err := run([]string{"task", "create", "--title", "Inline", "--box", "2", "--assign-agent", "missionbase-dev", "--body", "inline"}); err == nil || !strings.Contains(err.Error(), "--body is not supported") {
+	if err := run([]string{"task", "create", "--title", "Inline", "--project", "2", "--assign-agent", "missionbase-dev", "--body", "inline"}); err == nil || !strings.Contains(err.Error(), "--body is not supported") {
 		t.Fatalf("err = %v, want inline body unsupported", err)
 	}
-	if err := run([]string{"task", "create", "--title", "Stdin", "--box", "2", "--assign-agent", "missionbase-dev", "--body-stdin"}); err == nil || !strings.Contains(err.Error(), "--body-stdin is not supported") {
+	if err := run([]string{"task", "create", "--title", "Stdin", "--project", "2", "--assign-agent", "missionbase-dev", "--body-stdin"}); err == nil || !strings.Contains(err.Error(), "--body-stdin is not supported") {
 		t.Fatalf("err = %v, want body stdin unsupported", err)
 	}
 }
@@ -1796,7 +1733,7 @@ func TestTaskCreatePostsMultipartAttachmentAndBlob(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "With attachment", "--box", "2", "--assign-agent", "missionbase-dev", "--attach", attachment, "--attach-blob", "signed123"}); err != nil {
+	if err := run([]string{"task", "create", "--title", "With attachment", "--project", "2", "--assign-agent", "missionbase-dev", "--attach", attachment, "--attach-blob", "signed123"}); err != nil {
 		t.Fatalf("run task create with attachment: %v", err)
 	}
 }
@@ -1823,7 +1760,7 @@ func TestTaskCreatePostsHEICMultipartAttachment(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "create", "--title", "With HEIC attachment", "--box", "2", "--assign-agent", "missionbase-dev", "--attach", attachment}); err != nil {
+	if err := run([]string{"task", "create", "--title", "With HEIC attachment", "--project", "2", "--assign-agent", "missionbase-dev", "--attach", attachment}); err != nil {
 		t.Fatalf("run task create with HEIC attachment: %v", err)
 	}
 }
@@ -1843,7 +1780,7 @@ func TestDocumentShowGetsMarkdownByDefault(t *testing.T) {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"document":{"id":77,"format":"markdown","url":"https://dash.missionbase.app/boxes/2/files/77","body":"# Heading\n\nBody"}}`))
+		_, _ = w.Write([]byte(`{"document":{"id":77,"format":"markdown","url":"https://dash.missionbase.app/projects/2/files/77","body":"# Heading\n\nBody"}}`))
 	}))
 	defer server.Close()
 
@@ -1859,7 +1796,7 @@ func TestDocumentShowGetsMarkdownByDefault(t *testing.T) {
 	if stdout != "# Heading\n\nBody\n" {
 		t.Fatalf("stdout = %q", stdout)
 	}
-	if !strings.Contains(stderr, "Document URL: https://dash.missionbase.app/boxes/2/files/77") {
+	if !strings.Contains(stderr, "Document URL: https://dash.missionbase.app/projects/2/files/77") {
 		t.Fatalf("stderr = %q, want document URL", stderr)
 	}
 }
@@ -1956,18 +1893,18 @@ func TestDocumentCreatePostsFileBody(t *testing.T) {
 			t.Fatalf("folder_id = %q, want 67", payload["folder_id"])
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","url":"https://dash.missionbase.app/boxes/2/files/77","box_file_id":88,"parent_folder_id":67,"version_count":1}}`))
+		_, _ = w.Write([]byte(`{"document":{"id":77,"title":"Runbook","url":"https://dash.missionbase.app/projects/2/files/77","box_file_id":88,"parent_folder_id":67,"version_count":1}}`))
 	}))
 	defer server.Close()
 
 	bodyFile := writeTextFile(t, "document.md", "# Heading\n\nLine 2")
 	setAgentEnv(t, server.URL)
 	stdout := captureStdout(t, func() {
-		if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile, "--folder", "67"}); err != nil {
+		if err := run([]string{"document", "create", "--project", "2", "--title", "Runbook", "--body-file", bodyFile, "--folder", "67"}); err != nil {
 			t.Fatalf("run document create: %v", err)
 		}
 	})
-	if !strings.Contains(stdout, `"url":"https://dash.missionbase.app/boxes/2/files/77"`) {
+	if !strings.Contains(stdout, `"url":"https://dash.missionbase.app/projects/2/files/77"`) {
 		t.Fatalf("stdout = %q, want document url", stdout)
 	}
 	if !strings.Contains(stdout, `"box_file_id":88`) || !strings.Contains(stdout, `"parent_folder_id":67`) {
@@ -1991,14 +1928,14 @@ func TestDocumentCreateRootPlacement(t *testing.T) {
 
 	bodyFile := writeTextFile(t, "document.md", "Body")
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile, "--root"}); err != nil {
+	if err := run([]string{"document", "create", "--project", "2", "--title", "Runbook", "--body-file", bodyFile, "--root"}); err != nil {
 		t.Fatalf("run document create: %v", err)
 	}
 }
 
 func TestDocumentCreateRejectsFolderAndRootTogether(t *testing.T) {
 	bodyFile := writeTextFile(t, "document.md", "Body")
-	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body-file", bodyFile, "--folder", "67", "--root"}); err == nil || !strings.Contains(err.Error(), "use only one of --folder or --root") {
+	if err := run([]string{"document", "create", "--project", "2", "--title", "Runbook", "--body-file", bodyFile, "--folder", "67", "--root"}); err == nil || !strings.Contains(err.Error(), "use only one of --folder or --root") {
 		t.Fatalf("err = %v, want mutually exclusive folder/root", err)
 	}
 }
@@ -2030,7 +1967,7 @@ func TestDocumentEditPatchesFileBody(t *testing.T) {
 	}
 }
 
-func TestTaskMovePatchesBoxID(t *testing.T) {
+func TestTaskMovePatchesProjectID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch {
 			t.Fatalf("method = %s, want PATCH", r.Method)
@@ -2042,11 +1979,11 @@ func TestTaskMovePatchesBoxID(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		if payload["project_id"] != "42" || payload["box_id"] != "42" {
-			t.Fatalf("payload = %#v, want project_id and box_id 42", payload)
+		if len(payload) != 1 || payload["project_id"] != "42" {
+			t.Fatalf("payload = %#v, want only project_id 42", payload)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task":{"id":123,"box":{"id":42}}}`))
+		_, _ = w.Write([]byte(`{"task":{"id":123,"project":{"id":42}}}`))
 	}))
 	defer server.Close()
 
@@ -2054,12 +1991,12 @@ func TestTaskMovePatchesBoxID(t *testing.T) {
 	if err := run([]string{"task", "move", "123", "--project", "42"}); err != nil {
 		t.Fatalf("run task move: %v", err)
 	}
-	if err := run([]string{"task", "move", "123", "--box", "42"}); err != nil {
-		t.Fatalf("run task move --box: %v", err)
+	if err := run([]string{"task", "move", "123", "--project-id", "42"}); err != nil {
+		t.Fatalf("run task move --project-id: %v", err)
 	}
 }
 
-func TestTaskMoveRequiresBox(t *testing.T) {
+func TestTaskMoveRequiresProject(t *testing.T) {
 	if err := run([]string{"task", "move", "123"}); err == nil || !strings.Contains(err.Error(), "task move <task-id> --project PROJECT_ID") {
 		t.Fatalf("err = %v, want usage error", err)
 	}
@@ -2070,10 +2007,10 @@ func TestTaskMoveRequiresBox(t *testing.T) {
 
 func TestDocumentCommandsRequireFileBody(t *testing.T) {
 	bodyFile := writeTextFile(t, "document.md", "Body")
-	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook", "--body", "Body"}); err == nil || !strings.Contains(err.Error(), "use --body-file PATH") {
+	if err := run([]string{"document", "create", "--project", "2", "--title", "Runbook", "--body", "Body"}); err == nil || !strings.Contains(err.Error(), "use --body-file PATH") {
 		t.Fatalf("err = %v, want body-file error", err)
 	}
-	if err := run([]string{"document", "create", "--box", "2", "--title", "Runbook"}); err == nil || !strings.Contains(err.Error(), "--body is required") {
+	if err := run([]string{"document", "create", "--project", "2", "--title", "Runbook"}); err == nil || !strings.Contains(err.Error(), "--body is required") {
 		t.Fatalf("err = %v, want body required", err)
 	}
 	if err := run([]string{"document", "create", "--title", "Runbook", "--body-file", bodyFile}); err == nil || !strings.Contains(err.Error(), "--project is required") {
@@ -2167,7 +2104,7 @@ func TestSidebarCommandsUseAgentEndpointWithTargetUser(t *testing.T) {
 	}
 }
 
-func TestActivityCommandBuildsBoxQueryAndPrintsSummary(t *testing.T) {
+func TestActivityCommandBuildsProjectQueryAndPrintsSummary(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "missionbase-dev" {
 			t.Fatalf("agent slug header = %q, want missionbase-dev", got)
@@ -2192,14 +2129,14 @@ func TestActivityCommandBuildsBoxQueryAndPrintsSummary(t *testing.T) {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"activity_events":[{"id":100,"actor":{"type":"Agent","id":2,"name":"MissionbaseDev"},"scope":{"box":{"type":"Box","id":2,"name":"Missionbase"}},"subject":{"type":"Task","id":2902,"name":"Expose activity logging"},"action":"task.updated","timestamp":"2026-07-02T17:00:00Z","summary":"MissionbaseDev updated task 2902","source":"agent","metadata":{"field":"status"},"route":{"url":"https://dash.missionbase.app/tasks/2902"}}],"next_cursor":100}`))
+		_, _ = w.Write([]byte(`{"activity_events":[{"id":100,"actor":{"type":"Agent","id":2,"name":"MissionbaseDev"},"scope":{"project":{"type":"Box","id":2,"name":"Missionbase"}},"subject":{"type":"Task","id":2902,"name":"Expose activity logging"},"action":"task.updated","timestamp":"2026-07-02T17:00:00Z","summary":"MissionbaseDev updated task 2902","source":"agent","metadata":{"field":"status"},"route":{"url":"https://dash.missionbase.app/tasks/2902"}}],"next_cursor":100}`))
 	}))
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
 	stdout := captureStdout(t, func() {
-		if err := run([]string{"activity", "box", "2", "--since", "2026-07-01T00:00:00Z", "--until", "2026-07-02T00:00:00Z", "--actor", "Agent:2", "--subject-type", "Task", "--subject-id", "2902", "--action", "task.updated", "--cursor", "99", "--limit", "5"}); err != nil {
-			t.Fatalf("run activity box: %v", err)
+		if err := run([]string{"activity", "project", "2", "--since", "2026-07-01T00:00:00Z", "--until", "2026-07-02T00:00:00Z", "--actor", "Agent:2", "--subject-type", "Task", "--subject-id", "2902", "--action", "task.updated", "--cursor", "99", "--limit", "5"}); err != nil {
+			t.Fatalf("run activity project: %v", err)
 		}
 	})
 	for _, want := range []string{"2026-07-02T17:00:00Z", "Box #2 Missionbase", "Agent #2 MissionbaseDev", "task.updated", "Task #2902 Expose activity logging", "MissionbaseDev updated task 2902", "metadata:", "Next cursor: 100"} {
@@ -2209,7 +2146,7 @@ func TestActivityCommandBuildsBoxQueryAndPrintsSummary(t *testing.T) {
 	}
 }
 
-func TestBoxesActivityAliasAndJSONOutput(t *testing.T) {
+func TestProjectsActivityAliasAndJSONOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/projects/2/activity_events" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.String())
@@ -2224,8 +2161,8 @@ func TestBoxesActivityAliasAndJSONOutput(t *testing.T) {
 
 	setAgentEnv(t, server.URL)
 	stdout := captureStdout(t, func() {
-		if err := run([]string{"boxes", "activity", "2", "--limit", "1", "--json"}); err != nil {
-			t.Fatalf("run boxes activity: %v", err)
+		if err := run([]string{"projects", "activity", "2", "--limit", "1", "--json"}); err != nil {
+			t.Fatalf("run projects activity: %v", err)
 		}
 	})
 	if !strings.Contains(stdout, `"activity_events":[]`) {
@@ -2411,7 +2348,7 @@ func TestRemovedTaskStatusIDFlagsFailBeforeSending(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"boxes", "tasks", "2", "--task-status-ids", "7,8"}, "--task-status-ids was removed"},
+		{[]string{"projects", "tasks", "2", "--task-status-ids", "7,8"}, "--task-status-ids was removed"},
 		{[]string{"discussion", "convert", "5", "--task-status-id", "9"}, "--task-status-id was removed"},
 	} {
 		err := run(tc.args)

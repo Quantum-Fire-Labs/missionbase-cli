@@ -38,7 +38,7 @@ func TestNotesShowSaysWhenThereAreNoNotes(t *testing.T) {
 	})
 	setAgentEnv(t, server.URL)
 
-	out, err := runCapture(t, "boxes", "notes", "show", "7")
+	out, err := runCapture(t, "projects", "notes", "show", "7")
 	if err != nil || out != "(no notes yet)\n" {
 		t.Fatalf("out = %q, err = %v", out, err)
 	}

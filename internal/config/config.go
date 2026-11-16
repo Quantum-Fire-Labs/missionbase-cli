@@ -15,7 +15,7 @@ type Config struct {
 	Token     string `json:"token"`
 	AgentSlug string `json:"agent_slug,omitempty"`
 	PiHost    string `json:"pi_host,omitempty"`
-	// DefaultProject is this machine's fallback project (box id) for agent
+	// DefaultProject is this machine's fallback project (project id) for agent
 	// commands that resolve "here". Only read from the agent credentials file.
 	DefaultProject string `json:"default_project,omitempty"`
 }
@@ -147,7 +147,7 @@ func loadFromPath(path string) (Config, error) {
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		// Older Missionbase CLI credentials were stored as a plain token.
-		// Preserve compatibility so existing agent boxes keep working after upgrading.
+		// Preserve compatibility so existing agent machines keep working after upgrading.
 		cfg.Token = strings.TrimSpace(string(data))
 		return cfg, nil
 	}
