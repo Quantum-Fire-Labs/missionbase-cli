@@ -2721,7 +2721,7 @@ func withoutJSONFlag(args []string) (rest []string, found bool) {
 }
 
 func taskUpdate(args []string) error {
-	usage := "usage: missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]"
+	usage := "usage: missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--recurring not|daily|weekdays|weekly|bi_weekly|monthly]"
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(usage)
 		return nil
@@ -2771,6 +2771,16 @@ func taskUpdate(args []string) error {
 		case "--no-deadline":
 			payload["deadline"] = nil
 			deadlineCleared = true
+		case "--recurring":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--recurring requires a value: %s", strings.Join(recurringValues, ", "))
+			}
+			recurring, err := validateRecurring(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["recurring"] = recurring
+			i++
 		case "--help", "-h":
 			fmt.Println(usage)
 			return nil
@@ -2783,7 +2793,7 @@ func taskUpdate(args []string) error {
 		return fmt.Errorf("use only one of --deadline or --no-deadline")
 	}
 	if len(payload) == 0 {
-		return fmt.Errorf("one of --title, --body-file, --deadline or --no-deadline is required")
+		return fmt.Errorf("one of --title, --body-file, --deadline, --no-deadline or --recurring is required")
 	}
 
 	body, err := json.Marshal(payload)
@@ -2791,6 +2801,19 @@ func taskUpdate(args []string) error {
 		return err
 	}
 	return apiPatch("/api/v1/tasks/"+url.PathEscape(taskID), body)
+}
+
+// recurringValues are the task recurrences the API takes; "not" means no recurrence.
+var recurringValues = []string{"not", "daily", "weekdays", "weekly", "bi_weekly", "monthly"}
+
+func validateRecurring(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	for _, v := range recurringValues {
+		if value == v {
+			return value, nil
+		}
+	}
+	return "", fmt.Errorf("--recurring must be one of: %s; got %q", strings.Join(recurringValues, ", "), value)
 }
 
 func validateDeadline(value string) (string, error) {
@@ -2995,7 +3018,7 @@ func taskComplete(args []string) error {
 	return apiPatch("/api/v1/tasks/"+url.PathEscape(args[0])+"/complete", nil)
 }
 
-const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
+const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
        missionbase-agent task create --title TITLE ... --start [--terminal [machine/]tN] [--force] [--json]`
 
 func taskCreate(args []string) error {
@@ -3052,6 +3075,16 @@ func taskCreate(args []string) error {
 				return err
 			}
 			payload["deadline"] = deadline
+			i++
+		case "--recurring":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--recurring requires a value: %s", strings.Join(recurringValues, ", "))
+			}
+			recurring, err := validateRecurring(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["recurring"] = recurring
 			i++
 		case "--status":
 			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
@@ -3995,7 +4028,7 @@ Commands:
   week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
   task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
   task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD]
-      [--assign-agent slug | --assign-user ID|@mention]
+      [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention]
       [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
       [--start [--terminal [machine/]tN] [--force]] [--json]
                                       Create a task and print the created task JSON. The project resolves
@@ -4005,9 +4038,13 @@ Commands:
                                       not_doing; default todo). --start then starts work on it like task
                                       start (default terminal $HC_TERMINAL_ID; --status is ignored) and
                                       prints the task start --json response; exit 3 if it's running
-                                      elsewhere, 4 if hc can't resolve the terminal (nothing is created)
+                                      elsewhere, 4 if hc can't resolve the terminal (nothing is created).
+                                      --recurring makes completing the task create the next one; a deadline
+                                      is optional (the next one's moves by the interval)
   task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
-                                      Update task title, description or deadline and print the updated task JSON
+      [--recurring not|daily|weekdays|weekly|bi_weekly|monthly]
+                                      Update task title, description, deadline or recurrence and print the
+                                      updated task JSON. --recurring not stops it recurring
   task assign <task-id> --user ID|@mention
                                       Assign an existing task to a user
   task assign <task-id> --agent slug  Assign an existing task to an agent

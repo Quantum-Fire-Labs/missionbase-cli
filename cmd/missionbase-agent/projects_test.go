@@ -553,3 +553,65 @@ func TestProjectsUpdateReportsServerErrors(t *testing.T) {
 		}
 	}
 }
+
+// ---- recurring ----
+
+func TestTaskRecurringSendsTheValue(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"POST /api/v1/tasks":    fixed(201, `{"task":{"id":1,"recurring":"weekly"}}`),
+		"PATCH /api/v1/tasks/1": fixed(200, `{"task":{"id":1,"recurring":null}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "task", "create", "--title", "Standup", "--project", "7", "--recurring", "weekly")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"recurring":"weekly"`) {
+		t.Fatalf("out = %q, want the server's recurring", out)
+	}
+	for _, value := range []string{"daily", "weekdays", "bi_weekly", "monthly", "not"} {
+		if _, err := runCapture(t, "task", "update", "1", "--recurring", value); err != nil {
+			t.Fatalf("--recurring %s: %v", value, err)
+		}
+	}
+	reqs := *requests
+	if len(reqs) != 6 {
+		t.Fatalf("requests = %#v", reqs)
+	}
+	if p := reqs[0].payload; p["recurring"] != "weekly" || p["deadline"] != nil || p["project_id"] != "7" {
+		t.Fatalf("create payload = %#v, want recurring weekly and no deadline", p)
+	}
+	for i, value := range []string{"daily", "weekdays", "bi_weekly", "monthly", "not"} {
+		if p := reqs[i+1].payload; len(p) != 1 || p["recurring"] != value {
+			t.Fatalf("update payload = %#v, want only recurring %s", p, value)
+		}
+	}
+}
+
+func TestTaskRecurringRejectsBadValuesBeforeSending(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1") // nothing listens: any request would fail differently
+	for _, args := range [][]string{
+		{"task", "create", "--title", "T", "--project", "7", "--recurring", "yearly"},
+		{"task", "update", "1", "--recurring", "Weekly"},
+		{"task", "update", "1", "--recurring", "biweekly"},
+		{"task", "update", "1", "--recurring", ""},
+		{"task", "update", "1", "--recurring"},
+		{"task", "create", "--title", "T", "--project", "7", "--recurring"},
+	} {
+		_, err := runCapture(t, args...)
+		if err == nil || !strings.Contains(err.Error(), "--recurring") || strings.Contains(err.Error(), "127.0.0.1") || exitCodeFor(err) == 0 {
+			t.Fatalf("%v: err = %v, want a --recurring error before sending", args, err)
+		}
+	}
+}
+
+func TestTaskHelpDocumentsRecurring(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1")
+	for _, args := range [][]string{{"task", "create", "--help"}, {"task", "update", "--help"}, {"help"}} {
+		out, err := runCapture(t, args...)
+		if err != nil || !strings.Contains(out, "--recurring") || !strings.Contains(out, "bi_weekly") {
+			t.Fatalf("%v: out = %q, err = %v", args, out, err)
+		}
+	}
+}

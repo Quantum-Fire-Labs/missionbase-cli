@@ -431,11 +431,12 @@ missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention>
 missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaults to current week
 missionbase-agent task show <task-id> [--json] # task show/create/update/message/assign/unassign/status/move/complete/messages/participants always print JSON; --json is accepted
-missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
+missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
 missionbase-agent task update <task-id> --title "New task title"
 missionbase-agent task update <task-id> --body-file /tmp/description.md # replaces the task description
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
+missionbase-agent task update <task-id> --recurring weekly # not|daily|weekdays|weekly|bi_weekly|monthly; not stops it
 missionbase-agent task assign <task-id> --user <user-id-or-mention>
 missionbase-agent task assign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --user <user-id-or-mention>
@@ -537,6 +538,8 @@ missionbase-agent task create --cwd ~/Projects/other-repo --title "Fix the flaky
 ```
 
 `missionbase-agent task create --status KEY` sets the new task's status: `backlog`, `planning`, `todo`, `in_progress`, `complete` or `not_doing` (without it, To Do). The server checks the key and the CLI shows its error for an unknown one; `needs_attention` is refused before sending, pointing to `task ask`.
+
+`missionbase-agent task create --recurring VALUE` and `task update <task-id> --recurring VALUE` make a task recur: completing it creates the next one, with the deadline moved by the interval (a deadline is optional; without one the next task has none). VALUE is `daily`, `weekdays`, `weekly`, `bi_weekly` or `monthly`, and `task update --recurring not` stops it recurring. Any other value fails before sending. `task show` and the create/update JSON carry the server's `recurring` (`null` when it doesn't recur). Needs a Missionbase server that takes `recurring` on the API (#234).
 
 Task scheduling is retired: Missionbase no longer hides tasks until a scheduled time, and the API answers `scheduled_at`, `scheduled_at_preset` and `scheduled` with 422. The CLI has no `--scheduled-at`, `--no-scheduled-at` or `--scheduled` flags; use `--deadline` for dates.
 

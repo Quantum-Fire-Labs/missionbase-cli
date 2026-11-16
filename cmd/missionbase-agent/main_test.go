@@ -1642,7 +1642,7 @@ func TestTaskHelpDocumentsDeadlineOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--body-file PATH", "Update task title, description or deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--no-deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline or recurrence", "--title TITLE", "--deadline YYYY-MM-DD", "--no-deadline"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}
