@@ -257,15 +257,6 @@ func tasks(args []string) error {
 			i++
 		case "--include-closed", "--include-completed":
 			query.Set("include_closed", "true")
-		case "--scheduled":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--scheduled requires a value: actionable, future, or all")
-			}
-			if !isScheduledFilter(args[i+1]) {
-				return fmt.Errorf("--scheduled must be one of: actionable, future, all")
-			}
-			query.Set("scheduled", args[i+1])
-			i++
 		case "--page":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--page requires a value")
@@ -281,7 +272,7 @@ func tasks(args []string) error {
 		case "--json":
 			// JSON is the default output format; accept this flag for script-friendly ergonomics.
 		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent tasks [today|upcoming|overdue] --user ID|@handle [--due today|upcoming|overdue|none|all] [--project ID] [--status-category open|done|canceled] [--status STATUS] [--include-closed] [--scheduled actionable|future|all] [--page N] [--per-page N] [--json]")
+			fmt.Println("usage: missionbase-agent tasks [today|upcoming|overdue] --user ID|@handle [--due today|upcoming|overdue|none|all] [--project ID] [--status-category open|done|canceled] [--status STATUS] [--include-closed] [--page N] [--per-page N] [--json]")
 			return nil
 		default:
 			return fmt.Errorf("unknown tasks option %q", args[i])
@@ -309,10 +300,6 @@ func isDueShortcut(value string) bool {
 
 func isDueFilter(value string) bool {
 	return isDueShortcut(value) || value == "none" || value == "all"
-}
-
-func isScheduledFilter(value string) bool {
-	return value == "actionable" || value == "future" || value == "all"
 }
 
 func work(args []string) error {
@@ -2484,7 +2471,7 @@ func projectTaskStatuses(args []string) error {
 
 func projectTasks(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase-agent projects tasks <project-id> [--status STATUS[,STATUS]|--status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]")
+		return fmt.Errorf("usage: missionbase-agent projects tasks <project-id> [--status STATUS[,STATUS]|--status-category open|done|canceled] [--page N] [--per-page N]")
 	}
 
 	projectID := args[0]
@@ -2505,15 +2492,6 @@ func projectTasks(args []string) error {
 			i++
 		case "--task-status-ids":
 			return statuses.RemovedIDFlag(args[i])
-		case "--scheduled":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--scheduled requires a value: actionable, future, or all")
-			}
-			if !isScheduledFilter(args[i+1]) {
-				return fmt.Errorf("--scheduled must be one of: actionable, future, all")
-			}
-			values.Set("scheduled", args[i+1])
-			i++
 		case "--page":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--page requires a value")
@@ -2642,7 +2620,7 @@ func week(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	if alwaysJSONTaskCommands[args[0]] {
@@ -2743,7 +2721,7 @@ func withoutJSONFlag(args []string) (rest []string, found bool) {
 }
 
 func taskUpdate(args []string) error {
-	usage := "usage: missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--scheduled-at DATETIME | --no-scheduled-at]"
+	usage := "usage: missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]"
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(usage)
 		return nil
@@ -2755,8 +2733,6 @@ func taskUpdate(args []string) error {
 	payload := map[string]any{}
 	deadlineSet := false
 	deadlineCleared := false
-	scheduledAtSet := false
-	scheduledAtCleared := false
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -2795,20 +2771,6 @@ func taskUpdate(args []string) error {
 		case "--no-deadline":
 			payload["deadline"] = nil
 			deadlineCleared = true
-		case "--scheduled-at":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--scheduled-at requires a datetime value")
-			}
-			scheduledAt, err := validateScheduledAt(args[i+1])
-			if err != nil {
-				return err
-			}
-			payload["scheduled_at"] = scheduledAt
-			scheduledAtSet = true
-			i++
-		case "--no-scheduled-at", "--clear-scheduled-at":
-			payload["scheduled_at"] = nil
-			scheduledAtCleared = true
 		case "--help", "-h":
 			fmt.Println(usage)
 			return nil
@@ -2820,11 +2782,8 @@ func taskUpdate(args []string) error {
 	if deadlineSet && deadlineCleared {
 		return fmt.Errorf("use only one of --deadline or --no-deadline")
 	}
-	if scheduledAtSet && scheduledAtCleared {
-		return fmt.Errorf("use only one of --scheduled-at or --no-scheduled-at")
-	}
 	if len(payload) == 0 {
-		return fmt.Errorf("one of --title, --body-file, --deadline, --no-deadline, --scheduled-at, or --no-scheduled-at is required")
+		return fmt.Errorf("one of --title, --body-file, --deadline or --no-deadline is required")
 	}
 
 	body, err := json.Marshal(payload)
@@ -2841,14 +2800,6 @@ func validateDeadline(value string) (string, error) {
 	}
 	if _, err := time.Parse("2006-01-02", value); err != nil {
 		return "", fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
-	}
-	return value, nil
-}
-
-func validateScheduledAt(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", fmt.Errorf("--scheduled-at requires a datetime value")
 	}
 	return value, nil
 }
@@ -3044,7 +2995,7 @@ func taskComplete(args []string) error {
 	return apiPatch("/api/v1/tasks/"+url.PathEscape(args[0])+"/complete", nil)
 }
 
-const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
+const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
        missionbase-agent task create --title TITLE ... --start [--terminal [machine/]tN] [--force] [--json]`
 
 func taskCreate(args []string) error {
@@ -3101,16 +3052,6 @@ func taskCreate(args []string) error {
 				return err
 			}
 			payload["deadline"] = deadline
-			i++
-		case "--scheduled-at":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--scheduled-at requires a datetime value")
-			}
-			scheduledAt, err := validateScheduledAt(args[i+1])
-			if err != nil {
-				return err
-			}
-			payload["scheduled_at"] = scheduledAt
 			i++
 		case "--status":
 			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
@@ -4047,14 +3988,14 @@ Commands:
   tasks                               Show assigned tasks
   tasks --user ID|@handle [--due today|upcoming|overdue|none|all]
       [--project ID] [--status-category open|done|canceled] [--include-closed]
-      [--scheduled actionable|future|all] [--page N] [--per-page N] [--json]
+      [--page N] [--per-page N] [--json]
                                       Show open tasks assigned to a target user
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
   week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
   task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
   task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD]
-      [--scheduled-at DATETIME] [--assign-agent slug | --assign-user ID|@mention]
+      [--assign-agent slug | --assign-user ID|@mention]
       [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
       [--start [--terminal [machine/]tN] [--force]] [--json]
                                       Create a task and print the created task JSON. The project resolves
@@ -4066,8 +4007,7 @@ Commands:
                                       prints the task start --json response; exit 3 if it's running
                                       elsewhere, 4 if hc can't resolve the terminal (nothing is created)
   task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
-      [--scheduled-at DATETIME | --no-scheduled-at]
-                                      Update task title, description, deadline, or schedule and print the updated task JSON
+                                      Update task title, description or deadline and print the updated task JSON
   task assign <task-id> --user ID|@mention
                                       Assign an existing task to a user
   task assign <task-id> --agent slug  Assign an existing task to an agent
@@ -4168,7 +4108,7 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       or status (alias: projects edit); only the flags given change
   projects tasks <project-id>         Show open-category tasks in an accessible project by default
       [--status STATUS[,STATUS]] [--status-category open|done|canceled]
-      [--scheduled actionable|future|all] [--page N] [--per-page N]
+      [--page N] [--per-page N]
   projects notes show [project-id]    Print the project's notes (Markdown) and their latest version
   projects notes edit [project-id] --body-file PATH [--base-version VERSION_ID]
                                       Replace the notes; --base-version keeps entries appended since
@@ -4219,12 +4159,6 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   get /api/path                       GET an API path and print JSON
   update [--check] [--force]          Update this CLI from GitHub Releases
   version                             Show CLI version
-
-Scheduling:
-  --scheduled-at sends scheduled_at separately from deadline. The Missionbase API parses DATETIME in the acting
-  user's timezone when no offset is included; include an ISO-8601 offset or Z for an absolute instant.
-  Normal agent work/task endpoints keep using the API default scheduled filter, so future scheduled tasks are hidden
-  until actionable. Use --scheduled future or --scheduled all on task listing commands when explicitly discovering them.
 
 Artifacts:
   Missionbase artifacts are sandboxed interactive HTML files. Their JavaScript runs outside the main Missionbase app origin

@@ -428,16 +428,14 @@ missionbase-agent document message <document-id> --body-file /tmp/reply.md [--at
 missionbase-agent document create --project <project-id> --title "Doc title" --body-file /tmp/document.md [--folder FOLDER_ID|--root]
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
 missionbase-agent tasks
-missionbase-agent tasks --user <user-id-or-mention> [--scheduled actionable|future|all]
+missionbase-agent tasks --user <user-id-or-mention>
 missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaults to current week
 missionbase-agent task show <task-id> [--json] # task show/create/update/message/assign/unassign/status/move/complete/messages/participants always print JSON; --json is accepted
-missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--scheduled-at DATETIME] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
+missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
 missionbase-agent task update <task-id> --title "New task title"
 missionbase-agent task update <task-id> --body-file /tmp/description.md # replaces the task description
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
-missionbase-agent task update <task-id> --scheduled-at DATETIME
-missionbase-agent task update <task-id> --no-scheduled-at
 missionbase-agent task assign <task-id> --user <user-id-or-mention>
 missionbase-agent task assign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --user <user-id-or-mention>
@@ -460,7 +458,7 @@ missionbase-agent activity <project|team> <id> [--since TIME|--duration DURATION
 missionbase-agent projects activity <project-id> [same filters]
 missionbase-agent projects create --name "Project Delivery" --team <team-id> [--description-file /tmp/description.md] [--kind project] [--status in_progress] [--visibility team]
 missionbase-agent projects update <project-id> [--name "New name"] [--description-file /tmp/description.md] [--kind project|ongoing] [--status STATUS] [--json]
-missionbase-agent projects tasks <project-id> [--status STATUS[,STATUS] | --status-category open|done|canceled] [--scheduled actionable|future|all] [--page N] [--per-page N]
+missionbase-agent projects tasks <project-id> [--status STATUS[,STATUS] | --status-category open|done|canceled] [--page N] [--per-page N]
 missionbase-agent projects notes show [project-id] [--json]
 missionbase-agent projects notes edit [project-id] --body-file /tmp/notes.md [--base-version VERSION_ID] [--json]
 missionbase-agent projects notes append [project-id] --body-file /tmp/entry.md [--date YYYY-MM-DD] [--json]
@@ -540,7 +538,7 @@ missionbase-agent task create --cwd ~/Projects/other-repo --title "Fix the flaky
 
 `missionbase-agent task create --status KEY` sets the new task's status: `backlog`, `planning`, `todo`, `in_progress`, `complete` or `not_doing` (without it, To Do). The server checks the key and the CLI shows its error for an unknown one; `needs_attention` is refused before sending, pointing to `task ask`.
 
-`missionbase-agent task create --scheduled-at DATETIME` and `missionbase-agent task update <task-id> --scheduled-at DATETIME` set `scheduled_at` separately from `deadline`; use `--no-scheduled-at` (or `--clear-scheduled-at`) to clear scheduling without changing the deadline. The API parses schedule datetimes in the acting user's timezone when no offset is included, so include an ISO-8601 offset or `Z` for an absolute instant. Normal agent work/task endpoints keep the API default scheduled filter, hiding future scheduled tasks until actionable; use `--scheduled future` or `--scheduled all` on supported task listings only when explicitly discovering scheduled tasks.
+Task scheduling is retired: Missionbase no longer hides tasks until a scheduled time, and the API answers `scheduled_at`, `scheduled_at_preset` and `scheduled` with 422. The CLI has no `--scheduled-at`, `--no-scheduled-at` or `--scheduled` flags; use `--deadline` for dates.
 
 `missionbase task assign ...` and `missionbase task unassign ...` manage user assignments for existing tasks with the user-acting CLI. Use `--user` with a numeric user id or `@mention`; mention resolution uses `--team <team-id>` or task-derived team context when available. `missionbase task participants list ...` lists task participants, and `missionbase task participants add ... --user ...` adds user participants only.
 
@@ -684,7 +682,7 @@ Use `missionbase-agent task show <task-id>`, `missionbase-agent discussion show 
 
 ## Agent check helper
 
-`scripts/missionbase-agent-check` is the local fleet check script used by timers on agent hosts. It currently runs `missionbase-agent work`, exits when `has_work` is false, and otherwise uses the single returned task for the Pi run. `missionbase-agent work --next`/`--next-task` are accepted as backward-compatible no-ops; the server always returns at most one actionable assigned open task. Selection prefers due scheduled tasks by `scheduled_at`, then unscheduled tasks by `created_at`.
+`scripts/missionbase-agent-check` is the local fleet check script used by timers on agent hosts. It currently runs `missionbase-agent work`, exits when `has_work` is false, and otherwise uses the single returned task for the Pi run. `missionbase-agent work --next`/`--next-task` are accepted as backward-compatible no-ops; the server always returns at most one actionable assigned open task. Selection follows the server's work order: project name, then status, then the task's position in its project.
 
 Selected direct tasks use Pi session id `missionbase-task-<task_id>`. The script passes both `--session-id` and a descriptive `--name` to Pi. If the task project includes `working_directory`, fleet wrappers can invoke Pi from that absolute path.
 

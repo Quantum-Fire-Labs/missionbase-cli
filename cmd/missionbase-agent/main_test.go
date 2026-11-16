@@ -110,8 +110,8 @@ func TestTasksUserDueBuildsTaskListQuery(t *testing.T) {
 		if got := query.Get("include_closed"); got != "true" {
 			t.Fatalf("include_closed query = %q, want true", got)
 		}
-		if got := query.Get("scheduled"); got != "future" {
-			t.Fatalf("scheduled query = %q, want future", got)
+		if query.Has("scheduled") {
+			t.Fatalf("query still sends scheduled: %s", r.URL.RawQuery)
 		}
 		if got := query.Get("page"); got != "2" {
 			t.Fatalf("page query = %q, want 2", got)
@@ -125,7 +125,7 @@ func TestTasksUserDueBuildsTaskListQuery(t *testing.T) {
 	defer server.Close()
 
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"tasks", "--user", "@DanielLemky", "--due", "today", "--project", "2", "--status-category", "open", "--include-closed", "--scheduled", "future", "--page", "2", "--per-page", "25", "--json"}); err != nil {
+	if err := run([]string{"tasks", "--user", "@DanielLemky", "--due", "today", "--project", "2", "--status-category", "open", "--include-closed", "--page", "2", "--per-page", "25", "--json"}); err != nil {
 		t.Fatalf("run tasks: %v", err)
 	}
 }
@@ -1541,34 +1541,6 @@ func TestTaskCreateWithDeadlinePostsDeadline(t *testing.T) {
 	}
 }
 
-func TestTaskCreateWithScheduledAtPostsScheduledAt(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if payload["scheduled_at"] != "2026-07-15T09:30:00-04:00" {
-			t.Fatalf("scheduled_at = %q, want timestamp", payload["scheduled_at"])
-		}
-		if _, ok := payload["deadline"]; ok {
-			t.Fatalf("deadline unexpectedly present: %#v", payload)
-		}
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"task":{"id":992,"scheduled_at":"2026-07-15T13:30:00Z"}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	stdout := captureStdout(t, func() {
-		if err := run([]string{"task", "create", "--title", "Scheduled", "--project", "2", "--scheduled-at", "2026-07-15T09:30:00-04:00"}); err != nil {
-			t.Fatalf("run task create with scheduled_at: %v", err)
-		}
-	})
-	if !strings.Contains(stdout, `"scheduled_at":"2026-07-15T13:30:00Z"`) {
-		t.Fatalf("stdout missing scheduled_at: %s", stdout)
-	}
-}
-
 func TestTaskCreateRejectsInvalidDeadline(t *testing.T) {
 	if err := run([]string{"task", "create", "--title", "Bad deadline", "--project", "2", "--deadline", "2026-99-99"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
 		t.Fatalf("err = %v, want invalid deadline error", err)
@@ -1654,61 +1626,6 @@ func TestTaskUpdateNoDeadlinePatchesNullDeadline(t *testing.T) {
 	}
 }
 
-func TestTaskUpdateScheduledAtPatchesScheduledAtWithoutDeadline(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if payload["scheduled_at"] != "2026-07-15 09:30" {
-			t.Fatalf("scheduled_at = %#v, want datetime", payload["scheduled_at"])
-		}
-		if _, ok := payload["deadline"]; ok {
-			t.Fatalf("deadline unexpectedly present: %#v", payload)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task":{"id":123,"scheduled_at":"2026-07-15T13:30:00Z"}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	stdout := captureStdout(t, func() {
-		if err := run([]string{"task", "update", "123", "--scheduled-at", "2026-07-15 09:30"}); err != nil {
-			t.Fatalf("run task update --scheduled-at: %v", err)
-		}
-	})
-	if !strings.Contains(stdout, `"scheduled_at":"2026-07-15T13:30:00Z"`) {
-		t.Fatalf("stdout missing scheduled_at: %s", stdout)
-	}
-}
-
-func TestTaskUpdateNoScheduledAtPatchesNullScheduledAt(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var payload map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		value, ok := payload["scheduled_at"]
-		if !ok {
-			t.Fatalf("scheduled_at key missing from payload: %#v", payload)
-		}
-		if value != nil {
-			t.Fatalf("scheduled_at = %#v, want nil", value)
-		}
-		if _, ok := payload["deadline"]; ok {
-			t.Fatalf("deadline unexpectedly present: %#v", payload)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"task":{"id":123,"scheduled_at":null}}`))
-	}))
-	defer server.Close()
-
-	setAgentEnv(t, server.URL)
-	if err := run([]string{"task", "update", "123", "--no-scheduled-at"}); err != nil {
-		t.Fatalf("run task update --no-scheduled-at: %v", err)
-	}
-}
-
 func TestTaskUpdateRejectsInvalidDeadline(t *testing.T) {
 	if err := run([]string{"task", "update", "123", "--deadline", "not-a-date"}); err == nil || !strings.Contains(err.Error(), "deadline must be a valid date in YYYY-MM-DD format") {
 		t.Fatalf("err = %v, want invalid deadline error", err)
@@ -1721,19 +1638,38 @@ func TestTaskUpdateRejectsDeadlineAndNoDeadline(t *testing.T) {
 	}
 }
 
-func TestTaskUpdateRejectsScheduledAtAndNoScheduledAt(t *testing.T) {
-	if err := run([]string{"task", "update", "123", "--scheduled-at", "2026-07-15 09:30", "--no-scheduled-at"}); err == nil || !strings.Contains(err.Error(), "use only one of --scheduled-at or --no-scheduled-at") {
-		t.Fatalf("err = %v, want mutually exclusive scheduled_at error", err)
-	}
-}
-
-func TestTaskHelpDocumentsDeadlineAndSchedulingOptions(t *testing.T) {
+func TestTaskHelpDocumentsDeadlineOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--scheduled-at DATETIME", "--no-scheduled-at", "--scheduled actionable|future|all", "scheduled_at separately from deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task title, description or deadline", "--title TITLE", "--deadline YYYY-MM-DD", "--no-deadline"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(strings.ToLower(stdout), "schedul") {
+		t.Fatalf("help still mentions task scheduling:\n%s", stdout)
+	}
+}
+
+// Task scheduling is retired (the API answers its params with 422): the flags are unknown and
+// nothing is sent.
+func TestSchedulingFlagsAreRejectedBeforeSending(t *testing.T) {
+	setAgentEnv(t, "http://127.0.0.1:1") // nothing listens: any request would fail differently
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--scheduled-at", "2026-07-15T09:30:00Z"}, `"--scheduled-at"`},
+		{[]string{"task", "update", "123", "--scheduled-at", "2026-07-15 09:30"}, `unknown task update option "--scheduled-at"`},
+		{[]string{"task", "update", "123", "--no-scheduled-at"}, `unknown task update option "--no-scheduled-at"`},
+		{[]string{"task", "update", "123", "--clear-scheduled-at"}, `unknown task update option "--clear-scheduled-at"`},
+		{[]string{"tasks", "--user", "@DanielLemky", "--scheduled", "future"}, `unknown tasks option "--scheduled"`},
+		{[]string{"projects", "tasks", "2", "--scheduled", "all"}, `"--scheduled"`},
+	} {
+		err := run(tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), "127.0.0.1") {
+			t.Fatalf("%v: err = %v, want %s rejected before sending", tc.args, err, tc.want)
 		}
 	}
 }
