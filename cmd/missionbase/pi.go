@@ -26,7 +26,7 @@ func piCommand(args []string) error {
 		return err
 	}
 	if showHelp {
-		fmt.Println("usage: missionbase pi [--team TEAM ...] [--agent SLUG] [--task ID|--discussion ID] [--one-shot] [--host SSH_HOST]\n       missionbase pi configure --host SSH_HOST")
+		fmt.Println("usage: missionbase pi [--agent SLUG] [--task ID|--discussion ID] [--one-shot] [--host SSH_HOST]\n       missionbase pi configure --host SSH_HOST")
 		return nil
 	}
 	if strings.TrimSpace(host) == "" {
@@ -70,23 +70,6 @@ func piInvocation(defaultHost string, args []string) (string, []string, bool, er
 			}
 			remote = append(remote, args[i], args[i+1])
 			i++
-		case "--team":
-			remote = append(remote, "--team")
-			teamWords := 0
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				words := strings.Fields(args[i+1])
-				for _, word := range words {
-					if !safePiValue.MatchString(word) {
-						return "", nil, false, fmt.Errorf("unsafe team value")
-					}
-					remote = append(remote, word)
-					teamWords++
-				}
-				i++
-			}
-			if teamWords == 0 {
-				return "", nil, false, fmt.Errorf("--team requires a value")
-			}
 		case "--one-shot":
 			remote = append(remote, "--one-shot")
 		case "--help", "-h":

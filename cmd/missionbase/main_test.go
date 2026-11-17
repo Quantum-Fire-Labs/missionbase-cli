@@ -120,10 +120,10 @@ func TestUserModeIgnoresAgentDirectoryConfigAndHeader(t *testing.T) {
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
 			t.Fatalf("agent slug header = %q, want empty", got)
 		}
-		if r.URL.Path != "/api/v1/teams" {
-			t.Fatalf("path = %s, want /api/v1/teams", r.URL.Path)
+		if r.URL.Path != "/api/v1/projects" {
+			t.Fatalf("path = %s, want /api/v1/projects", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"teams":[]}`))
+		_, _ = w.Write([]byte(`{"projects":[]}`))
 	}))
 	defer server.Close()
 
@@ -134,8 +134,8 @@ func TestUserModeIgnoresAgentDirectoryConfigAndHeader(t *testing.T) {
 	}
 	t.Setenv("MISSIONBASE_AGENT_CONFIG", agentConfig)
 	t.Setenv("MISSIONBASE_AGENT_SLUG", "agent-from-env")
-	if err := run([]string{"teams"}); err != nil {
-		t.Fatalf("run teams: %v", err)
+	if err := run([]string{"projects"}); err != nil {
+		t.Fatalf("run projects: %v", err)
 	}
 }
 
@@ -223,9 +223,7 @@ func TestReadOnlyCommandDispatchRepresentativeEndpoints(t *testing.T) {
 		path string
 	}{
 		{"work", []string{"work"}, "/api/v1/users/work"},
-		{"team show", []string{"team", "show", "12"}, "/api/v1/teams/12"},
-		{"team members", []string{"team", "members", "12"}, "/api/v1/teams/12/members"},
-		{"projects", []string{"projects", "--team", "12"}, "/api/v1/projects"},
+		{"projects", []string{"projects"}, "/api/v1/projects"},
 		{"project show", []string{"project", "show", "4"}, "/api/v1/projects/4"},
 		{"project tasks", []string{"projects", "tasks", "4"}, "/api/v1/projects/4/tasks"},
 		{"project discussions", []string{"projects", "discussions", "4", "--page", "3", "--per-page", "10"}, "/api/v1/projects/4/discussions"},
@@ -267,8 +265,8 @@ func TestNotesSearchUsesVerifiedQueryParams(t *testing.T) {
 		if got := query.Get("query"); got != "planning" {
 			t.Fatalf("query = %q, want planning", got)
 		}
-		if got := query.Get("team_id"); got != "2" {
-			t.Fatalf("team_id = %q, want 2", got)
+		if len(query) != 1 {
+			t.Fatalf("query = %v, want only query", query)
 		}
 		if got := query.Get("q"); got != "" {
 			t.Fatalf("q query = %q, want empty; Rails endpoint uses query", got)
@@ -278,7 +276,7 @@ func TestNotesSearchUsesVerifiedQueryParams(t *testing.T) {
 	defer server.Close()
 
 	setUserEnv(t, server.URL)
-	if err := run([]string{"notes", "search", "planning", "--team", "2"}); err != nil {
+	if err := run([]string{"notes", "search", "planning"}); err != nil {
 		t.Fatalf("run notes search: %v", err)
 	}
 }
@@ -392,34 +390,34 @@ func TestRawWriteHelpersWarnValidateAndUseUserEndpoints(t *testing.T) {
 	}
 }
 
-func TestUsersLookupQueryUsesUserEndpoint(t *testing.T) {
+func TestUsersLookupSendsEmailHandleOrNothing(t *testing.T) {
+	var queries []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/users/lookup" {
 			t.Fatalf("path = %s, want /api/v1/users/lookup", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("query"); got != "daniel" {
-			t.Fatalf("query = %q, want daniel", got)
-		}
-		if got := r.URL.Query().Get("team_id"); got != "2" {
-			t.Fatalf("team_id = %q, want 2", got)
-		}
 		if got := r.Header.Get("X-Missionbase-Agent-Slug"); got != "" {
 			t.Fatalf("agent slug header = %q, want empty", got)
 		}
-		_, _ = w.Write([]byte(`{"users":[{"id":42}]}`))
+		queries = append(queries, r.URL.RawQuery)
+		_, _ = w.Write([]byte(`{"user":{"id":42}}`))
 	}))
 	defer server.Close()
 
 	setUserEnv(t, server.URL)
-	if err := run([]string{"users", "lookup", "daniel", "--team", "2"}); err != nil {
-		t.Fatalf("run users lookup: %v", err)
+	for _, args := range [][]string{
+		{"users", "lookup"},
+		{"users", "lookup", "daniel@example.com"},
+		{"users", "lookup", "@DanielLemky"},
+		{"users", "lookup", "42"},
+	} {
+		if err := run(args); err != nil {
+			t.Fatalf("run %v: %v", args, err)
+		}
 	}
-}
-
-func TestUsersLookupMentionRequiresTeam(t *testing.T) {
-	err := run([]string{"users", "lookup", "@DanielLemky"})
-	if err == nil || !strings.Contains(err.Error(), "--team") || !strings.Contains(err.Error(), "numeric user id") {
-		t.Fatalf("err = %v, want helpful team/numeric error", err)
+	want := []string{"", "email=daniel%40example.com", "handle=%40DanielLemky", "handle=42"}
+	if strings.Join(queries, "|") != strings.Join(want, "|") {
+		t.Fatalf("queries = %#v, want %#v", queries, want)
 	}
 }
 
@@ -448,42 +446,22 @@ func TestTaskAssignNumericUserPostsAssignment(t *testing.T) {
 	}
 }
 
-func TestTaskAssignMentionDerivesTeamAndUsesTeamMembers(t *testing.T) {
-	var paths []string
+func TestTaskAssignMentionResolvesThroughUsersLookup(t *testing.T) {
+	var requests []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
+		requests = append(requests, r.Method+" "+r.URL.RequestURI())
 		switch r.URL.Path {
-		case "/api/v1/tasks/123":
-			_, _ = w.Write([]byte(`{"task":{"project":{"team":{"id":2}}}}`))
-		case "/api/v1/teams/2/members":
-			_, _ = w.Write([]byte(`{"members":[{"user_id":42,"mention":"DanielLemky"}]}`))
-		case "/api/v1/tasks/123/assignments":
-			_, _ = w.Write([]byte(`{"assignment":{"task_id":123}}`))
-		default:
-			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	setUserEnv(t, server.URL)
-	if err := run([]string{"task", "assign", "123", "--user", "@DanielLemky"}); err != nil {
-		t.Fatalf("run task assign mention: %v", err)
-	}
-	for _, path := range paths {
-		if strings.Contains(path, "/api/v1/agent/members") {
-			t.Fatalf("called agent-only endpoint: %s", path)
-		}
-	}
-}
-
-func TestTaskUnassignMentionWithTeamDeletesAssignment(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/teams/2/members":
-			_, _ = w.Write([]byte(`{"members":[{"user_id":42,"handle":"daniel"}]}`))
-		case "/api/v1/tasks/123/assignments/42":
-			if r.Method != http.MethodDelete {
-				t.Fatalf("method = %s, want DELETE", r.Method)
+		case "/api/v1/users/lookup":
+			_, _ = w.Write([]byte(`{"user":{"id":42,"username":"DanielLemky","handle":"DanielLemky"}}`))
+		case "/api/v1/tasks/123/assignments", "/api/v1/tasks/123/assignments/42", "/api/v1/tasks/123/participants":
+			var payload map[string]string
+			if r.Method == http.MethodPost {
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Fatal(err)
+				}
+				if payload["user_id"] != "42" || len(payload) != 1 {
+					t.Fatalf("payload = %#v, want only user_id 42", payload)
+				}
 			}
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		default:
@@ -493,8 +471,56 @@ func TestTaskUnassignMentionWithTeamDeletesAssignment(t *testing.T) {
 	defer server.Close()
 
 	setUserEnv(t, server.URL)
-	if err := run([]string{"task", "unassign", "123", "--user", "@daniel", "--team", "2"}); err != nil {
-		t.Fatalf("run task unassign: %v", err)
+	for _, args := range [][]string{
+		{"task", "assign", "123", "--user", "@DanielLemky"},
+		{"task", "unassign", "123", "--user", "@DanielLemky"},
+		{"task", "participants", "add", "123", "--user", "@DanielLemky"},
+	} {
+		if err := run(args); err != nil {
+			t.Fatalf("run %v: %v", args, err)
+		}
+	}
+	want := []string{
+		"GET /api/v1/users/lookup?handle=%40DanielLemky",
+		"POST /api/v1/tasks/123/assignments",
+		"GET /api/v1/users/lookup?handle=%40DanielLemky",
+		"DELETE /api/v1/tasks/123/assignments/42",
+		"GET /api/v1/users/lookup?handle=%40DanielLemky",
+		"POST /api/v1/tasks/123/participants",
+	}
+	if strings.Join(requests, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("requests = %#v, want %#v", requests, want)
+	}
+}
+
+func TestRemovedTeamAndWeekCommandsAndFlags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"teams"}, `unknown command "teams"`},
+		{[]string{"team", "show", "1"}, `unknown command "team"`},
+		{[]string{"team", "members", "1"}, `unknown command "team"`},
+		{[]string{"week", "show", "--team", "1"}, `unknown command "week"`},
+		{[]string{"projects", "--team", "1"}, `unknown projects option "--team"`},
+		{[]string{"notes", "search", "plan", "--team", "1"}, `unknown notes search option "--team"`},
+		{[]string{"users", "lookup", "@DanielLemky", "--team", "1"}, `unknown users lookup option "--team"`},
+		{[]string{"task", "assign", "123", "--user", "42", "--team", "1"}, `unknown task assign option "--team"`},
+		{[]string{"task", "unassign", "123", "--user", "42", "--team", "1"}, `unknown task unassign option "--team"`},
+		{[]string{"task", "participants", "add", "123", "--user", "42", "--team", "1"}, `unknown task participants add option "--team"`},
+		{[]string{"pi", "--team", "Quantum"}, `unknown pi option "--team"`},
+	}
+	for _, tt := range tests {
+		err := run(tt.args)
+		if err == nil || err.Error() != tt.want {
+			t.Fatalf("run %v: err = %v, want %q", tt.args, err, tt.want)
+		}
 	}
 }
 
@@ -537,7 +563,6 @@ func TestTaskParticipantsListAndAddUser(t *testing.T) {
 
 func TestUsageErrors(t *testing.T) {
 	tests := [][]string{
-		{"team", "show"},
 		{"projects", "tasks"},
 		{"projects", "tasks", "1", "--status-category", "later"},
 		{"task", "messages"},
@@ -632,9 +657,14 @@ func TestProjectsFilesUserCommandsUseFileApiWithoutAgentHeader(t *testing.T) {
 
 func TestHelpShowsUserWorkflowCommands(t *testing.T) {
 	stdout := captureStdout(t, func() { _ = run([]string{"--help"}) })
-	for _, want := range []string{"work", "teams", "users lookup <query-or-mention>", "team show <team-id>", "projects tasks <project-id>", "projects documents create <project-id>", "project show <project-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task messages <task-id>", "conversations", "discussion show <discussion-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {
+	for _, want := range []string{"work", "users lookup [@mention|email|user-id]", "projects tasks <project-id>", "projects documents create <project-id>", "project show <project-id>", "notes search <query>", "document show <document-id>", "tasks assigned", "task assign <task-id>", "task participants list <task-id>", "task messages <task-id>", "conversations", "discussion show <discussion-id>", "raw post/patch/delete helpers act as your signed-in Missionbase user"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q:\n%s", want, stdout)
+		}
+	}
+	for _, gone := range []string{"team", "week "} {
+		if strings.Contains(strings.ToLower(stdout), gone) {
+			t.Fatalf("help still mentions %q:\n%s", gone, stdout)
 		}
 	}
 }

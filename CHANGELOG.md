@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Teams and Weeks are gone from Missionbase (#273, teams phases 5-7). Both CLIs drop them, with no compatibility shims:
+  - `missionbase teams`, `team show|members` and `week show|add|remove|order`, and `missionbase-agent week show`, are unknown commands. `missionbase-agent activity team|teams` is an unknown scope; `activity project <id>` stays.
+  - `--team` is an unknown option on `missionbase users lookup`, `projects`, `notes search`, `task assign|unassign|participants add` and `pi`. `missionbase-agent projects create` drops `--team`/`--team-id` and `--visibility`, and sends only `name`, `description`, `kind` and `status` (no `ownable_type`/`ownable_id`); the project goes into your account.
+  - `@mention` resolution in the user CLI calls `GET /api/v1/users/lookup?handle=@name`. `missionbase users lookup` takes `[@mention|email|user-id]`: an email sends `?email=`, anything else `?handle=`, and no argument lists everyone you can mention. It prints the server's JSON (`{"user"}` or `{"users"}`).
+  - `.missionbase/project.json` holds only `project_id` and `project_name`. `project link` writes those two keys and deletes `team_id`/`team_name` from an existing file; `project unlink` removes them too. Activity output no longer shows a team scope.
+  - Needs a Missionbase server at teams phase 6 or later.
+
 - API keys belong to people now (Missionbase #268, teams phase 2). `missionbase-agent` follows (#269):
   - Removed `missionbase-agent agent projects add`: an agent works in every project its owner can open, and the server no longer has `POST /api/v1/agents/:id/projects`. `agent projects` is an unknown command and sends nothing.
   - `missionbase-agent members` calls only `GET /api/v1/agent/members` and returns its error as is. The fallback to `agent/me` and `/api/v1/teams/:id/members` on a 404 is gone, there and in `--user @mention` resolution.

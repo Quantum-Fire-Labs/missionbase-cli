@@ -167,11 +167,11 @@ func TestProjectFileReadsOnlyProjectKeys(t *testing.T) {
 
 func TestProjectLinkWritesOnlyProjectKeys(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/projects/5": fixed(200, `{"project":{"id":5,"name":"Missionbase","owner":{"type":"Team","id":1,"name":"Quantum Fire Labs"}}}`),
+		"GET /api/v1/projects/5": fixed(200, testProjectFiveJSON),
 	})
 	setAgentEnv(t, server.URL)
 	root := t.TempDir()
-	writeTestProjectFile(t, root, `{"project_id":3,"project_name":"Old","notes":"kept"}`)
+	writeTestProjectFile(t, root, `{"team_id":1,"team_name":"Quantum Fire Labs","project_id":3,"project_name":"Old","notes":"kept"}`)
 
 	out, err := runCapture(t, "project", "link", "5", "--cwd", root, "--force") // the file links project 3
 	if err != nil {
@@ -188,7 +188,7 @@ func TestProjectLinkWritesOnlyProjectKeys(t *testing.T) {
 	if err := json.Unmarshal(data, &file); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"team_id": 1.0, "team_name": "Quantum Fire Labs", "project_id": 5.0, "project_name": "Missionbase", "notes": "kept"}
+	want := map[string]any{"project_id": 5.0, "project_name": "Missionbase", "notes": "kept"}
 	if len(file) != len(want) {
 		t.Fatalf("file = %s", data)
 	}
@@ -251,8 +251,6 @@ func TestProjectLinkWritesTheKeysInTheSetupOrderAtTheGitRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{
-  "team_id": 1,
-  "team_name": "Quantum Fire Labs",
   "project_id": 5,
   "project_name": "Missionbase"
 }
@@ -341,24 +339,8 @@ func TestProjectLinkReplacesAnUnreadableFileOnlyWithForce(t *testing.T) {
 	if _, err := runCapture(t, "project", "link", "5", "--cwd", root, "--force"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(readLinkFile(t, root), "{\n  \"team_id\": 1,") {
+	if readLinkFile(t, root) != "{\n  \"project_id\": 5,\n  \"project_name\": \"Missionbase\"\n}\n" {
 		t.Fatalf("file = %s", readLinkFile(t, root))
-	}
-}
-
-func TestProjectLinkForPersonalProjectDropsStaleTeamKeys(t *testing.T) {
-	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/projects/8": fixed(200, `{"project":{"id":8,"name":"Personal","owner":{"type":"User","id":3,"name":"Someone"}}}`),
-	})
-	setAgentEnv(t, server.URL)
-	root := t.TempDir()
-	writeTestProjectFile(t, root, `{"team_id":1,"team_name":"Quantum Fire Labs","project_id":5}`)
-
-	if _, err := runCapture(t, "project", "link", "8", "--cwd", root, "--force"); err != nil {
-		t.Fatal(err)
-	}
-	if got := readLinkFile(t, root); strings.Contains(got, "team_") || !strings.Contains(got, `"project_id": 8`) {
-		t.Fatalf("file = %s", got)
 	}
 }
 

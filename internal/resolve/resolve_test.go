@@ -26,7 +26,7 @@ func TestStripMentionAndNormalize(t *testing.T) {
 
 func TestResolveUserIDNumericPassthrough(t *testing.T) {
 	getter := &fakeGetter{}
-	id, err := ResolveUserID(getter, "42", Options{})
+	id, err := ResolveUserID(getter, "42")
 	if err != nil {
 		t.Fatalf("ResolveUserID: %v", err)
 	}
@@ -38,36 +38,36 @@ func TestResolveUserIDNumericPassthrough(t *testing.T) {
 	}
 }
 
-func TestResolveUserIDRequiresTeamForMention(t *testing.T) {
-	_, err := ResolveUserID(&fakeGetter{}, "@DanielLemky", Options{})
-	if err == nil || !strings.Contains(err.Error(), "--team") || !strings.Contains(err.Error(), "numeric user id") {
-		t.Fatalf("err = %v, want helpful team/numeric error", err)
+func TestResolveUserIDRejectsBareName(t *testing.T) {
+	_, err := ResolveUserID(&fakeGetter{}, "DanielLemky")
+	if err == nil || !strings.Contains(err.Error(), "numeric user id or @mention") {
+		t.Fatalf("err = %v, want numeric/mention error", err)
 	}
 }
 
-func TestResolveUserIDUsesTeamMembersNotAgentMembers(t *testing.T) {
-	getter := &fakeGetter{body: []byte(`{"members":[{"user_id":7,"mention":"DanielLemky"}]}`)}
-	id, err := ResolveUserID(getter, "@daniel-lemky", Options{TeamID: "2"})
+func TestResolveUserIDLooksUpHandle(t *testing.T) {
+	getter := &fakeGetter{body: []byte(`{"user":{"id":7,"name":"Daniel Lemky","username":"DanielLemky","handle":"DanielLemky"}}`)}
+	id, err := ResolveUserID(getter, "@DanielLemky")
 	if err != nil {
 		t.Fatalf("ResolveUserID: %v", err)
 	}
 	if id != "7" {
 		t.Fatalf("id = %q", id)
 	}
-	if len(getter.paths) != 1 || getter.paths[0] != "/api/v1/teams/2/members" {
-		t.Fatalf("paths = %#v, want only team members endpoint", getter.paths)
+	if len(getter.paths) != 1 || getter.paths[0] != "/api/v1/users/lookup?handle=%40DanielLemky" {
+		t.Fatalf("paths = %#v, want only the users lookup by handle", getter.paths)
 	}
 	for _, path := range getter.paths {
-		if strings.Contains(path, "/api/v1/agent/members") {
-			t.Fatalf("called agent-only endpoint: %s", path)
+		if strings.Contains(path, "team") {
+			t.Fatalf("called a team endpoint: %s", path)
 		}
 	}
 }
 
-func TestResolveUserIDAmbiguousMention(t *testing.T) {
-	getter := &fakeGetter{body: []byte(`{"members":[{"user_id":7,"mention":"sam"},{"user_id":8,"handle":"sam"}]}`)}
-	_, err := ResolveUserID(getter, "@sam", Options{TeamID: "2"})
-	if err == nil || !strings.Contains(err.Error(), "multiple people match") {
-		t.Fatalf("err = %v, want ambiguity error", err)
+func TestResolveUserIDNoMatch(t *testing.T) {
+	getter := &fakeGetter{body: []byte(`{}`)}
+	_, err := ResolveUserID(getter, "@nobody")
+	if err == nil || !strings.Contains(err.Error(), "no person found") {
+		t.Fatalf("err = %v, want no-match error", err)
 	}
 }

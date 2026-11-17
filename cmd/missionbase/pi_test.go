@@ -36,10 +36,8 @@ func TestPiRejectsUnsafeRemoteArgumentsBeforeSSH(t *testing.T) {
 	}
 }
 
-func TestPiInvocationForwardsTeamAndOneShot(t *testing.T) {
-	host, remote, showHelp, err := piInvocation("agents", []string{
-		"--team", "Quantum", "Fire", "Labs", "--one-shot", "--task", "3086",
-	})
+func TestPiInvocationForwardsOneShotAndTask(t *testing.T) {
+	host, remote, showHelp, err := piInvocation("agents", []string{"--one-shot", "--task", "3086"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,31 +47,15 @@ func TestPiInvocationForwardsTeamAndOneShot(t *testing.T) {
 	if showHelp {
 		t.Fatal("showHelp = true")
 	}
-	want := []string{
-		"sudo", "-n", "/opt/missionbase-runner/bin/mb-pi",
-		"--team", "Quantum", "Fire", "Labs", "--one-shot", "--task", "3086",
-	}
+	want := []string{"sudo", "-n", "/opt/missionbase-runner/bin/mb-pi", "--one-shot", "--task", "3086"}
 	if !reflect.DeepEqual(remote, want) {
 		t.Fatalf("remote = %#v, want %#v", remote, want)
 	}
 }
 
-func TestPiInvocationSplitsQuotedTeamNameSafely(t *testing.T) {
-	_, remote, _, err := piInvocation("agents", []string{"--team", "Quantum Fire Labs"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{
-		"sudo", "-n", "/opt/missionbase-runner/bin/mb-pi",
-		"--team", "Quantum", "Fire", "Labs",
-	}
-	if !reflect.DeepEqual(remote, want) {
-		t.Fatalf("remote = %#v, want %#v", remote, want)
-	}
-}
-
-func TestPiInvocationRequiresTeamName(t *testing.T) {
-	if _, _, _, err := piInvocation("agents", []string{"--team", "--one-shot"}); err == nil {
-		t.Fatal("expected --team without a name to fail")
+func TestPiInvocationRejectsTeam(t *testing.T) {
+	_, _, _, err := piInvocation("agents", []string{"--team", "Quantum Fire Labs"})
+	if err == nil || err.Error() != `unknown pi option "--team"` {
+		t.Fatalf("err = %v, want unknown --team option", err)
 	}
 }

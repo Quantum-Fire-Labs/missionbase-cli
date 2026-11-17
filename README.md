@@ -39,14 +39,13 @@ missionbase work
 missionbase scratchpad show
 missionbase scratchpad update --body TEXT
 missionbase scratchpad edit --body-file PATH
-missionbase teams
 missionbase projects
 missionbase tasks assigned
 ```
 
 The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
 
-The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, scratchpad show/update, teams, users, projects, tasks, task discussion messages, conversations, standalone project discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/message, discussion/document/file messages, and project discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
+The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, scratchpad show/update, users, projects, tasks, task discussion messages, conversations, standalone project discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/message, discussion/document/file messages, and project discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
 
 Credentials are stored at:
 
@@ -62,7 +61,6 @@ the real host-side Pi TUI from the desktop:
 ```bash
 missionbase pi configure --host daniel@agents-host
 missionbase pi
-missionbase pi --team Quantum Fire Labs
 missionbase pi --agent fleet-architect --task 123
 missionbase pi --agent missionbase-dev --discussion 456 --one-shot
 ```
@@ -125,7 +123,7 @@ Boxes are now called projects, and the CLIs keep no old names:
 - The commands are `projects ...` and `missionbase project show`. `boxes`, `box` and `agent boxes` are unknown commands.
 - The flag is `--project` (and `--project-id` where it was `--box-id`). `--box` and `--box-id` are unknown options.
 - Requests go only to `/api/v1/projects/...` and send only `project_id`, `project_ids` and `project`. Responses are read only as `project`, `project_id` and `project_name`.
-- `.missionbase/project.json` is read only as `project_id` / `project_name`; a file with only `box_id` links nothing. `project link` writes `team_id`, `team_name`, `project_id` and `project_name` (see [Agent work](#agent-work-herdr-agents)).
+- `.missionbase/project.json` is read only as `project_id` / `project_name`; a file with only `box_id` links nothing. `project link` writes only `project_id` and `project_name` (see [Agent work](#agent-work-herdr-agents)).
 
 ### Agent work (Herdr agents)
 
@@ -173,7 +171,7 @@ missionbase-agent tasks changes --since "$cursor" --json      # {"tasks", "delet
 2. the nearest `.missionbase/project.json` (its `project_id`) from `--cwd DIR` or the current folder, searching parent folders
 3. this machine's default project, set with `missionbase-agent project default ID` and stored as `default_project` in `~/.config/missionbase-agent/credentials`
 
-`project link <project-id>` links a repo to a project: it writes `.missionbase/project.json` at the root of the git repository (or worktree) containing `--cwd DIR` or the current folder, or in that folder when it isn't in git. It first reads the project (`GET /api/v1/projects/:id`), so a project that doesn't exist or that the agent can't reach is reported and nothing is written. The file gets the project's name and team from the server, in this order, keeping any other keys: `{"team_id", "team_name", "project_id", "project_name"}` (no team keys for a personal project). Linking the same project again refreshes the names; a file that links a different project (or isn't valid JSON) is left alone unless you pass `--force`. `--json` prints `{"project": {...}}` like `project --json`. It doesn't commit the file. `project unlink [--cwd DIR]` removes those keys from the same file, deleting it (and an empty `.missionbase/`) when nothing else is left; `--json` prints `{"removed", "path"}`. The `project` object in `--json` output is `{"project_id", "project_name", "source", "path"}`.
+`project link <project-id>` links a repo to a project: it writes `.missionbase/project.json` at the root of the git repository (or worktree) containing `--cwd DIR` or the current folder, or in that folder when it isn't in git. It first reads the project (`GET /api/v1/projects/:id`), so a project that doesn't exist or that the agent can't reach is reported and nothing is written. The file gets the project's name from the server, keeping any other keys: `{"project_id", "project_name"}`. It deletes `team_id` and `team_name` left by older CLIs. Linking the same project again refreshes the names; a file that links a different project (or isn't valid JSON) is left alone unless you pass `--force`. `--json` prints `{"project": {...}}` like `project --json`. It doesn't commit the file. `project unlink [--cwd DIR]` removes those keys (and any `team_id`/`team_name`) from the same file, deleting it (and an empty `.missionbase/`) when nothing else is left; `--json` prints `{"removed", "path"}`. The `project` object in `--json` output is `{"project_id", "project_name", "source", "path"}`.
 
 **Watching a project** (for orchestrators): `project watch --terminal t9d` signs up terminal `t9d` on this machine for the current project's activity. The [missionbase-herdr](https://github.com/Quantum-Fire-Labs/missionbase-herdr) bridge then types one short digest into that terminal when its agent is idle: the owner's (users', not agents') new tasks, replies, question answers and status changes in the project, and replies that @mention the watching agent from anyone. A project has one watching terminal per machine: signing up again replaces it. `project watch --off` stops; `project watch` shows the project's watch (or every watch here when no project resolves). Nothing is stored in Missionbase: the watch lives in `~/.config/missionbase-herdr/watches.json` (`$XDG_CONFIG_HOME`, or `$MISSIONBASE_HERDR_WATCHES`), written in one rename:
 
@@ -326,11 +324,8 @@ missionbase work
 missionbase scratchpad show
 missionbase scratchpad update --body TEXT
 missionbase scratchpad edit --body-file PATH
-missionbase teams
-missionbase users lookup <query-or-mention> [--team <team-id>]
-missionbase team show <team-id>
-missionbase team members <team-id>
-missionbase projects [--team <team-id>]
+missionbase users lookup [@mention|email|user-id]
+missionbase projects
 missionbase project show <project-id>
 missionbase projects tasks <project-id> [--status STATUS[,STATUS]] [--status-category open|done|canceled] [--page N] [--per-page N]
 missionbase projects discussions <project-id> [--page N] [--per-page N]
@@ -348,7 +343,7 @@ missionbase projects files upload-version <project-id> <file-id> --file PATH
 missionbase projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]
 missionbase projects task-statuses <project-id>
 missionbase projects statuses <project-id>
-missionbase notes search <query> [--team <team-id>]
+missionbase notes search <query>
 missionbase scratchpad show
 missionbase scratchpad fetch
 missionbase scratchpad update --body TEXT
@@ -366,14 +361,10 @@ missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATU
 missionbase task status <task-id> <status>
 missionbase task complete <task-id>
 missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-missionbase task assign <task-id> --user <user-id-or-mention> [--team <team-id>]
-missionbase task unassign <task-id> --user <user-id-or-mention> [--team <team-id>]
+missionbase task assign <task-id> --user <user-id-or-mention>
+missionbase task unassign <task-id> --user <user-id-or-mention>
 missionbase task participants list <task-id>
-missionbase task participants add <task-id> --user <user-id-or-mention> [--team <team-id>]
-missionbase week show --team TEAM_ID [--starts-on YYYY-MM-DD]
-missionbase week add TASK_ID --team TEAM_ID --starts-on YYYY-MM-DD
-missionbase week remove PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD
-missionbase week order PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD [--after-task TASK_ID]
+missionbase task participants add <task-id> --user <user-id-or-mention>
 missionbase today # signed-in user's current day in their time zone
 missionbase day show --date YYYY-MM-DD
 missionbase day add TASK_ID --date YYYY-MM-DD
@@ -392,7 +383,7 @@ missionbase patch /api/path --json JSON
 missionbase delete /api/path
 missionbase update
 
-Planning commands above act only as the authenticated user. Week dates must be Mondays; a week can be any date. `show` gives each task's `placement_id` for `remove` and `order`. Without `--after-task`, `order` moves a task to the first position. `today` gets the signed-in user's current date from the server in the user's time zone. Day commands always use the signed-in user's own day. Agent credentials cannot use these user CLI commands, and an agent-locked Pi session remains blocked by `MISSIONBASE_ACTOR_MODE=agent`.
+Planning commands above act only as the authenticated user. `show` gives each task's `placement_id` for `remove` and `order`. Without `--after-task`, `order` moves a task to the first position. `today` gets the signed-in user's current date from the server in the user's time zone. Day commands always use the signed-in user's own day. Agent credentials cannot use these user CLI commands, and an agent-locked Pi session remains blocked by `MISSIONBASE_ACTOR_MODE=agent`.
 
 missionbase-agent version
 missionbase-agent auth status
@@ -427,7 +418,6 @@ missionbase-agent document create --project <project-id> --title "Doc title" --b
 missionbase-agent document edit <document-id> [--title "New title"] --body-file /tmp/document.md
 missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention>
-missionbase-agent week show [--starts-on YYYY-MM-DD] # read only; Monday; defaults to current week
 missionbase-agent task show <task-id> [--json] # task show/create/update/message/assign/unassign/status/move/complete/messages/participants always print JSON; --json is accepted
 missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
 missionbase-agent task update <task-id> --title "New task title"
@@ -453,9 +443,9 @@ missionbase-agent discussion show <discussion-id> [--limit N]
 missionbase-agent discussion message <discussion-id> --body-file /tmp/body.md [--attach /path/to/image.png]
 missionbase-agent conversation show/message ... # deprecated aliases for discussion show/message
 missionbase-agent members [--project ID]
-missionbase-agent activity <project|team> <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]
+missionbase-agent activity project <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]
 missionbase-agent projects activity <project-id> [same filters]
-missionbase-agent projects create --name "Project Delivery" --team <team-id> [--description-file /tmp/description.md] [--kind project] [--status in_progress] [--visibility team]
+missionbase-agent projects create --name "Project Delivery" [--description-file /tmp/description.md] [--kind project] [--status in_progress]
 missionbase-agent projects update <project-id> [--name "New name"] [--description-file /tmp/description.md] [--kind project|ongoing] [--status STATUS] [--json]
 missionbase-agent projects tasks <project-id> [--status STATUS[,STATUS] | --status-category open|done|canceled] [--page N] [--per-page N]
 missionbase-agent projects notes show [project-id] [--json]
@@ -483,23 +473,23 @@ missionbase-agent get /api/v1/agent/me
 missionbase-agent update
 ```
 
-User CLI read and write commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only, `missionbase work` calls `/api/v1/users/work` to return the current user, assigned/open tasks, unread discussion conversations, unread direct-message conversations, and inbox-oriented metadata, user/mention lookup uses `/api/v1/users/lookup` and `/api/v1/teams/:team_id/members`, and assignment/participant writes use user-acting task endpoints. The user CLI never calls agent-only member endpoints, never supports `--agent` assignment/participants, and agent identity and agent-management workflows remain exclusive to `missionbase-agent`; human DM unread state is exposed only through the user work overview JSON.
+User CLI read and write commands return raw JSON directly from the Missionbase API. `missionbase me` calls `/api/v1/users/me` only, `missionbase work` calls `/api/v1/users/work` to return the current user, assigned/open tasks, unread discussion conversations, unread direct-message conversations, and inbox-oriented metadata, user/mention lookup uses `/api/v1/users/lookup`, and assignment/participant writes use user-acting task endpoints. The user CLI never calls agent-only member endpoints, never supports `--agent` assignment/participants, and agent identity and agent-management workflows remain exclusive to `missionbase-agent`; human DM unread state is exposed only through the user work overview JSON.
 
 User CLI write commands use JSON requests when no attachments are present and multipart requests when repeated `--attach PATH` or `--attach-blob SIGNED_ID_OR_SGID` flags are used. Local attachments are limited to PNG, JPEG, GIF, and WEBP images up to 5 MB. User-authored task descriptions, task/discussion/document/file messages, and project discussion bodies are Markdown-capable and normalize accidental escaped newline sequences outside quoted/code contexts. Message body aliases `--body`, `--comment`, `--message`, and `--text` are supported.
 
 Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar pins`, `missionbase sidebar pin --type project_file --id ID`, and `missionbase sidebar unpin --type project_file --id ID` always act as the signed-in user and do not accept a target user. `missionbase-agent sidebar pins --user ID|@mention`, `missionbase-agent sidebar pin --user ID|@mention --type project_file --id ID`, and `missionbase-agent sidebar unpin --user ID|@mention --type project_file --id ID` use agent authentication and permissions to manage a specific user's pins. The initial supported item type is `project_file`, where `ID` is the ProjectFile/Docs & Files entry id.
 
-`missionbase users lookup <query>` calls user lookup directly. `missionbase users lookup @mention --team <team-id>` resolves a team member mention. Task assignment and participant commands accept numeric user ids directly; when resolving `@mention`, pass `--team` or let the CLI derive the team from the task when the task response includes project/team context. If team context cannot be inferred, the CLI asks for `--team` or a numeric user id.
+`missionbase users lookup` with no argument lists the people you can mention. With an email it sends `?email=`; with an `@mention`, username or numeric id it sends `?handle=`, and prints `{"user": {...}}`. Task assignment and participant commands accept numeric user ids directly and resolve an `@mention` through `/api/v1/users/lookup?handle=@mention`.
 
-`missionbase-agent activity project <project-id>` and `missionbase-agent projects activity <project-id>` query agent-visible project activity from `/api/v1/projects/:project_id/activity_events`; `missionbase-agent activity team <team-id>` queries `/api/v1/teams/:team_id/activity_events`. Activity output is concise text by default, including timestamp, scope, actor, action, subject, summary, source, route, useful metadata, and `Next cursor` when more results may be available. Add `--json` to print the raw API response for tooling. Filters include `--since`, `--until`, `--duration`/`--last`, `--actor TYPE:ID`, `--actor-type`, `--actor-id`, `--subject-type`, `--subject-id`, `--action`, `--cursor`, and `--limit`; the API enforces normal project/team permissions and only returns accessible activity.
+`missionbase-agent activity project <project-id>` and `missionbase-agent projects activity <project-id>` query agent-visible project activity from `/api/v1/projects/:project_id/activity_events`; Activity output is concise text by default, including timestamp, scope, actor, action, subject, summary, source, route, useful metadata, and `Next cursor` when more results may be available. Add `--json` to print the raw API response for tooling. Filters include `--since`, `--until`, `--duration`/`--last`, `--actor TYPE:ID`, `--actor-type`, `--actor-id`, `--subject-type`, `--subject-id`, `--action`, `--cursor`, and `--limit`; the API enforces normal project permissions and only returns accessible activity.
 
 `missionbase-agent projects notes ...` reads and writes a project's notes: one Markdown page per project, with version history (`/api/v1/projects/:id/notes`). Without a project id it uses `--project`, then the nearest `.missionbase/project.json` (from `--cwd` or the current folder), then the machine's default project (exit code 5 when none resolves). `show` prints the Markdown, preceded by a `<!-- version N: who what -->` line. `edit` replaces the whole page; pass `--base-version` with the version you read to keep entries appended since then, and a different change since then is refused (HTTP 409, exit code 3). `append` adds a dated entry under `## Log` (newest first, under the day's `### Nov 13, 2026` heading, today on this machine unless `--date`) as its own version attributed to the agent, without rewriting the rest of the page. `history` lists versions newest first: id, time, who and what, and +/- line counts.
 
-`missionbase-agent projects create ...` creates a team-owned project and prints the created project JSON. `--name` and `--team` are required; optional kind, status, and visibility values are validated by Missionbase. Use `--description-file` for a Markdown description.
+`missionbase-agent projects create ...` creates a project and prints the created project JSON. `--name` is required; optional kind and status values are validated by Missionbase. Use `--description-file` for a Markdown description.
 
 `missionbase-agent projects update <project-id> ...` (alias `projects edit`) renames a project, replaces its description with a Markdown file (`--description-file`; an empty file clears it), or changes its kind (`project` or `ongoing`) or status, through `PATCH /api/v1/projects/:id`. Only the flags given are sent, and at least one is required. It prints the updated project JSON (the server's JSON, with the project under `project`). `--kind` other than `project` or `ongoing` fails before sending; the server validates the status (for example `in_progress`, `on_hold`, `archived`) and returns 422 with the allowed values. Missionbase checks the same access as the project's Settings page: the agent must have access to the project, and the key needs the projects (boxes) update permission. Who can see the project stays a Settings page change.
 
-`missionbase-agent projects discussions ...` lists standalone project discussions only; it does not include task conversations. `missionbase-agent projects discussions create ...` creates a standalone project discussion with an initial message and prints the created discussion JSON. `missionbase-agent projects files ...` lists/searches unified ProjectFile-backed Docs & Files items with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, folder parent/path/children metadata, filter/sort, and pagination metadata. Use `--folder-id FOLDER_ID` (or legacy `--folder FOLDER_ID`) or `--root` to scope listings/uploads, `--recursive` to search across folders, `mkdir` to create folders, and `mv`/`update --folder|--root` to move docs/files/folders. `show ...` prints one ProjectFile/document/folder entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file/folder metadata, and `download ... --output PATH` writes an uploaded file to disk (folders are rejected by the API). User-facing `missionbase projects files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document show ...` prints a document body and reports the document URL when the API response includes one; `document fetch` remains a compatibility alias; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a project document and prints the created document JSON, including its URL and any backing ProjectFile metadata returned by the API; pass `--folder FOLDER_ID` or `--root` to place the document in a folder or at the project root. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent week show ...` reads the selected team week through `/api/v1/weeks`; it returns only tasks in projects the agent can access. The date must be a Monday. It does not create a week. `missionbase-agent task show ...` prints full task working context from `/api/v1/tasks/:id`. `missionbase-agent task message ...` posts a message/reply to the task discussion. `missionbase-agent discussion message ...` posts by canonical discussion id, while `document message ...` and `projects files message ...` resolve their canonical document/file ids to the backing discussion before posting. `missionbase-agent conversation show/message` remains only as a deprecated alias for `discussion show/message`.
+`missionbase-agent projects discussions ...` lists standalone project discussions only; it does not include task conversations. `missionbase-agent projects discussions create ...` creates a standalone project discussion with an initial message and prints the created discussion JSON. `missionbase-agent projects files ...` lists/searches unified ProjectFile-backed Docs & Files items with identifiers, canonical preview URLs, fetch/download metadata, creator/owner, timestamps, status, content type, size, filename, folder parent/path/children metadata, filter/sort, and pagination metadata. Use `--folder-id FOLDER_ID` (or legacy `--folder FOLDER_ID`) or `--root` to scope listings/uploads, `--recursive` to search across folders, `mkdir` to create folders, and `mv`/`update --folder|--root` to move docs/files/folders. `show ...` prints one ProjectFile/document/folder entry, `upload ... --file PATH` adds a file upload, `update ...` edits uploaded file/folder metadata, and `download ... --output PATH` writes an uploaded file to disk (folders are rejected by the API). User-facing `missionbase projects files ...` supports the same list/show/upload/update/download workflows while acting as the signed-in user. `missionbase-agent document show ...` prints a document body and reports the document URL when the API response includes one; `document fetch` remains a compatibility alias; `--format` accepts `markdown` (default), `html`, or `plain-text`. `missionbase-agent document create ...` creates a project document and prints the created document JSON, including its URL and any backing ProjectFile metadata returned by the API; pass `--folder FOLDER_ID` or `--root` to place the document in a folder or at the project root. `missionbase-agent document edit ...` updates an existing document by creating a new document version. `missionbase-agent task show ...` prints full task working context from `/api/v1/tasks/:id`. `missionbase-agent task message ...` posts a message/reply to the task discussion. `missionbase-agent discussion message ...` posts by canonical discussion id, while `document message ...` and `projects files message ...` resolve their canonical document/file ids to the backing discussion before posting. `missionbase-agent conversation show/message` remains only as a deprecated alias for `discussion show/message`.
 
 Task, discussion, document, file, project discussion create, and DM bodies are Markdown-capable by default; Missionbase renders headings, bold/italic, inline code, fenced code blocks, bullet/numbered lists, blockquotes, and links as sanitized rich text while ordinary plain text continues to display normally. These agent-authored body fields also defensively normalize accidental escaped newline sequences (`\\n`, `\\r`, and `\\r\\n`) into real line breaks outside quoted/backticked code contexts.
 
@@ -541,7 +531,7 @@ missionbase-agent task create --cwd ~/Projects/other-repo --title "Fix the flaky
 
 Task scheduling is retired: Missionbase no longer hides tasks until a scheduled time, and the API answers `scheduled_at`, `scheduled_at_preset` and `scheduled` with 422. The CLI has no `--scheduled-at`, `--no-scheduled-at` or `--scheduled` flags; use `--deadline` for dates.
 
-`missionbase task assign ...` and `missionbase task unassign ...` manage user assignments for existing tasks with the user-acting CLI. Use `--user` with a numeric user id or `@mention`; mention resolution uses `--team <team-id>` or task-derived team context when available. `missionbase task participants list ...` lists task participants, and `missionbase task participants add ... --user ...` adds user participants only.
+`missionbase task assign ...` and `missionbase task unassign ...` manage user assignments for existing tasks with the user-acting CLI. Use `--user` with a numeric user id or `@mention`; an `@mention` is resolved through `/api/v1/users/lookup?handle=`. `missionbase task participants list ...` lists task participants, and `missionbase task participants add ... --user ...` adds user participants only.
 
 `missionbase-agent task assign ...` and `missionbase-agent task unassign ...` manage assignments for existing tasks using the Missionbase assignment API. Use `--user` with a numeric user id or `@mention`, `--agent` with an agent slug, or `task unassign <task-id> --self` to safely remove the currently selected agent from a task after handing it off.
 
@@ -555,8 +545,8 @@ Examples:
 
 ```bash
 missionbase-agent task create --project 2 --title "Investigate screenshot" --body-file /tmp/body.md --attach /tmp/screenshot.png
-missionbase users lookup Daniel --team 2
-missionbase task assign 123 --user @DanielLemky --team 2
+missionbase users lookup @DanielLemky
+missionbase task assign 123 --user @DanielLemky
 missionbase task participants add 123 --user 42
 missionbase-agent task create --project 2 --assign-agent missionbase-dev --title "Assigned investigation"
 missionbase-agent task assign 123 --user @DanielLemky
@@ -565,7 +555,7 @@ missionbase-agent task move 123 --project 45
 missionbase-agent task message 123 --body-file /tmp/comment.md --attach /tmp/repro.webp
 missionbase-agent activity project 2 --duration 24h --limit 25
 missionbase-agent projects activity 2 --since 2026-07-01T00:00:00Z --action task.status_changed
-missionbase-agent activity team 1 --actor Agent:2 --subject-type Task --subject-id 2902 --json
+missionbase-agent activity project 5 --actor Agent:2 --subject-type Task --subject-id 2902 --json
 missionbase-agent projects discussions 2
 missionbase-agent projects discussions create 2 --title "Release workflow planning" --body-file /tmp/proposal.md
 missionbase-agent projects files 2
@@ -632,7 +622,7 @@ The update stream is intended for events that should wake an agent up:
 
 ### Agent direct messages
 
-`missionbase-agent dm ...` sends and reads direct messages with users or agents on the same team. The sender is always the currently selected agent from `missionbase-agent use <agent-slug>`; `--to` identifies the recipient by their handle/username/slug.
+`missionbase-agent dm ...` sends and reads direct messages with the people and agents you work with. The sender is always the currently selected agent from `missionbase-agent use <agent-slug>`; `--to` identifies the recipient by their handle/username/slug.
 
 ```bash
 missionbase-agent dm send --to codex --body-file /tmp/dm.md
@@ -677,7 +667,7 @@ Use `missionbase-agent task show <task-id>`, `missionbase-agent discussion show 
 
 ### Other agent commands
 
-`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` sets a task's status by key (`backlog`, `planning`, `todo`, `in_progress`, `complete`, `not_doing`); `task move <task-id> --project <project-id>` moves a task to another accessible project and keeps its status; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent projects tasks <project-id>` lists open-category tasks in an accessible project by default; use `--status KEY[,KEY]`, `--status-category`, `--page`, and `--per-page` to refine results. The old `--task-status-ids` / `--task-status-id` flags were removed along with status ids and now fail with a pointer to `--status`. `missionbase-agent projects discussions <project-id>` lists standalone project discussions only, while `discussion show/message` is the generic canonical-id surface for standalone discussions and other readable discussion threads (`conversation show/message` is deprecated). `missionbase-agent projects files <project-id>` lists and searches unified project files/documents as JSON; use `--query`, `--filter`, `--sort`, `--folder-id`, `--root`, `--recursive`, `--page`, and `--per-page` to filter or paginate, plus `show`, `mkdir`, `mv`, `upload`, `update`, `versions`, `upload-version`, and `download` subcommands for file/folder workflows. Task payloads carry `status` (the key), `status_label`, `status_category`, `task_status_position` and `status_color`; project payloads list the fixed `task_statuses`. `get` is included as a low-level escape hatch while higher-level task/page/team commands are ported.
+`missionbase-agent members` lists group members, including mention handles/usernames to use when tagging humans or agents. `missionbase-agent task status <task-id> <status>` sets a task's status by key (`backlog`, `planning`, `todo`, `in_progress`, `complete`, `not_doing`); `task move <task-id> --project <project-id>` moves a task to another accessible project and keeps its status; `complete` is routed through Missionbase's complete endpoint so completion metadata and recurring follow-ups are handled correctly. `missionbase-agent task participants ...` adds and lists task participants through high-level commands. `missionbase-agent projects tasks <project-id>` lists open-category tasks in an accessible project by default; use `--status KEY[,KEY]`, `--status-category`, `--page`, and `--per-page` to refine results. The old `--task-status-ids` / `--task-status-id` flags were removed along with status ids and now fail with a pointer to `--status`. `missionbase-agent projects discussions <project-id>` lists standalone project discussions only, while `discussion show/message` is the generic canonical-id surface for standalone discussions and other readable discussion threads (`conversation show/message` is deprecated). `missionbase-agent projects files <project-id>` lists and searches unified project files/documents as JSON; use `--query`, `--filter`, `--sort`, `--folder-id`, `--root`, `--recursive`, `--page`, and `--per-page` to filter or paginate, plus `show`, `mkdir`, `mv`, `upload`, `update`, `versions`, `upload-version`, and `download` subcommands for file/folder workflows. Task payloads carry `status` (the key), `status_label`, `status_category`, `task_status_position` and `status_color`; project payloads list the fixed `task_statuses`. `get` is included as a low-level escape hatch while higher-level task/page commands are ported.
 
 ## Agent check helper
 

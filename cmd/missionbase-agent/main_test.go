@@ -7,30 +7,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
-
-func TestWeekShowGetsAccessibleWeek(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/weeks" || r.URL.Query().Get("starts_on") != "2026-08-03" {
-			t.Errorf("request = %s %s", r.Method, r.URL.String())
-		}
-		if r.Header.Get("X-Missionbase-Agent-Slug") != "missionbase-dev" {
-			t.Errorf("agent header = %q", r.Header.Get("X-Missionbase-Agent-Slug"))
-		}
-		_, _ = w.Write([]byte(`{"week":{"tasks":[]}}`))
-	}))
-	defer server.Close()
-	setAgentEnv(t, server.URL)
-
-	if err := run([]string{"week", "show", "--starts-on", "2026-08-03"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := run([]string{"week", "show", "--starts-on", "2026-08-04"}); err == nil {
-		t.Fatal("expected non-Monday date to fail")
-	}
-}
 
 func TestScratchpadCommandsUseUserContext(t *testing.T) {
 	bodyFile := filepath.Join(t.TempDir(), "scratchpad.md")
@@ -451,12 +431,12 @@ func TestAuthSetTokenSavesTheKey(t *testing.T) {
 	}
 }
 
-func TestHelpDoesNotMentionTeamKeys(t *testing.T) {
+func TestHelpDoesNotMentionTeamsOrWeeks(t *testing.T) {
 	out, err := runCapture(t, "help")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, phrase := range []string{"team-token", "team token", "team API", "team member"} {
+	for _, phrase := range []string{"team", "Team", "week show", "visibility"} {
 		if strings.Contains(out, phrase) {
 			t.Fatalf("help still says %q", phrase)
 		}
@@ -930,7 +910,7 @@ func TestProjectsCreateHelp(t *testing.T) {
 			t.Fatalf("run projects create --help: %v", err)
 		}
 	})
-	if !strings.Contains(stdout, "missionbase-agent projects create --name NAME --team TEAM_ID") {
+	if !strings.Contains(stdout, "missionbase-agent projects create --name NAME [--description-file PATH]") {
 		t.Fatalf("help missing projects create usage:\n%s", stdout)
 	}
 }
@@ -947,7 +927,7 @@ func TestProjectsFilesRequiresProjectIDAndOptionValues(t *testing.T) {
 	}
 }
 
-func TestProjectsCreatePostsTeamProject(t *testing.T) {
+func TestProjectsCreatePostsOnlyProjectFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
@@ -962,13 +942,11 @@ func TestProjectsCreatePostsTeamProject(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		for key, want := range map[string]string{
-			"name": "Delivery", "ownable_type": "Team", "ownable_id": "42",
-			"description": "Line 1\nLine 2", "kind": "project", "status": "in_progress", "visibility": "team",
-		} {
-			if got := payload[key]; got != want {
-				t.Fatalf("%s = %q, want %q", key, got, want)
-			}
+		want := map[string]string{
+			"name": "Delivery", "description": "Line 1\nLine 2", "kind": "project", "status": "in_progress",
+		}
+		if !reflect.DeepEqual(payload, want) {
+			t.Fatalf("payload = %#v, want %#v (no ownership or visibility)", payload, want)
 		}
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"project":{"id":8,"name":"Delivery"}}`))
@@ -977,19 +955,16 @@ func TestProjectsCreatePostsTeamProject(t *testing.T) {
 
 	descriptionFile := writeTextFile(t, "description.md", `Line 1\nLine 2`)
 	setAgentEnv(t, server.URL)
-	if err := run([]string{"projects", "create", "--name", "Delivery", "--team", "42", "--description-file", descriptionFile, "--kind", "project", "--status", "in_progress", "--visibility", "team"}); err != nil {
+	if err := run([]string{"projects", "create", "--name", "Delivery", "--description-file", descriptionFile, "--kind", "project", "--status", "in_progress"}); err != nil {
 		t.Fatalf("run projects create: %v", err)
 	}
 }
 
 func TestProjectsCreateValidatesRequiredOptions(t *testing.T) {
-	if err := run([]string{"projects", "create", "--team", "42"}); err == nil || !strings.Contains(err.Error(), "--name is required") {
+	if err := run([]string{"projects", "create", "--kind", "project"}); err == nil || !strings.Contains(err.Error(), "--name is required") {
 		t.Fatalf("err = %v, want name required", err)
 	}
-	if err := run([]string{"projects", "create", "--name", "Delivery"}); err == nil || !strings.Contains(err.Error(), "--team is required") {
-		t.Fatalf("err = %v, want team required", err)
-	}
-	if err := run([]string{"projects", "create", "--name", "Delivery", "--team", "42", "--description", "inline"}); err == nil || !strings.Contains(err.Error(), "use --description-file PATH") {
+	if err := run([]string{"projects", "create", "--name", "Delivery", "--description", "inline"}); err == nil || !strings.Contains(err.Error(), "use --description-file PATH") {
 		t.Fatalf("err = %v, want description-file guidance", err)
 	}
 }
@@ -2232,9 +2207,9 @@ func TestProjectsActivityAliasAndJSONOutput(t *testing.T) {
 	}
 }
 
-func TestActivityTeamDurationBuildsTeamEndpoint(t *testing.T) {
+func TestActivityProjectDurationBuildsProjectEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/teams/7/activity_events" {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/projects/7/activity_events" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.String())
 		}
 		if r.URL.Query().Get("since") == "" {
@@ -2247,12 +2222,38 @@ func TestActivityTeamDurationBuildsTeamEndpoint(t *testing.T) {
 
 	setAgentEnv(t, server.URL)
 	stdout := captureStdout(t, func() {
-		if err := run([]string{"activity", "team", "7", "--duration", "24h"}); err != nil {
-			t.Fatalf("run activity team: %v", err)
+		if err := run([]string{"activity", "project", "7", "--duration", "24h"}); err != nil {
+			t.Fatalf("run activity project: %v", err)
 		}
 	})
 	if !strings.Contains(stdout, "No activity events found.") {
 		t.Fatalf("stdout = %s", stdout)
+	}
+}
+
+func TestRemovedTeamAndWeekAgentCommandsAndFlags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"week", "show"}, `unknown command "week"`},
+		{[]string{"activity", "team", "7"}, `unknown activity scope "team"`},
+		{[]string{"activity", "teams", "7"}, `unknown activity scope "teams"`},
+		{[]string{"projects", "create", "--name", "Delivery", "--team", "42"}, `unknown projects create option "--team"`},
+		{[]string{"projects", "create", "--name", "Delivery", "--team-id", "42"}, `unknown projects create option "--team-id"`},
+		{[]string{"projects", "create", "--name", "Delivery", "--visibility", "team"}, `unknown projects create option "--visibility"`},
+	}
+	for _, tt := range tests {
+		err := run(tt.args)
+		if err == nil || err.Error() != tt.want {
+			t.Fatalf("run %v: err = %v, want %q", tt.args, err, tt.want)
+		}
 	}
 }
 
@@ -2262,7 +2263,7 @@ func TestActivityHelpMentionsJSONAndFilters(t *testing.T) {
 			t.Fatalf("run activity help: %v", err)
 		}
 	})
-	for _, want := range []string{"missionbase-agent activity <project|team> <id>", "--since TIME", "--cursor ID", "--json"} {
+	for _, want := range []string{"missionbase-agent activity project <id>", "--since TIME", "--cursor ID", "--json"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}

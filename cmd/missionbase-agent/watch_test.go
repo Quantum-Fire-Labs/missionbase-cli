@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const testProjectFiveJSON = `{"project":{"id":5,"name":"Missionbase","owner":{"type":"Team","id":1,"name":"Quantum Fire Labs"}}}`
+const testProjectFiveJSON = `{"project":{"id":5,"name":"Missionbase","description":null,"kind":"project","status":"in_progress","task_statuses":[],"created_at":"2026-01-01T00:00:00Z"}}`
 
 func setWatchEnv(t *testing.T) string {
 	t.Helper()

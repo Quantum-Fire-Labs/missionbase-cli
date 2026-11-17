@@ -7,44 +7,7 @@ import (
 	"time"
 )
 
-const weekUsage = "usage: missionbase week <show|add TASK_ID|remove PLACEMENT_ID|order PLACEMENT_ID> --team TEAM_ID [--starts-on YYYY-MM-DD] [--after-task TASK_ID]"
 const dayUsage = "usage: missionbase day <show|add TASK_ID|remove PLACEMENT_ID|order PLACEMENT_ID> --date YYYY-MM-DD [--after-task TASK_ID]"
-
-func week(args []string) error {
-	command, id, options, err := planningArgs(args, weekUsage, map[string]bool{"--team": true, "--starts-on": true, "--after-task": true})
-	if err != nil {
-		return err
-	}
-	if command == "help" {
-		return nil
-	}
-	if options["--team"] == "" {
-		return fmt.Errorf("--team is required")
-	}
-	date := options["--starts-on"]
-	if date != "" {
-		if err := checkPlanningDate(date, true); err != nil {
-			return err
-		}
-	}
-	if options["--after-task"] != "" && command != "order" {
-		return fmt.Errorf("--after-task is only valid with order")
-	}
-	query := url.Values{"team_id": {options["--team"]}}
-	if date != "" {
-		query.Set("starts_on", date)
-	}
-	if command == "show" {
-		return apiGet("/api/v1/weeks?" + query.Encode())
-	}
-	if date == "" {
-		return fmt.Errorf("--starts-on is required for week changes")
-	}
-	path := "/api/v1/weeks/" + url.PathEscape(date) + "/placements"
-	query.Del("starts_on")
-	path += "?" + query.Encode()
-	return planningWrite(command, id, path, options["--after-task"])
-}
 
 func day(args []string) error {
 	command, id, options, err := planningArgs(args, dayUsage, map[string]bool{"--date": true, "--after-task": true})
@@ -58,7 +21,7 @@ func day(args []string) error {
 	if date == "" {
 		return fmt.Errorf("--date is required")
 	}
-	if err := checkPlanningDate(date, false); err != nil {
+	if err := checkPlanningDate(date); err != nil {
 		return err
 	}
 	if options["--after-task"] != "" && command != "order" {
@@ -104,13 +67,10 @@ func planningArgs(args []string, usage string, validOptions map[string]bool) (st
 	return command, id, options, nil
 }
 
-func checkPlanningDate(value string, monday bool) error {
+func checkPlanningDate(value string) error {
 	date, err := time.Parse("2006-01-02", value)
 	if err != nil || date.Format("2006-01-02") != value {
 		return fmt.Errorf("date must be in YYYY-MM-DD format")
-	}
-	if monday && date.Weekday() != time.Monday {
-		return fmt.Errorf("week date must be a Monday")
 	}
 	return nil
 }
@@ -120,11 +80,7 @@ func planningWrite(command, id, path, afterTask string) error {
 	case "add":
 		return apiPostJSON(path, map[string]string{"task_id": id})
 	case "remove", "order":
-		base, query, hasQuery := strings.Cut(path, "?")
-		memberPath := base + "/" + url.PathEscape(id)
-		if hasQuery {
-			memberPath += "?" + query
-		}
+		memberPath := path + "/" + url.PathEscape(id)
 		if command == "remove" {
 			return apiDelete(memberPath)
 		}
