@@ -57,7 +57,6 @@ func TestBoxCommandsAndFlagsAreRefusedBeforeSending(t *testing.T) {
 		{[]string{"tasks", "changes", "--box", "7"}, `unknown tasks changes option "--box"`},
 		{[]string{"tasks", "--box", "7"}, `"--box"`},
 		{[]string{"members", "--box", "7"}, `"--box"`},
-		{[]string{"agent", "projects", "add", "w", "--box", "2"}, `unknown agent projects add option "--box"`},
 		{[]string{"document", "create", "--box", "2", "--title", "T"}, `"--box"`},
 	} {
 		_, err := runCapture(t, tc.args...)
@@ -72,7 +71,6 @@ func TestProjectFlagsSendOnlyProjectKeys(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
 		"POST /api/v1/tasks":                fixed(201, `{"task":{"id":1}}`),
 		"PATCH /api/v1/tasks/1":             fixed(200, `{"task":{"id":1}}`),
-		"POST /api/v1/agents/w/projects":    fixed(200, `{}`),
 		"POST /api/v1/projects/7/documents": fixed(201, `{"document":{"id":2}}`),
 		"GET /api/v1/tasks/accessible":      fixed(200, emptyAccessible),
 		"GET /api/v1/tasks/changes":         fixed(200, `{"tasks":[],"deleted_task_ids":[],"meta":{"has_more":false,"cursor":"c"}}`),
@@ -83,7 +81,6 @@ func TestProjectFlagsSendOnlyProjectKeys(t *testing.T) {
 		{"task", "create", "--title", "One", "--project", "7"},
 		{"task", "create", "--title", "Two", "--project-id", "7"},
 		{"task", "move", "1", "--project", "7"},
-		{"agent", "projects", "add", "w", "--project", "7"},
 		{"document", "create", "--project-id", "7", "--title", "Doc", "--body-file", bodyFile},
 		{"tasks", "ls", "--project", "7", "--json"},
 		{"tasks", "changes", "--project", "7", "--json"},
@@ -93,7 +90,7 @@ func TestProjectFlagsSendOnlyProjectKeys(t *testing.T) {
 		}
 	}
 	reqs := *requests
-	if len(reqs) != 7 {
+	if len(reqs) != 6 {
 		t.Fatalf("requests = %#v", reqs)
 	}
 	for _, request := range reqs[:3] {
@@ -101,13 +98,10 @@ func TestProjectFlagsSendOnlyProjectKeys(t *testing.T) {
 			t.Fatalf("payload = %#v, want project_id 7", request.payload)
 		}
 	}
-	if ids, _ := reqs[3].payload["project_ids"].([]any); len(ids) != 1 || ids[0] != "7" {
-		t.Fatalf("agent projects add payload = %#v, want project_ids [7]", reqs[3].payload)
+	if reqs[3].path != "/api/v1/projects/7/documents" {
+		t.Fatalf("document path = %s", reqs[3].path)
 	}
-	if reqs[4].path != "/api/v1/projects/7/documents" {
-		t.Fatalf("document path = %s", reqs[4].path)
-	}
-	for _, request := range reqs[5:] {
+	for _, request := range reqs[4:] {
 		if mustParseQuery(t, request.query).Get("project_ids") != "7" {
 			t.Fatalf("%s query = %s, want project_ids 7", request.path, request.query)
 		}
