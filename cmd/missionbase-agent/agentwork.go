@@ -282,7 +282,10 @@ func parseProjectFile(path string, data []byte) (resolvedProject, error) {
 
 // projectLinkKeys are the keys project link writes, in the order it writes
 // them.
-var projectLinkKeys = []string{"team_id", "team_name", "project_id", "project_name"}
+var projectLinkKeys = []string{"project_id", "project_name"}
+
+// retiredLinkKeys were written by older CLIs. Link and unlink delete them.
+var retiredLinkKeys = []string{"team_id", "team_name"}
 
 // linkDir is where a folder's project link lives: the root of the git
 // repository or worktree containing dir (the nearest folder with a .git
@@ -1391,7 +1394,7 @@ func linkTarget(cwd string) (string, error) {
 
 // projectLink writes .missionbase/project.json at the git root above --cwd
 // (or the current folder) for a project the agent can reach, with its name
-// and team from the server. It keeps other keys in the file and refuses to
+// from the server. It keeps other keys in the file and refuses to
 // replace a link to a different project without --force. It doesn't commit.
 func projectLink(args []string) error {
 	id, cwd, force, jsonOut := "", "", false, false
@@ -1447,11 +1450,8 @@ func projectLink(args []string) error {
 		return fmt.Errorf("can't link project %s: %w", id, err)
 	}
 
-	delete(keys, "team_id")
-	delete(keys, "team_name")
-	if project.Owner.Type == "Team" && project.Owner.ID != 0 {
-		keys["team_id"] = mustJSON(project.Owner.ID)
-		keys["team_name"] = mustJSON(project.Owner.Name)
+	for _, key := range retiredLinkKeys {
+		delete(keys, key)
 	}
 	keys["project_id"] = mustJSON(project.ID)
 	keys["project_name"] = mustJSON(project.Name)
@@ -1506,7 +1506,7 @@ func projectUnlink(args []string) error {
 		return err
 	}
 	removed := false
-	for _, key := range projectLinkKeys {
+	for _, key := range append(append([]string{}, projectLinkKeys...), retiredLinkKeys...) {
 		if _, ok := keys[key]; ok {
 			delete(keys, key)
 			removed = true
@@ -1537,13 +1537,8 @@ func projectUnlink(args []string) error {
 }
 
 type projectPayload struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Owner struct {
-		Type string `json:"type"`
-		ID   int64  `json:"id"`
-		Name string `json:"name"`
-	} `json:"owner"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 // fetchProject reads a project the agent can access (GET /api/v1/projects/:id).

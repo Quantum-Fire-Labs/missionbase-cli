@@ -80,8 +80,6 @@ func run(args []string) error {
 		return tasks(args[1:])
 	case "project":
 		return projectCommand(args[1:])
-	case "week":
-		return week(args[1:])
 	case "task":
 		return task(args[1:])
 	case "discussion":
@@ -1503,7 +1501,7 @@ func projects(args []string) error {
 	case "files":
 		return projectFiles(args[1:])
 	case "activity", "activity-events":
-		return scopedActivity("project", args[1:])
+		return projectActivity(args[1:])
 	case "statuses", "task-statuses":
 		return projectTaskStatuses(args[1:])
 	default:
@@ -1512,8 +1510,8 @@ func projects(args []string) error {
 }
 
 func projectCreate(args []string) error {
-	usage := "usage: missionbase-agent projects create --name NAME --team TEAM_ID [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]"
-	payload := map[string]string{"ownable_type": "Team"}
+	usage := "usage: missionbase-agent projects create --name NAME [--description-file PATH] [--kind KIND] [--status STATUS]"
+	payload := map[string]string{}
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -1522,12 +1520,6 @@ func projectCreate(args []string) error {
 				return fmt.Errorf("--name requires a value")
 			}
 			payload["name"] = args[i+1]
-			i++
-		case "--team", "--team-id":
-			if i+1 >= len(args) {
-				return fmt.Errorf("%s requires a value", args[i])
-			}
-			payload["ownable_id"] = args[i+1]
 			i++
 		case "--description-file":
 			if i+1 >= len(args) {
@@ -1541,7 +1533,7 @@ func projectCreate(args []string) error {
 			i++
 		case "--description":
 			return fmt.Errorf("--description is not supported; use --description-file PATH")
-		case "--kind", "--status", "--visibility":
+		case "--kind", "--status":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
@@ -1558,10 +1550,6 @@ func projectCreate(args []string) error {
 	if strings.TrimSpace(payload["name"]) == "" {
 		return fmt.Errorf("--name is required")
 	}
-	if strings.TrimSpace(payload["ownable_id"]) == "" {
-		return fmt.Errorf("--team is required")
-	}
-
 	return apiPostJSON("/api/v1/projects", payload)
 }
 
@@ -1640,11 +1628,6 @@ type activityEvent struct {
 
 type activityScope struct {
 	Project *activityRef `json:"project"`
-	Team    *activityRef `json:"team"`
-}
-
-func (scope activityScope) project() *activityRef {
-	return scope.Project
 }
 
 type activityRef struct {
@@ -1661,15 +1644,13 @@ func activity(args []string) error {
 
 	switch args[0] {
 	case "project", "projects":
-		return scopedActivity("project", args[1:])
-	case "team", "teams":
-		return scopedActivity("team", args[1:])
+		return projectActivity(args[1:])
 	default:
 		return fmt.Errorf("unknown activity scope %q", args[0])
 	}
 }
 
-func scopedActivity(scope string, args []string) error {
+func projectActivity(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("%s", activityUsage())
 	}
@@ -1680,7 +1661,7 @@ func scopedActivity(scope string, args []string) error {
 
 	scopeID := strings.TrimSpace(args[0])
 	if scopeID == "" {
-		return fmt.Errorf("%s id is required", scope)
+		return fmt.Errorf("project id is required")
 	}
 
 	values := url.Values{}
@@ -1767,11 +1748,7 @@ func scopedActivity(scope string, args []string) error {
 		}
 	}
 
-	pathScope := "projects"
-	if scope == "team" {
-		pathScope = "teams"
-	}
-	path := withQuery("/api/v1/"+pathScope+"/"+url.PathEscape(scopeID)+"/activity_events", values)
+	path := withQuery("/api/v1/projects/"+url.PathEscape(scopeID)+"/activity_events", values)
 	body, err := apiGetBody(path)
 	if err != nil {
 		return err
@@ -1784,7 +1761,7 @@ func scopedActivity(scope string, args []string) error {
 }
 
 func activityUsage() string {
-	return "usage: missionbase-agent activity <project|team> <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID|--actor-type TYPE --actor-id ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]\n       missionbase-agent projects activity <project-id> [same filters]"
+	return "usage: missionbase-agent activity project <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID|--actor-type TYPE --actor-id ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]\n       missionbase-agent projects activity <project-id> [same filters]"
 }
 
 func printActivitySummary(body []byte) error {
@@ -1815,15 +1792,8 @@ func printActivitySummary(body []byte) error {
 }
 
 func formatActivityScope(scope activityScope) string {
-	project := scope.project()
-	if project != nil && scope.Team != nil {
-		return formatActivityRef(project) + ", " + formatActivityRef(scope.Team)
-	}
-	if project != nil {
-		return formatActivityRef(project)
-	}
-	if scope.Team != nil {
-		return formatActivityRef(scope.Team)
+	if scope.Project != nil {
+		return formatActivityRef(scope.Project)
 	}
 	return "scope unknown"
 }
@@ -2517,28 +2487,6 @@ func members(args []string) error {
 	}
 	fmt.Println(string(body))
 	return nil
-}
-
-func week(args []string) error {
-	usage := "usage: missionbase-agent week show [--starts-on YYYY-MM-DD (Monday)]"
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(usage)
-		return nil
-	}
-	if len(args) == 0 || args[0] != "show" {
-		return fmt.Errorf("%s", usage)
-	}
-	if len(args) == 1 {
-		return apiGet("/api/v1/weeks")
-	}
-	if len(args) != 3 || args[1] != "--starts-on" {
-		return fmt.Errorf("%s", usage)
-	}
-	date, err := time.Parse("2006-01-02", args[2])
-	if err != nil || date.Format("2006-01-02") != args[2] || date.Weekday() != time.Monday {
-		return fmt.Errorf("--starts-on must be a Monday in YYYY-MM-DD format")
-	}
-	return apiGet("/api/v1/weeks?starts_on=" + url.QueryEscape(args[2]))
 }
 
 func task(args []string) error {
@@ -3946,7 +3894,6 @@ Commands:
                                       Show open tasks assigned to a target user
   tasks today|upcoming|overdue --user ID|@handle
                                       Convenience due-date task listings
-  week show [--starts-on YYYY-MM-DD]   Show accessible team tasks in a week (Monday date)
   task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
   task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD]
       [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention]
@@ -4024,8 +3971,8 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Show which project "here" resolves to
   project link <project-id> [--cwd DIR] [--force] [--json]
                                       Link this repo to a project: write .missionbase/project.json at the git
-                                      root (or the folder outside git) with team_id, team_name, project_id and
-                                      project_name from the server. Refuses to replace a link to a different
+                                      root (or the folder outside git) with project_id and project_name from
+                                      the server. Refuses to replace a link to a different
                                       project unless --force. Doesn't commit
   project unlink [--cwd DIR] [--json] Remove that link (other keys in the file are kept)
   project default [ID | --clear]      Show, set or clear this machine's default project
@@ -4055,11 +4002,10 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   workspace update --chat-id CHAT_ID [--title TITLE]
       [--file PATH|--markdown TEXT]   Replace workspace content from Markdown or stdin
   members [--project ID] [--json]     List group members and mention handles
-  activity <project|team> <id>        Query recent activity events with filters; concise text by default, --json for raw output
+  activity project <id>               Query recent activity events with filters; concise text by default, --json for raw output
   projects activity <project-id>      Query recent activity events for an accessible project
-  projects create --name NAME --team TEAM_ID
-      [--description-file PATH] [--kind KIND] [--status STATUS] [--visibility VISIBILITY]
-                                      Create a team-owned project
+  projects create --name NAME [--description-file PATH] [--kind KIND] [--status STATUS]
+                                      Create a project
   projects update <project-id> [--name NAME] [--description-file PATH]
       [--kind project|ongoing] [--status STATUS] [--json]
                                       Rename a project, replace its description, or change its kind

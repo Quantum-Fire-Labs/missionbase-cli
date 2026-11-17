@@ -71,20 +71,14 @@ func run(args []string) error {
 		return apiGet("/api/v1/users/work")
 	case "scratchpad":
 		return scratchpad(args[1:])
-	case "teams":
-		return teams(args[1:])
 	case "users":
 		return users(args[1:])
-	case "team":
-		return team(args[1:])
 	case "projects":
 		return projects(args[1:])
 	case "project":
 		return project(args[1:])
 	case "tasks":
 		return tasks(args[1:])
-	case "week":
-		return week(args[1:])
 	case "day":
 		return day(args[1:])
 	case "today":
@@ -286,24 +280,15 @@ func parseSidebarItemArgs(args []string) (string, string, error) {
 	return typeValue, idValue, nil
 }
 
-func teams(args []string) error {
-	if len(args) > 0 {
-		if len(args) == 1 && isHelp(args[0]) {
-			fmt.Println("usage: missionbase teams")
-			return nil
-		}
-		return fmt.Errorf("usage: missionbase teams")
-	}
-	return apiGet("/api/v1/teams")
-}
+const usersLookupUsage = "usage: missionbase users lookup [@mention|email|user-id]"
 
 func users(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase users lookup <query-or-mention> [--team <team-id>]")
+		return fmt.Errorf(usersLookupUsage)
 	}
 	if args[0] != "lookup" {
 		if isHelp(args[0]) {
-			fmt.Println("usage: missionbase users lookup <query-or-mention> [--team <team-id>]")
+			fmt.Println(usersLookupUsage)
 			return nil
 		}
 		return fmt.Errorf("unknown users command %q", args[0])
@@ -311,86 +296,32 @@ func users(args []string) error {
 	return usersLookup(args[1:])
 }
 
+// usersLookup lists the people you work with, or finds one by email, @mention or id.
 func usersLookup(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase users lookup <query-or-mention> [--team <team-id>]")
-	}
-	query := args[0]
-	teamID := ""
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--team":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--team requires a value")
-			}
-			teamID = args[i+1]
-			i++
-		case "--help", "-h":
-			fmt.Println("usage: missionbase users lookup <query-or-mention> [--team <team-id>]")
-			return nil
-		default:
-			return fmt.Errorf("unknown users lookup option %q", args[i])
+	if len(args) > 1 {
+		if strings.HasPrefix(args[1], "-") && !isHelp(args[1]) {
+			return fmt.Errorf("unknown users lookup option %q", args[1])
 		}
-	}
-
-	cfg, err := config.LoadUser()
-	if err != nil {
-		return err
-	}
-	client := httpclient.NewUser(cfg)
-	if strings.HasPrefix(strings.TrimSpace(query), "@") {
-		if teamID == "" {
-			return fmt.Errorf("team context is required to resolve %s; pass --team <team-id> or use a numeric user id", query)
-		}
-		users, err := resolve.TeamMembers(client, teamID)
-		if err != nil {
-			return err
-		}
-		id, err := resolve.MatchUserID(users, resolve.StripMention(query), query)
-		if err != nil {
-			return err
-		}
-		body, err := json.Marshal(map[string]string{"user_id": id})
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(body))
-		return nil
+		return fmt.Errorf(usersLookupUsage)
 	}
 	values := url.Values{}
-	values.Set("query", query)
-	if teamID != "" {
-		values.Set("team_id", teamID)
-	}
-	body, err := client.Get(withQuery("/api/v1/users/lookup", values))
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(body))
-	return nil
-}
-
-func team(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase team <show|members> <team-id>")
-	}
-	switch args[0] {
-	case "show":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: missionbase team show <team-id>")
+	if len(args) == 1 {
+		query := strings.TrimSpace(args[0])
+		switch {
+		case isHelp(query):
+			fmt.Println(usersLookupUsage)
+			return nil
+		case strings.HasPrefix(query, "-"):
+			return fmt.Errorf("unknown users lookup option %q", query)
+		case query == "":
+			return fmt.Errorf(usersLookupUsage)
+		case strings.Contains(query, "@") && !strings.HasPrefix(query, "@"):
+			values.Set("email", query)
+		default:
+			values.Set("handle", query)
 		}
-		return apiGet("/api/v1/teams/" + url.PathEscape(args[1]))
-	case "members":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: missionbase team members <team-id>")
-		}
-		return apiGet("/api/v1/teams/" + url.PathEscape(args[1]) + "/members")
-	case "--help", "-h":
-		fmt.Println("usage: missionbase team <show|members> <team-id>")
-		return nil
-	default:
-		return fmt.Errorf("unknown team command %q", args[0])
 	}
+	return apiGet(withQuery("/api/v1/users/lookup", values))
 }
 
 func projects(args []string) error {
@@ -409,7 +340,7 @@ func projects(args []string) error {
 	case "statuses", "task-statuses":
 		return projectTaskStatuses(args[1:])
 	case "--help", "-h":
-		fmt.Println("usage: missionbase projects [--team TEAM_ID]\n       missionbase projects <tasks|discussions|documents|files|statuses|task-statuses> <project-id>")
+		fmt.Println("usage: missionbase projects\n       missionbase projects <tasks|discussions|documents|files|statuses|task-statuses> <project-id>")
 		return nil
 	default:
 		return fmt.Errorf("unknown projects command %q", args[0])
@@ -417,23 +348,16 @@ func projects(args []string) error {
 }
 
 func listProjects(args []string) error {
-	values := url.Values{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--team":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--team requires a value")
-			}
-			values.Set("team_id", args[i+1])
-			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase projects [--team TEAM_ID]")
+			fmt.Println("usage: missionbase projects")
 			return nil
 		default:
 			return fmt.Errorf("unknown projects option %q", args[i])
 		}
 	}
-	return apiGet(withQuery("/api/v1/projects", values))
+	return apiGet("/api/v1/projects")
 }
 
 func project(args []string) error {
@@ -1038,7 +962,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention [--team ID]\n       missionbase task unassign <task-id> --user ID|@mention [--team ID]\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention [--team ID]\n       missionbase task <show|messages> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention\n       missionbase task unassign <task-id> --user ID|@mention\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention\n       missionbase task <show|messages> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -1047,11 +971,10 @@ func task(args []string) error {
 
 func taskAssign(args []string) error {
 	if len(args) < 3 {
-		return fmt.Errorf("usage: missionbase task assign <task-id> --user ID|@mention [--team ID]")
+		return fmt.Errorf("usage: missionbase task assign <task-id> --user ID|@mention")
 	}
 	taskID := args[0]
 	userValue := ""
-	teamID := ""
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--user":
@@ -1060,14 +983,8 @@ func taskAssign(args []string) error {
 			}
 			userValue = args[i+1]
 			i++
-		case "--team":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--team requires a value")
-			}
-			teamID = args[i+1]
-			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task assign <task-id> --user ID|@mention [--team ID]")
+			fmt.Println("usage: missionbase task assign <task-id> --user ID|@mention")
 			return nil
 		default:
 			return fmt.Errorf("unknown task assign option %q", args[i])
@@ -1076,16 +993,15 @@ func taskAssign(args []string) error {
 	if userValue == "" {
 		return fmt.Errorf("--user is required")
 	}
-	return taskUserAssignment(taskID, userValue, teamID, true)
+	return taskUserAssignment(taskID, userValue, true)
 }
 
 func taskUnassign(args []string) error {
 	if len(args) < 3 {
-		return fmt.Errorf("usage: missionbase task unassign <task-id> --user ID|@mention [--team ID]")
+		return fmt.Errorf("usage: missionbase task unassign <task-id> --user ID|@mention")
 	}
 	taskID := args[0]
 	userValue := ""
-	teamID := ""
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--user":
@@ -1094,14 +1010,8 @@ func taskUnassign(args []string) error {
 			}
 			userValue = args[i+1]
 			i++
-		case "--team":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--team requires a value")
-			}
-			teamID = args[i+1]
-			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task unassign <task-id> --user ID|@mention [--team ID]")
+			fmt.Println("usage: missionbase task unassign <task-id> --user ID|@mention")
 			return nil
 		default:
 			return fmt.Errorf("unknown task unassign option %q", args[i])
@@ -1110,19 +1020,16 @@ func taskUnassign(args []string) error {
 	if userValue == "" {
 		return fmt.Errorf("--user is required")
 	}
-	return taskUserAssignment(taskID, userValue, teamID, false)
+	return taskUserAssignment(taskID, userValue, false)
 }
 
-func taskUserAssignment(taskID, userValue, teamID string, assign bool) error {
+func taskUserAssignment(taskID, userValue string, assign bool) error {
 	cfg, err := config.LoadUser()
 	if err != nil {
 		return err
 	}
 	client := httpclient.NewUser(cfg)
-	if _, ok := resolve.NumericUserID(userValue); !ok && teamID == "" {
-		teamID, _ = taskTeamID(client, taskID)
-	}
-	userID, err := resolve.ResolveUserID(client, userValue, resolve.Options{TeamID: teamID})
+	userID, err := resolve.ResolveUserID(client, userValue)
 	if err != nil {
 		return err
 	}
@@ -1138,7 +1045,7 @@ func taskUserAssignment(taskID, userValue, teamID string, assign bool) error {
 
 func taskParticipants(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase task participants <list|add> <task-id> [--user ID|@mention] [--team ID]")
+		return fmt.Errorf("usage: missionbase task participants <list|add> <task-id> [--user ID|@mention]")
 	}
 	command := args[0]
 	taskID := args[1]
@@ -1157,10 +1064,9 @@ func taskParticipants(args []string) error {
 
 func taskParticipantsAdd(taskID string, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase task participants add <task-id> --user ID|@mention [--team ID]")
+		return fmt.Errorf("usage: missionbase task participants add <task-id> --user ID|@mention")
 	}
 	userValue := ""
-	teamID := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--user":
@@ -1169,14 +1075,8 @@ func taskParticipantsAdd(taskID string, args []string) error {
 			}
 			userValue = args[i+1]
 			i++
-		case "--team":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--team requires a value")
-			}
-			teamID = args[i+1]
-			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task participants add <task-id> --user ID|@mention [--team ID]")
+			fmt.Println("usage: missionbase task participants add <task-id> --user ID|@mention")
 			return nil
 		default:
 			return fmt.Errorf("unknown task participants add option %q", args[i])
@@ -1190,10 +1090,7 @@ func taskParticipantsAdd(taskID string, args []string) error {
 		return err
 	}
 	client := httpclient.NewUser(cfg)
-	if _, ok := resolve.NumericUserID(userValue); !ok && teamID == "" {
-		teamID, _ = taskTeamID(client, taskID)
-	}
-	userID, err := resolve.ResolveUserID(client, userValue, resolve.Options{TeamID: teamID})
+	userID, err := resolve.ResolveUserID(client, userValue)
 	if err != nil {
 		return err
 	}
@@ -1202,40 +1099,6 @@ func taskParticipantsAdd(taskID string, args []string) error {
 		return err
 	}
 	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/participants", body)
-}
-
-func taskTeamID(client httpclient.Client, taskID string) (string, error) {
-	body, err := client.Get("/api/v1/tasks/" + url.PathEscape(taskID))
-	if err != nil {
-		return "", err
-	}
-	type taskProject struct {
-		TeamID int `json:"team_id"`
-		Team   struct {
-			ID int `json:"id"`
-		} `json:"team"`
-	}
-	var response struct {
-		Task struct {
-			TeamID  int          `json:"team_id"`
-			Project *taskProject `json:"project"`
-		} `json:"task"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return "", err
-	}
-	id := response.Task.TeamID
-	project := response.Task.Project
-	if id == 0 && project != nil {
-		id = project.TeamID
-	}
-	if id == 0 && project != nil {
-		id = project.Team.ID
-	}
-	if id == 0 {
-		return "", fmt.Errorf("team context is required; pass --team <team-id> or use a numeric user id")
-	}
-	return fmt.Sprintf("%d", id), nil
 }
 
 func conversations(args []string) error {
@@ -1299,11 +1162,11 @@ func conversation(args []string) error {
 
 func notes(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase notes search <query> [--team ID]")
+		return fmt.Errorf("usage: missionbase notes search <query>")
 	}
 	if args[0] != "search" {
 		if isHelp(args[0]) {
-			fmt.Println("usage: missionbase notes search <query> [--team ID]")
+			fmt.Println("usage: missionbase notes search <query>")
 			return nil
 		}
 		return fmt.Errorf("unknown notes command %q", args[0])
@@ -1313,21 +1176,15 @@ func notes(args []string) error {
 
 func notesSearch(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase notes search <query> [--team ID]")
+		return fmt.Errorf("usage: missionbase notes search <query>")
 	}
 	query := args[0]
 	values := url.Values{}
 	values.Set("query", query)
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--team":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--team requires a value")
-			}
-			values.Set("team_id", args[i+1])
-			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase notes search <query> [--team ID]")
+			fmt.Println("usage: missionbase notes search <query>")
 			return nil
 		default:
 			return fmt.Errorf("unknown notes search option %q", args[i])
@@ -1997,12 +1854,9 @@ Commands:
   scratchpad show                     Show current user's scratchpad
   scratchpad update --body TEXT       Update current user's scratchpad
   scratchpad edit --body-file PATH    Update current user's scratchpad from a file
-  teams                               List teams visible to the current user
-  users lookup <query-or-mention> [--team <team-id>]
-                                      Look up users or resolve a team @mention
-  team show <team-id>                 Show a team
-  team members <team-id>              List team members
-  projects [--team TEAM_ID]           List projects visible to the current user
+  users lookup [@mention|email|user-id]
+                                      List the people you can mention, or look one up
+  projects                            List projects visible to the current user
   project show <project-id>           Show a project
   projects tasks <project-id>         List tasks in a project
       [--status STATUS[,STATUS]] [--status-category open|done|canceled]
@@ -2023,7 +1877,7 @@ Commands:
                                       Download an uploaded file
   projects statuses <project-id>      Alias for projects task-statuses
   projects task-statuses <project-id> List the fixed task statuses (key, name, category, color, position)
-  notes search <query> [--team ID]    Search your notes
+  notes search <query>                Search your notes
   scratchpad show|fetch               Show current user's scratchpad
   scratchpad update|edit --body TEXT  Update current user's scratchpad
   sidebar pins                         List pinned sidebar pages for the current user
@@ -2047,21 +1901,13 @@ Commands:
   task status <task-id> <status>      Set a task status
   task complete <task-id>             Mark a task complete as the current user
   task message <task-id> --body TEXT  Add a task discussion message
-  task assign <task-id> --user ID|@mention [--team ID]
+  task assign <task-id> --user ID|@mention
                                       Assign a task to a user
-  task unassign <task-id> --user ID|@mention [--team ID]
+  task unassign <task-id> --user ID|@mention
                                       Remove a user assignment from a task
   task participants list <task-id>    List task participants
-  task participants add <task-id> --user ID|@mention [--team ID]
+  task participants add <task-id> --user ID|@mention
                                       Add a user task participant
-  week show --team TEAM_ID [--starts-on YYYY-MM-DD]
-                                      Show a team week (defaults to current Monday)
-  week add TASK_ID --team TEAM_ID --starts-on YYYY-MM-DD
-                                      Place a task in any selected team week
-  week remove PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD
-                                      Remove a task from the selected week
-  week order PLACEMENT_ID --team TEAM_ID --starts-on YYYY-MM-DD [--after-task TASK_ID]
-                                      Move to the first position, or after a task
   today                               Show the signed-in user's current day
   day show --date YYYY-MM-DD          Show the signed-in user's day
   day add TASK_ID --date YYYY-MM-DD   Place an accessible task on your day

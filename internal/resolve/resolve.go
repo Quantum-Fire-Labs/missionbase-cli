@@ -22,10 +22,6 @@ type User struct {
 	Username string `json:"username"`
 }
 
-type Options struct {
-	TeamID string
-}
-
 func StripMention(value string) string {
 	return strings.TrimPrefix(strings.TrimSpace(value), "@")
 }
@@ -41,7 +37,9 @@ func NumericUserID(value string) (string, bool) {
 	return value, true
 }
 
-func ResolveUserID(client Getter, value string, opts Options) (string, error) {
+// ResolveUserID turns a numeric id or an @mention into a user id. A mention is
+// looked up among the people the caller works with, via GET /api/v1/users/lookup?handle=.
+func ResolveUserID(client Getter, value string) (string, error) {
 	if id, ok := NumericUserID(value); ok {
 		return id, nil
 	}
@@ -49,18 +47,16 @@ func ResolveUserID(client Getter, value string, opts Options) (string, error) {
 	if mention == "" || mention == strings.TrimSpace(value) {
 		return "", fmt.Errorf("--user requires a numeric user id or @mention")
 	}
-	if strings.TrimSpace(opts.TeamID) == "" {
-		return "", fmt.Errorf("team context is required to resolve %s; pass --team <team-id> or use a numeric user id", value)
-	}
-	users, err := TeamMembers(client, opts.TeamID)
+	users, err := LookupHandle(client, mention)
 	if err != nil {
 		return "", err
 	}
 	return MatchUserID(users, mention, value)
 }
 
-func TeamMembers(client Getter, teamID string) ([]User, error) {
-	body, err := client.Get("/api/v1/teams/" + url.PathEscape(teamID) + "/members")
+// LookupHandle asks the server for the person with this handle.
+func LookupHandle(client Getter, handle string) ([]User, error) {
+	body, err := client.Get("/api/v1/users/lookup?" + url.Values{"handle": {"@" + StripMention(handle)}}.Encode())
 	if err != nil {
 		return nil, err
 	}

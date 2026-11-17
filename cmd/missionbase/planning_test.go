@@ -34,10 +34,6 @@ func TestUserPlanningCommandsCallScopedEndpoints(t *testing.T) {
 
 	commands := [][]string{
 		{"today"},
-		{"week", "show", "--team", "9", "--starts-on", "2026-08-03"},
-		{"week", "add", "42", "--team", "9", "--starts-on", "2026-08-03"},
-		{"week", "order", "17", "--team", "9", "--starts-on", "2026-08-03", "--after-task", "42"},
-		{"week", "remove", "17", "--team", "9", "--starts-on", "2026-08-03"},
 		{"day", "show", "--date", "2026-08-05"},
 		{"day", "add", "42", "--date", "2026-08-05"},
 		{"day", "order", "17", "--date", "2026-08-05", "--after-task", "42"},
@@ -50,10 +46,6 @@ func TestUserPlanningCommandsCallScopedEndpoints(t *testing.T) {
 	}
 	want := []string{
 		"GET /api/v1/days",
-		"GET /api/v1/weeks?starts_on=2026-08-03&team_id=9",
-		"POST /api/v1/weeks/2026-08-03/placements?team_id=9",
-		"PATCH /api/v1/weeks/2026-08-03/placements/17?team_id=9",
-		"DELETE /api/v1/weeks/2026-08-03/placements/17?team_id=9",
 		"GET /api/v1/days/2026-08-05",
 		"POST /api/v1/days/2026-08-05/placements",
 		"PATCH /api/v1/days/2026-08-05/placements/17",
@@ -67,9 +59,7 @@ func TestUserPlanningCommandsCallScopedEndpoints(t *testing.T) {
 func TestPlanningCommandsRejectInvalidDatesAndUserCLILock(t *testing.T) {
 	for _, command := range [][]string{
 		{"today", "--date", "2026-08-05"},
-		{"week", "add", "42", "--team", "9", "--starts-on", "2026-08-04"},
 		{"day", "show", "--date", "2026-02-30"},
-		{"week", "show", "--starts-on", "2026-08-03"},
 		{"day", "add", "42", "--date", "2026-08-05", "--after-task", "9"},
 	} {
 		if err := run(command); err == nil {

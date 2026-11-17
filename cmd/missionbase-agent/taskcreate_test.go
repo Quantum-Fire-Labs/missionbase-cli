@@ -62,7 +62,7 @@ func TestOlderTaskCommandsAcceptJSON(t *testing.T) {
 		{[]string{"task", "messages", "42", "--json"}, "GET /api/v1/tasks/42/comments"},
 		{[]string{"task", "participants", "list", "42", "--json"}, "GET /api/v1/tasks/42/participants"},
 		{[]string{"task", "participants", "add", "42", "--agent", "claude", "--json"}, "POST /api/v1/tasks/42/participants"},
-		{[]string{"projects", "create", "--name", "Delivery", "--team", "1", "--json"}, "POST /api/v1/projects"},
+		{[]string{"projects", "create", "--name", "Delivery", "--json"}, "POST /api/v1/projects"},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
