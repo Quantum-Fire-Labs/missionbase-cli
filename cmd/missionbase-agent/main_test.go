@@ -407,38 +407,100 @@ func TestAgentRestoreRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestAgentProjectsAddPostsProjectIDs(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Fatalf("method = %s, want POST", r.Method)
-		}
-		if r.URL.Path != "/api/v1/agents/fleet-worker/projects" {
-			t.Fatalf("path = %s, want /api/v1/agents/fleet-worker/projects", r.URL.Path)
-		}
-		var payload map[string][]string
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if got := payload["project_ids"]; len(payload) != 1 || len(got) != 2 || got[0] != "2" || got[1] != "3" {
-			t.Fatalf("payload = %#v, want only project_ids [2 3]", payload)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"agent":{"id":42,"slug":"fleet-worker"},"memberships":[{"status":"created"}]}`))
-	}))
-	defer server.Close()
-
-	setAgentEnvNoSlug(t, server.URL)
-	if err := run([]string{"agent", "projects", "add", "fleet-worker", "--project", "2", "--project", "3"}); err != nil {
-		t.Fatalf("run agent projects add: %v", err)
-	}
-	if err := run([]string{"agent", "projects", "add", "fleet-worker", "--project", "2", "--project-id", "3"}); err != nil {
-		t.Fatalf("run agent projects add: %v", err)
+// Agents reach every project their owner can open, so there's no command to
+// add an agent to projects.
+func TestAgentProjectsIsUnknown(t *testing.T) {
+	setAgentEnvNoSlug(t, "http://127.0.0.1:1") // nothing listens: any request would fail differently
+	_, err := runCapture(t, "agent", "projects", "add", "fleet-worker", "--project", "2")
+	if err == nil || err.Error() != `unknown agent command "projects"` {
+		t.Fatalf("err = %v, want unknown agent command \"projects\"", err)
 	}
 }
 
-func TestAgentProjectsAddRequiresProject(t *testing.T) {
-	if err := run([]string{"agent", "projects", "add", "fleet-worker"}); err == nil || !strings.Contains(err.Error(), "at least one --project") {
-		t.Fatalf("err = %v, want project required", err)
+func TestAuthSetTokenSavesTheKey(t *testing.T) {
+	credentials := filepath.Join(t.TempDir(), "credentials")
+	t.Setenv("MISSIONBASE_AGENT_CREDENTIALS", credentials)
+	t.Setenv("MISSIONBASE_TOKEN", "")
+	t.Setenv("MISSIONBASE_BASE_URL", "")
+	t.Setenv("MISSIONBASE_AGENT_SLUG", "")
+	t.Setenv("MISSIONBASE_AGENT_CONFIG", "")
+	t.Chdir(t.TempDir())
+
+	out, err := runCapture(t, "auth", "set-token", "mb_key", "--base-url", "https://example.test", "--agent", "claude")
+	if err != nil {
+		t.Fatalf("auth set-token: %v", err)
+	}
+	if want := "Saved credentials to " + credentials + "\n"; out != want {
+		t.Fatalf("output = %q, want %q", out, want)
+	}
+	var saved map[string]any
+	data, err := os.ReadFile(credentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("credentials = %s: %v", data, err)
+	}
+	if saved["token"] != "mb_key" || saved["base_url"] != "https://example.test" || saved["agent_slug"] != "claude" {
+		t.Fatalf("credentials = %s", data)
+	}
+
+	_, err = runCapture(t, "auth", "set-token")
+	if err == nil || err.Error() != "usage: missionbase-agent auth set-token <token> [--base-url URL] [--agent slug]" {
+		t.Fatalf("err = %v, want usage naming <token>", err)
+	}
+}
+
+func TestHelpDoesNotMentionTeamKeys(t *testing.T) {
+	out, err := runCapture(t, "help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, phrase := range []string{"team-token", "team token", "team API", "team member"} {
+		if strings.Contains(out, phrase) {
+			t.Fatalf("help still says %q", phrase)
+		}
+	}
+	if !strings.Contains(out, "auth set-token <token> [--base-url URL] [--agent slug]") || !strings.Contains(out, "Save your API key") {
+		t.Fatalf("help is missing the set-token line:\n%s", out)
+	}
+}
+
+// The members list comes only from agent/members. A failure is returned as is,
+// with no fallback to agent/me or a team's members.
+func TestMembersCallsOnlyAgentMembers(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/agent/members": fixed(200, `{"members":[{"id":1,"name":"Dana"}]}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "members")
+	if err != nil {
+		t.Fatalf("members: %v", err)
+	}
+	if !strings.Contains(out, `"name":"Dana"`) {
+		t.Fatalf("output = %q", out)
+	}
+	if _, err := runCapture(t, "members", "--project", "7"); err != nil {
+		t.Fatalf("members --project: %v", err)
+	}
+	reqs := *requests
+	if len(reqs) != 2 || reqs[0].query != "" || reqs[1].query != "project_id=7" || reqs[0].slug != "missionbase-dev" {
+		t.Fatalf("requests = %#v", reqs)
+	}
+}
+
+func TestMembersReturnsTheErrorWithoutFallback(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/agent/members": fixed(404, `{"error":{"code":"not_found","message":"Not Found"}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	if _, err := runCapture(t, "members"); err == nil || !strings.Contains(err.Error(), "404") {
+		t.Fatalf("err = %v, want the 404", err)
+	}
+	if len(*requests) != 1 {
+		t.Fatalf("requests = %#v, want only agent/members", *requests)
 	}
 }
 

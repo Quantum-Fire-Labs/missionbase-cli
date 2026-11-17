@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- API keys belong to people now (Missionbase #268, teams phase 2). `missionbase-agent` follows (#269):
+  - Removed `missionbase-agent agent projects add`: an agent works in every project its owner can open, and the server no longer has `POST /api/v1/agents/:id/projects`. `agent projects` is an unknown command and sends nothing.
+  - `missionbase-agent members` calls only `GET /api/v1/agent/members` and returns its error as is. The fallback to `agent/me` and `/api/v1/teams/:id/members` on a 404 is gone, there and in `--user @mention` resolution.
+  - `auth set-token <token>` (was `<team-token>`), "Save your API key", and no "team token" or "team member" in help, usage, errors or the README. `@mention` lookups say "no person found" and "multiple people match". `agent archive` no longer says it revokes the agent's keys (agents have none), and `agent restore` no longer mentions project memberships.
+
 - The sidebar pin type is now `project_file` (`sidebar pin|unpin --type project_file --id ID` in both CLIs), the only name the server takes since BoxFile became ProjectFile (#232). Help, usage errors and README say `project_file` and `<project-file-id>`; documents carry `project_file_id`.
 - Added `--recurring daily|weekdays|weekly|bi_weekly|monthly` to `missionbase-agent task create` and `task update` (`--recurring not` on update stops it recurring), sent as `recurring` (#234). Values are checked before sending, and no deadline is required. Needs a Missionbase server that takes `recurring` on `POST`/`PATCH /api/v1/tasks`; an older one ignores it.
 - Removed task scheduling from `missionbase-agent`, which Missionbase retired (the API answers `scheduled_at`, `scheduled_at_preset` and `scheduled` with 422). `task create --scheduled-at`, `task update --scheduled-at` / `--no-scheduled-at` / `--clear-scheduled-at`, and `--scheduled actionable|future|all` on `tasks` and `projects tasks` are now unknown options and send nothing. The help no longer says future scheduled tasks are hidden.

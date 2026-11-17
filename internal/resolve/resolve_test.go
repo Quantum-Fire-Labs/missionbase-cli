@@ -67,7 +67,7 @@ func TestResolveUserIDUsesTeamMembersNotAgentMembers(t *testing.T) {
 func TestResolveUserIDAmbiguousMention(t *testing.T) {
 	getter := &fakeGetter{body: []byte(`{"members":[{"user_id":7,"mention":"sam"},{"user_id":8,"handle":"sam"}]}`)}
 	_, err := ResolveUserID(getter, "@sam", Options{TeamID: "2"})
-	if err == nil || !strings.Contains(err.Error(), "multiple team members match") {
+	if err == nil || !strings.Contains(err.Error(), "multiple people match") {
 		t.Fatalf("err = %v, want ambiguity error", err)
 	}
 }

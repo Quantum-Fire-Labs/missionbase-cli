@@ -92,10 +92,10 @@ func MatchUserID(users []User, mention, original string) (string, error) {
 		}
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("no team member found for %s", original)
+		return "", fmt.Errorf("no person found for %s", original)
 	}
 	if len(matches) > 1 {
-		return "", fmt.Errorf("multiple team members match %s; pass a numeric user id", original)
+		return "", fmt.Errorf("multiple people match %s; pass a numeric user id", original)
 	}
 	return matches[0], nil
 }

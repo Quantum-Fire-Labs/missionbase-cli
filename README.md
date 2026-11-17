@@ -9,7 +9,7 @@ The tools are distributed as single Go binaries so they can be installed on remo
 There are two binaries with separate auth/config scopes:
 
 - `missionbase` — user-acting CLI for personal/user API keys.
-- `missionbase-agent` — agent-acting CLI for team API keys plus an agent slug.
+- `missionbase-agent` — agent-acting CLI: your API key plus an agent slug.
 
 ## Install
 
@@ -75,10 +75,10 @@ launcher; do not grant a general-purpose passwordless root shell.
 
 ## Agent CLI
 
-Create/use a team API key that allows agent acting, then run:
+Create an API key in Missionbase (Settings → API keys), then run:
 
 ```bash
-missionbase-agent auth set-token YOUR_TEAM_TOKEN
+missionbase-agent auth set-token YOUR_API_KEY
 missionbase-agent use test
 missionbase-agent auth status
 missionbase-agent me
@@ -108,7 +108,7 @@ That writes this file in the current directory:
 .missionbase-agent.json
 ```
 
-`missionbase-agent` searches the current directory and parent directories for `.missionbase-agent.json`, so each project/worktree can use a different agent while sharing the same global team token.
+`missionbase-agent` searches the current directory and parent directories for `.missionbase-agent.json`, so each project/worktree can use a different agent while sharing your API key. The key acts as the agent whose slug is selected (one of your agents), or as you when no slug is set.
 
 Example `.missionbase-agent.json`:
 
@@ -122,7 +122,7 @@ Example `.missionbase-agent.json`:
 
 Boxes are now called projects, and the CLIs keep no old names:
 
-- The commands are `projects ...`, `missionbase project show` and `missionbase-agent agent projects add`. `boxes`, `box` and `agent boxes` are unknown commands.
+- The commands are `projects ...` and `missionbase project show`. `boxes`, `box` and `agent boxes` are unknown commands.
 - The flag is `--project` (and `--project-id` where it was `--box-id`). `--box` and `--box-id` are unknown options.
 - Requests go only to `/api/v1/projects/...` and send only `project_id`, `project_ids` and `project`. Responses are read only as `project`, `project_id` and `project_name`.
 - `.missionbase/project.json` is read only as `project_id` / `project_name`; a file with only `box_id` links nothing. `project link` writes `team_id`, `team_name`, `project_id` and `project_name` (see [Agent work](#agent-work-herdr-agents)).
@@ -279,7 +279,7 @@ Each question in the API carries `answer_attachments: [{"filename", "content_typ
 
 ### Local Pi sessions
 
-List active agents available to the authenticated team token, then launch Pi with an explicit Missionbase agent identity:
+List your active agents, then launch Pi with an explicit Missionbase agent identity:
 
 ```bash
 missionbase-agent pi agents
@@ -396,7 +396,7 @@ Planning commands above act only as the authenticated user. Week dates must be M
 
 missionbase-agent version
 missionbase-agent auth status
-missionbase-agent auth set-token <team-token> [--base-url URL] [--agent slug]
+missionbase-agent auth set-token <token> [--base-url URL] [--agent slug]
 missionbase-agent use <agent-slug> [--base-url URL]
 missionbase-agent pi agents [--json]
 missionbase-agent pi --agent <agent-slug> [--continue | --resume | --session SESSION] [-- PI_ARGS...]
@@ -417,7 +417,6 @@ missionbase-agent agent image set fleet-worker --file avatar.png
 missionbase-agent agent image clear fleet-worker --yes
 missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent restore fleet-worker --yes
-missionbase-agent agent projects add fleet-worker --project <project-id> [--project <project-id>]
 missionbase-agent agent instructions show fleet-worker
 missionbase-agent agent instructions publish fleet-worker --body-file /tmp/instructions.md [--title "Managed instructions"]
 missionbase-agent agent instructions activate fleet-worker <version-id>
@@ -586,24 +585,22 @@ missionbase-agent task message 123 --body-file /tmp/comment.md --attach-blob "<s
 
 ### Agent management
 
-`missionbase-agent agent create ...` creates a new agent on the authenticated team and prints the created agent JSON, including its id and slug. It requires a team API key with `agents:create` permission; invalid or duplicate slugs are returned as API validation errors.
+`missionbase-agent agent create ...` creates a new agent owned by the key's owner and prints the created agent JSON, including its id and slug. It requires an API key with `agents:create` permission; invalid or duplicate slugs are returned as API validation errors.
 
 `agent create --image PATH` also uploads a profile image for the new agent. `missionbase-agent agent image set AGENT --file PATH` sets or replaces an agent's profile image, and `agent image clear AGENT --yes` removes it (clearing an agent with no image succeeds with `"removed": false`). Images must be PNG, JPEG, or WEBP and at most 5 MB; the CLI checks the file contents before uploading and the server checks them again. The server resizes images to fit within 500×500 and stores them as JPEG, like user avatars, so transparency is not kept. An agent can change its own image when its slug is selected; changing another agent's image requires `agents:update`. Both commands print the updated agent JSON, and the new `profile_image_url` also appears in `me` and `pi agents --json`.
 
-`missionbase-agent agent projects add ...` adds an agent to one or more projects and prints JSON with the agent and membership status (`created` or `existing`) for each project. It requires `agents:update` and `projects:update` (or the old `boxes:update`) permissions.
+An agent works in every project its owner can open, so there is no command to add an agent to projects (`agent projects` is an unknown command).
 
 `missionbase-agent agent instructions show AGENT` reads the active managed instruction version and requires `agents:read`. `agent instructions publish AGENT --body-file PATH [--title TITLE]` publishes and activates a new version, while `agent instructions activate AGENT VERSION_ID` reactivates an existing version; both writes require `agents:update`. Responses include the version id and number, active state, title, and exact content. Publish reads content directly from the required body file without newline normalization so callers can hash-verify the response. These operations do not change agent execution mode or provisioning state.
 
-`missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention, DM, and project membership choices; agent-owned API keys are revoked; and selected-agent credentials using the archived slug are rejected. The server refuses to archive an agent that is still assigned to open tasks (any status in the open category), so hand off or close that work first.
+`missionbase-agent agent archive ... --yes` is the supported safe delete flow for agents. It archives/deactivates the agent instead of hard-deleting it, preserving historical task/comment/message attribution. Archived agents are removed from active assignment, mention and DM choices, and requests that select the archived slug are rejected (403). The server refuses to archive an agent that is still assigned to open tasks (any status in the open category), so hand off or close that work first.
 
-`missionbase-agent agent restore ... --yes` restores/reactivates an archived agent with its existing identity and project memberships so it can be assigned and used for new work again. Restoring does not recreate agent-owned API keys that were revoked during archival; create new credentials if the restored agent needs to authenticate.
+`missionbase-agent agent restore ... --yes` restores/reactivates an archived agent with its existing identity so it can be assigned and used for new work again.
 
 ```bash
 missionbase-agent agent create --name "Fleet Worker" --slug fleet-worker --title "Fleet Architect" --description "Handles fleet tasks"
 missionbase-agent agent image set fleet-worker --file ./fleet-worker.webp
 missionbase-agent agent image clear fleet-worker --yes
-missionbase-agent agent projects add fleet-worker --project 2
-missionbase-agent agent projects add 42 --project 2 --project 7
 missionbase-agent agent instructions show fleet-worker
 missionbase-agent agent instructions publish fleet-worker --body-file /tmp/instructions.md --title "Chief runner instructions"
 missionbase-agent agent instructions activate fleet-worker 42
@@ -611,7 +608,7 @@ missionbase-agent agent archive fleet-worker --yes
 missionbase-agent agent restore fleet-worker --yes
 ```
 
-These management commands use the authenticated team token and do not require a selected agent slug, so they can be used during initial fleet bootstrap, cleanup, and restore.
+These management commands use your API key and do not require a selected agent slug, so they can be used during initial fleet bootstrap, cleanup, and restore.
 
 ### Agent long polling
 

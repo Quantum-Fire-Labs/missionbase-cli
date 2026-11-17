@@ -349,7 +349,7 @@ func auth(args []string) error {
 		}
 	case "set-token":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: missionbase-agent auth set-token <team-token> [--base-url URL] [--agent slug]")
+			return fmt.Errorf("usage: missionbase-agent auth set-token <token> [--base-url URL] [--agent slug]")
 		}
 		cfg, err := config.LoadAgent()
 		if err != nil {
@@ -620,7 +620,7 @@ func isASCIISpace(ch byte) bool {
 
 func agent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|projects|image|instructions>")
+		return fmt.Errorf("usage: missionbase-agent agent <create|archive|restore|unarchive|delete|image|instructions>")
 	}
 
 	switch args[0] {
@@ -630,8 +630,6 @@ func agent(args []string) error {
 		return agentArchive(args[1:])
 	case "restore", "unarchive", "reactivate":
 		return agentRestore(args[1:])
-	case "projects":
-		return agentProjects(args[1:])
 	case "image":
 		return agentImage(args[1:])
 	case "instructions":
@@ -722,7 +720,7 @@ func agentArchive(args []string) error {
 		return fmt.Errorf("agent id or slug is required")
 	}
 	if !confirmed {
-		return fmt.Errorf("--yes is required to archive an agent; archival deactivates the agent, revokes agent-owned API keys, and preserves historical attribution")
+		return fmt.Errorf("--yes is required to archive an agent; archival deactivates the agent and preserves historical attribution")
 	}
 
 	return apiDeleteAllowNoAgent("/api/v1/agents/" + url.PathEscape(agentID))
@@ -749,51 +747,10 @@ func agentRestore(args []string) error {
 		return fmt.Errorf("agent id or slug is required")
 	}
 	if !confirmed {
-		return fmt.Errorf("--yes is required to restore an agent; restore reactivates the agent with its existing identity and project memberships")
+		return fmt.Errorf("--yes is required to restore an agent; restore reactivates the agent with its existing identity")
 	}
 
 	return apiPatchAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/restore", nil)
-}
-
-func agentProjects(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]")
-	}
-	if args[0] != "add" {
-		return fmt.Errorf("unknown agent projects command %q", args[0])
-	}
-	if len(args) < 2 {
-		return fmt.Errorf("usage: missionbase-agent agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]")
-	}
-	agentID := args[1]
-	var projectIDs []string
-	for i := 2; i < len(args); i++ {
-		switch args[i] {
-		case "--project", "--project-id":
-			if i+1 >= len(args) {
-				return fmt.Errorf("%s requires a value", args[i])
-			}
-			projectIDs = append(projectIDs, args[i+1])
-			i++
-		case "--help", "-h":
-			fmt.Println("usage: missionbase-agent agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]")
-			return nil
-		default:
-			return fmt.Errorf("unknown agent projects add option %q", args[i])
-		}
-	}
-	if strings.TrimSpace(agentID) == "" {
-		return fmt.Errorf("agent id or slug is required")
-	}
-	if len(projectIDs) == 0 {
-		return fmt.Errorf("at least one --project is required")
-	}
-
-	body, err := json.Marshal(map[string][]string{"project_ids": projectIDs})
-	if err != nil {
-		return err
-	}
-	return apiPostAllowNoAgent("/api/v1/agents/"+url.PathEscape(agentID)+"/projects", body)
 }
 
 func agentImage(args []string) error {
@@ -2536,7 +2493,6 @@ func appendLimit(path string, args []string) (string, error) {
 
 func members(args []string) error {
 	path := "/api/v1/agent/members"
-	filtered := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--project", "--group":
@@ -2544,7 +2500,6 @@ func members(args []string) error {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
 			path += "?" + url.Values{"project_id": {args[i+1]}}.Encode()
-			filtered = true
 			i++
 		case "--json":
 			// JSON is the default output format; accept this flag for consistency.
@@ -2556,44 +2511,12 @@ func members(args []string) error {
 		}
 	}
 
-	body, err := membersBody(path, filtered)
+	body, err := apiGetBody(path)
 	if err != nil {
 		return err
 	}
 	fmt.Println(string(body))
 	return nil
-}
-
-func membersBody(path string, filtered bool) ([]byte, error) {
-	body, err := apiGetBody(path)
-	if err == nil {
-		return body, nil
-	}
-	if filtered || !strings.Contains(err.Error(), "404") {
-		return nil, err
-	}
-
-	// Backward-compatible fallback for Missionbase deployments that expose team
-	// members before the agent-specific members endpoint is available.
-	meBody, meErr := apiGetBody("/api/v1/agent/me")
-	if meErr != nil {
-		return nil, err
-	}
-	var me struct {
-		Agent struct {
-			Team struct {
-				ID int `json:"id"`
-			} `json:"team"`
-		} `json:"agent"`
-	}
-	if jsonErr := json.Unmarshal(meBody, &me); jsonErr != nil || me.Agent.Team.ID == 0 {
-		return nil, err
-	}
-	body, fallbackErr := apiGetBody(fmt.Sprintf("/api/v1/teams/%d/members", me.Agent.Team.ID))
-	if fallbackErr != nil {
-		return nil, err
-	}
-	return body, nil
 }
 
 func week(args []string) error {
@@ -3385,7 +3308,7 @@ func resolveUserID(value string) (string, error) {
 	if mention == value || mention == "" {
 		return "", fmt.Errorf("--user requires a numeric user id or @mention")
 	}
-	body, err := membersBody("/api/v1/agent/members", false)
+	body, err := apiGetBody("/api/v1/agent/members")
 	if err != nil {
 		return "", err
 	}
@@ -3960,8 +3883,8 @@ Usage:
 
 Commands:
   auth status                         Show auth status
-  auth set-token <team-token> [--base-url URL] [--agent slug]
-                                      Save a team API token
+  auth set-token <token> [--base-url URL] [--agent slug]
+                                      Save your API key
   connect TOKEN [--base-url URL] [--name NAME]
                                       Enroll this personal computer for live Pi sessions
   use <agent-slug> [--base-url URL]   Set the agent for this directory
@@ -3970,9 +3893,9 @@ Commands:
   me                                  Show the current agent
   work [--next|--next-task]           Show the next actionable assigned task
                                       With --next, return only the next assigned task
-  scratchpad show --user USER         Show a team member's scratchpad
+  scratchpad show --user USER         Show a person's scratchpad
   scratchpad edit --user USER --body-file PATH
-                                      Update a team member's scratchpad from a file
+                                      Update a person's scratchpad from a file
   listen [--timeout N] [--offset ID] [--once]
                                       Long-poll for agent updates
   dm list [--limit N]                 List agent direct messages
@@ -3989,14 +3912,12 @@ Commands:
   terminal clear [--json]             Forget this agent's registered terminal
   terminal show [--json]              Show this agent's registered terminal
   agent create --name NAME --slug SLUG [--title TITLE|--role-title TITLE] [--description TEXT] [--image PATH]
-                                      Create an agent on the authenticated team
+                                      Create an agent you own
                                       With --image, also set its profile image (PNG, JPEG, WEBP; max 5 MB)
   agent archive <agent-id-or-slug> --yes
                                       Archive/deactivate an agent safely
   agent restore <agent-id-or-slug> --yes
                                       Restore/reactivate an archived agent
-  agent projects add <agent-id-or-slug> --project PROJECT_ID [--project PROJECT_ID]
-                                      Add an agent to one or more projects
   agent image set <agent-id-or-slug> --file PATH
                                       Set an agent profile image (PNG, JPEG, WEBP; max 5 MB)
                                       The server resizes it to fit 500x500 and stores it as JPEG
@@ -4215,7 +4136,7 @@ Markdown:
 Directory config:
   missionbase-agent searches the current directory and parents for
   .missionbase-agent.json. This lets each project/worktree use a different
-  agent while sharing the global team token in ~/.config/missionbase-agent/credentials.
+  agent while sharing your API key in ~/.config/missionbase-agent/credentials.
 
 Default base URL: https://dash.missionbase.app`)
 }

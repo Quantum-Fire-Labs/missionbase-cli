@@ -54,7 +54,7 @@ func pi(args []string) error {
 		return err
 	}
 	if strings.TrimSpace(cfg.Token) == "" {
-		return fmt.Errorf("not authenticated; run `missionbase-agent auth set-token <team-token>`")
+		return fmt.Errorf("not authenticated; run `missionbase-agent auth set-token <token>`")
 	}
 	cfg.BaseURL = computer.BaseURL
 	cfg.AgentSlug = slug
@@ -176,7 +176,7 @@ func piAgents(args []string) error {
 		return err
 	}
 	if strings.TrimSpace(cfg.Token) == "" {
-		return fmt.Errorf("not authenticated; run `missionbase-agent auth set-token <team-token>`")
+		return fmt.Errorf("not authenticated; run `missionbase-agent auth set-token <token>`")
 	}
 	cfg.AgentSlug = ""
 	body, err := httpclient.NewAgent(cfg).Get("/api/v1/agents")
