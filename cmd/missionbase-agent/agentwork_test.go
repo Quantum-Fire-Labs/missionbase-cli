@@ -836,6 +836,69 @@ func TestTaskStatusSendsPlanningKey(t *testing.T) {
 	}
 }
 
+func TestTaskStatusSessionSendsPlanningMode(t *testing.T) {
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PATCH /api/v1/tasks/42": fixed(200, `{"task":{"id":42,"status":"planning","planning_mode":"session"}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	if _, err := runCapture(t, "task", "status", "42", "planning", "--session"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCapture(t, "task", "status", "--questions", "42", "planning"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		fmt.Sprint(map[string]any{"status": "planning", "planning_mode": "session"}),
+		fmt.Sprint(map[string]any{"status": "planning", "planning_mode": "questions"}),
+	}
+	if len(*requests) != 2 || fmt.Sprint((*requests)[0].payload) != want[0] || fmt.Sprint((*requests)[1].payload) != want[1] {
+		t.Fatalf("requests = %+v, want %v", *requests, want)
+	}
+	for _, args := range [][]string{
+		{"task", "status", "42", "planning", "--session", "--questions"},
+		{"task", "status", "42", "planning", "--chat"},
+		{"task", "status", "42", "--session"},
+	} {
+		if _, err := runCapture(t, args...); err == nil || !strings.Contains(err.Error(), "usage: missionbase-agent task status <task-id> <status> [--session | --questions]") {
+			t.Fatalf("%v: err = %v", args, err)
+		}
+	}
+	if len(*requests) != 2 {
+		t.Fatalf("requests = %+v, want no more", *requests)
+	}
+}
+
+func TestTaskNextAndStartTellTheAgentAboutSessionMode(t *testing.T) {
+	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
+	task := `{"id":7,"title":"Plan the inbox","status":"planning","status_label":"Planning","planning_mode":"session","project":{"id":9,"name":"Missionbase"}}`
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/projects/9/tasks/next": fixed(200, `{"has_work":true,"task":`+task+`}`),
+		"POST /api/v1/tasks/7/work":         fixed(200, `{"task":`+task+`,"stopped":[]}`),
+	})
+	setAgentEnv(t, server.URL)
+	t.Setenv("HC_TERMINAL_ID", "t6b")
+
+	out, err := runCapture(t, "task", "next", "--project", "9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`#7 "Plan the inbox" (Planning · session with me)`, "herdr-app do terminal.keep --place tab"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("next output missing %q:\n%s", want, out)
+		}
+	}
+	out, err = runCapture(t, "task", "start", "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`Started #7 "Plan the inbox" (Planning · session with me)`, "Don't ask Questions", "wait for the owner here"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("start output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestTasksLsNeedsYouFiltersAndMarksTasks(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
 		"GET /api/v1/tasks/accessible": fixed(200, `{"tasks":[

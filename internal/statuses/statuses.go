@@ -7,6 +7,9 @@
 // planning (being planned with its owner, not built: the agent asks questions
 // and writes the plan into the task) and in_progress (being built, once the
 // owner approves the plan). task next never hands out a planning task.
+// A todo or planning task has a planning mode: questions (the default) or
+// session (planned one-on-one with the owner in a Herdr tab; see
+// PlanningSession). The owner sets session in todo; task start keeps it.
 //
 // "Needs you" is not a status: a task needs its owner while it has open
 // questions or a live permission prompt (needs_you in task payloads).
@@ -52,4 +55,51 @@ func RemovedIDFlag(flag string) error {
 		replacement = "--status KEY[,KEY] or --status-category open|done|canceled"
 	}
 	return fmt.Errorf("%s was removed: task statuses are fixed keys (%s); use %s", flag, strings.Join(Keys, ", "), replacement)
+}
+
+// Planning modes: how a task is planned with its owner (#346).
+// "questions" (the default) asks the owner Missionbase Questions; "session"
+// plans it one-on-one with an agent in a Herdr tab, without Questions.
+const (
+	PlanningQuestions = "questions"
+	PlanningSession   = "session"
+)
+
+// StatusArgs parses `task status <task-id> <status> [--session | --questions]`
+// and returns the task id and the PATCH payload: {"status": KEY}, plus
+// "planning_mode" when --session or --questions is given (the server refuses
+// session outside planning). usage is the command's usage line.
+func StatusArgs(args []string, usage string) (string, map[string]string, error) {
+	var positional []string
+	mode := ""
+	for _, arg := range args {
+		switch arg {
+		case "--session", "--questions":
+			next := strings.TrimPrefix(arg, "--")
+			if mode != "" && mode != next {
+				return "", nil, fmt.Errorf("use --session or --questions, not both\n%s", usage)
+			}
+			mode = next
+		default:
+			if strings.HasPrefix(arg, "--") {
+				return "", nil, fmt.Errorf("unknown task status option %q\n%s", arg, usage)
+			}
+			positional = append(positional, arg)
+		}
+	}
+	if len(positional) != 2 {
+		return "", nil, fmt.Errorf("%s", usage)
+	}
+	taskID, status := positional[0], strings.TrimSpace(positional[1])
+	if status == "" {
+		return "", nil, fmt.Errorf("status is required")
+	}
+	if err := RefuseSet(status); err != nil {
+		return "", nil, err
+	}
+	payload := map[string]string{"status": status}
+	if mode != "" {
+		payload["planning_mode"] = mode
+	}
+	return taskID, payload, nil
 }

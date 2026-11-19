@@ -420,14 +420,16 @@ type taskProject struct {
 }
 
 type workTask struct {
-	ID          int64        `json:"id"`
-	Title       string       `json:"title"`
-	Status      string       `json:"status"`
-	StatusLabel string       `json:"status_label"`
-	Project     *taskProject `json:"project"`
-	Assignees   []workActor  `json:"assignees"`
-	Running     *workRunning `json:"running"`
-	LiveStatus  *struct {
+	ID          int64  `json:"id"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	StatusLabel string `json:"status_label"`
+	// PlanningMode: "questions" (the default) or "session" (#346).
+	PlanningMode string       `json:"planning_mode"`
+	Project      *taskProject `json:"project"`
+	Assignees    []workActor  `json:"assignees"`
+	Running      *workRunning `json:"running"`
+	LiveStatus   *struct {
 		Worker string `json:"worker"`
 		State  string `json:"state"`
 	} `json:"live_status"`
@@ -458,12 +460,26 @@ func (t workTask) openQuestions() string {
 	return plural(t.Questions.OpenCount, "question")
 }
 
+// label is the status label, with "· session with me" in session mode.
 func (t workTask) label() string {
+	label := t.Status
 	if t.StatusLabel != "" {
-		return t.StatusLabel
+		label = t.StatusLabel
 	}
-	return t.Status
+	if t.session() {
+		label += " · session with me"
+	}
+	return label
 }
+
+// session: the owner plans this task one-on-one with the agent (planning mode "session").
+func (t workTask) session() bool {
+	return t.PlanningMode == statuses.PlanningSession
+}
+
+// sessionNote tells the agent how to plan a session-mode task.
+const sessionNote = "Session mode: plan it one-on-one with the owner in this terminal's Herdr tab. Don't ask Questions. " +
+	"Post a short opening on the task (your understanding, the main open decisions, your recommendation), then wait for the owner here."
 
 func (r workRunning) chip() string {
 	who := r.Agent.Slug
@@ -707,6 +723,9 @@ func taskStart(args []string) error {
 	fmt.Printf("Started #%d %q (%s) on %s %s\n", response.Task.ID, response.Task.Title, response.Task.label(), machine.Name, terminal)
 	for _, stopped := range response.Stopped {
 		fmt.Printf("Took over from %s\n", stopped.chip())
+	}
+	if response.Task.session() {
+		fmt.Println(sessionNote)
 	}
 	return nil
 }
@@ -1279,6 +1298,10 @@ func taskNext(args []string) error {
 	}
 	fmt.Printf("#%d %q (%s)\n", next.task.ID, next.task.Title, state)
 	fmt.Printf("Start it with: missionbase-agent task start %d\n", next.task.ID)
+	if next.task.session() {
+		fmt.Println("Session mode: the owner plans it with you one-on-one, so run it in a Herdr tab in the project's space " +
+			"(herdr-app do terminal.keep --place tab), not a background terminal.")
+	}
 	return nil
 }
 
