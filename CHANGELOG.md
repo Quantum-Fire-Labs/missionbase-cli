@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Task statuses are listed in the new order, Backlog → To Do → Planning → In Progress → Complete, Not Doing (#344): the help, the README, and the keys in status errors. Needs a Missionbase server with #344 for `task_status_position` and `projects task-statuses` to match.
+- The flow follows that order (#344): To Do is the queue of work to plan. `task next` hands out To Do tasks, and `task start` (server side) moves a Backlog or To Do task to Planning instead of In Progress; the agent moves it on with `task status <id> in_progress` once the owner approves the plan. `task create --start` now keeps `--status` (`in_progress` for work that's already agreed, `planning`; `backlog`/`todo` become Planning) instead of dropping it, and refuses `complete`/`not_doing` before sending.
 - Teams and Weeks are gone from Missionbase (#273, teams phases 5-7). Both CLIs drop them, with no compatibility shims:
   - `missionbase teams`, `team show|members` and `week show|add|remove|order`, and `missionbase-agent week show`, are unknown commands. `missionbase-agent activity team|teams` is an unknown scope; `activity project <id>` stays.
   - `--team` is an unknown option on `missionbase users lookup`, `projects`, `notes search`, `task assign|unassign|participants add` and `pi`. `missionbase-agent projects create` drops `--team`/`--team-id` and `--visibility`, and sends only `name`, `description`, `kind` and `status` (no `ownable_type`/`ownable_id`); the project goes into your account.

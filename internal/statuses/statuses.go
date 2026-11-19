@@ -1,9 +1,12 @@
 // Package statuses holds Missionbase's fixed task status keys. Every project
 // has the same six statuses; there are no per-project status ids.
 //
-// planning means the task is being planned with its owner, not built: the
-// agent asks questions and writes the plan into the task, then moves it to
-// todo once the plan is agreed. task next never hands out a planning task.
+// The order is the flow: backlog (not for now: not planned yet, or work that
+// shouldn't go ahead at the moment), todo (the queue of work to
+// plan: task next hands these out and task start moves them to planning),
+// planning (being planned with its owner, not built: the agent asks questions
+// and writes the plan into the task) and in_progress (being built, once the
+// owner approves the plan). task next never hands out a planning task.
 //
 // "Needs you" is not a status: a task needs its owner while it has open
 // questions or a live permission prompt (needs_you in task payloads).
@@ -16,7 +19,7 @@ import (
 )
 
 // Keys are the task status keys, in display order.
-var Keys = []string{"backlog", "planning", "todo", "in_progress", "complete", "not_doing"}
+var Keys = []string{"backlog", "todo", "planning", "in_progress", "complete", "not_doing"}
 
 // NeedsAttention is the removed status key.
 const NeedsAttention = "needs_attention"

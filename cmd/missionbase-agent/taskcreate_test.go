@@ -132,7 +132,7 @@ func TestTaskCreateWithoutStatusSendsNone(t *testing.T) {
 
 func TestTaskCreateStatusLeavesUnknownKeysToTheServer(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"POST /api/v1/tasks": fixed(422, `{"error":{"code":"validation_failed","message":"status must be one of: backlog, planning, todo, in_progress, complete, not_doing"}}`),
+		"POST /api/v1/tasks": fixed(422, `{"error":{"code":"validation_failed","message":"status must be one of: backlog, todo, planning, in_progress, complete, not_doing"}}`),
 	})
 	setAgentEnv(t, server.URL)
 	_, err := runCapture(t, "task", "create", "--title", "New work", "--project", "5", "--status", "someday")
@@ -152,7 +152,7 @@ func TestTaskCreateStatusRefusesNeedsAttentionAndBlankKeys(t *testing.T) {
 	}
 	for _, args := range [][]string{{"--status"}, {"--status", " "}} {
 		_, err := runCapture(t, append([]string{"task", "create", "--title", "New work", "--project", "5"}, args...)...)
-		if err == nil || !strings.Contains(err.Error(), "--status requires a status key: backlog, planning, todo") {
+		if err == nil || !strings.Contains(err.Error(), "--status requires a status key: backlog, todo, planning") {
 			t.Fatalf("%v: err = %v", args, err)
 		}
 	}
@@ -260,7 +260,7 @@ func TestTaskCreateRejectsBadProjectArguments(t *testing.T) {
 
 func TestTaskCreateStartCreatesThenStartsOnTheHCTerminal(t *testing.T) {
 	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
-	workResponse := `{"task":{"id":77,"title":"New work","status":"in_progress","status_label":"In Progress","running":{"agent":{"type":"Agent","slug":"missionbase-dev"},"machine_id":"core-local","machine_name":"omarchy-m3","terminal":"t6b"}},"stopped":[]}`
+	workResponse := `{"task":{"id":77,"title":"New work","status":"planning","status_label":"Planning","running":{"agent":{"type":"Agent","slug":"missionbase-dev"},"machine_id":"core-local","machine_name":"omarchy-m3","terminal":"t6b"}},"stopped":[]}`
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
 		"POST /api/v1/tasks":         fixed(201, testCreatedTaskJSON),
 		"POST /api/v1/tasks/77/work": fixed(200, workResponse),
@@ -268,11 +268,7 @@ func TestTaskCreateStartCreatesThenStartsOnTheHCTerminal(t *testing.T) {
 	setAgentEnv(t, server.URL)
 	t.Setenv("HC_TERMINAL_ID", "t6b")
 
-	var out string
-	var err error
-	stderr := captureStderr(t, func() {
-		out, err = runCapture(t, "task", "create", "--title", "New work", "--project", "5", "--status", "backlog", "--start", "--json")
-	})
+	out, err := runCapture(t, "task", "create", "--title", "New work", "--project", "5", "--status", "in_progress", "--start", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,11 +276,8 @@ func TestTaskCreateStartCreatesThenStartsOnTheHCTerminal(t *testing.T) {
 		t.Fatalf("requests = %#v, want create then work", *requests)
 	}
 	create, work := (*requests)[0], (*requests)[1]
-	if _, ok := create.payload["status"]; ok {
-		t.Fatalf("create payload = %#v, --start must win over --status", create.payload)
-	}
-	if !strings.Contains(stderr, "--status backlog is ignored with --start") {
-		t.Fatalf("stderr = %q", stderr)
+	if create.payload["status"] != "in_progress" {
+		t.Fatalf("create payload = %#v, --start must keep --status in_progress", create.payload)
 	}
 	want := map[string]any{"machine_id": "core-local", "machine_name": "omarchy-m3", "terminal": "t6b"}
 	if fmt.Sprint(work.payload) != fmt.Sprint(want) || work.slug != "missionbase-dev" {
@@ -292,6 +285,13 @@ func TestTaskCreateStartCreatesThenStartsOnTheHCTerminal(t *testing.T) {
 	}
 	if strings.TrimSpace(out) != workResponse {
 		t.Fatalf("out = %q, want the task start response", out)
+	}
+
+	if _, err := runCapture(t, "task", "create", "--title", "Done work", "--project", "5", "--status", "complete", "--start"); err == nil || !strings.Contains(err.Error(), "--start can't start a complete task") {
+		t.Fatalf("err = %v, want a refusal to start a closed task", err)
+	}
+	if len(*requests) != 2 {
+		t.Fatalf("requests = %#v, want nothing sent for a closed --start", *requests)
 	}
 }
 

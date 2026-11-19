@@ -3034,15 +3034,15 @@ func taskCreate(args []string) error {
 	}
 	payload["project_id"] = project.ID
 
-	// --start wins over --status: the task is created in the default status and
-	// starting work moves it to In Progress. The terminal is resolved before
-	// anything is created, so an hc failure leaves no task behind.
+	// With --start, starting work moves a Backlog or To Do task to Planning; a
+	// Planning or In Progress --status (work already agreed) is kept. A closed
+	// status can't be started. The terminal is resolved before anything is
+	// created, so an hc failure leaves no task behind.
 	var machine hcMachine
 	var terminal string
 	if start {
-		if status, ok := payload["status"]; ok {
-			fmt.Fprintf(os.Stderr, "--status %s is ignored with --start; the task starts In Progress\n", status)
-			delete(payload, "status")
+		if status := payload["status"]; status == "complete" || status == "not_doing" {
+			return fmt.Errorf("--start can't start a %s task; leave --status off or use todo, planning or in_progress", status)
 		}
 		if machine, terminal, err = resolveWorkTerminal(terminalSpec); err != nil {
 			return err
@@ -3902,9 +3902,10 @@ Commands:
                                       Create a task and print the created task JSON. The project resolves
                                       like tasks ls (--project, then .missionbase/project.json from --cwd or
                                       here, then the machine default; exit 5 when none). --status sets the
-                                      starting status (backlog, planning, todo, in_progress, complete,
+                                      starting status (backlog, todo, planning, in_progress, complete,
                                       not_doing; default todo). --start then starts work on it like task
-                                      start (default terminal $HC_TERMINAL_ID; --status is ignored) and
+                                      start (default terminal $HC_TERMINAL_ID), which moves Backlog or To
+                                      Do to Planning (--status in_progress builds already-agreed work), and
                                       prints the task start --json response; exit 3 if it's running
                                       elsewhere, 4 if hc can't resolve the terminal (nothing is created).
                                       --recurring makes completing the task create the next one; a deadline
@@ -3924,7 +3925,7 @@ Commands:
   task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
-  task status <task-id> <status>      Set status by key: backlog, planning, todo, in_progress, complete, not_doing
+  task status <task-id> <status>      Set status by key: backlog, todo, planning, in_progress, complete, not_doing
   task move <task-id> --project PROJECT_ID
                                       Move a task to another accessible project
   task complete <task-id>             Mark a task complete
@@ -3961,7 +3962,8 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
                                       Poll every 20s until no question is open, then print the answers
                                       (exit 6 on timeout; DURATION like 90s, 10m, 1h or seconds)
   task next [--cwd DIR | --project ID] [--json]
-                                      Next To Do task here that is free or yours and not running
+                                      Next To Do task (the queue to plan) here that is free or yours and
+                                      not running; task start moves it to Planning
   tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--needs-you] [--cwd DIR | --project ID] [--json]
                                       List this project's tasks (open by default), or every project with --all;
                                       --needs-you keeps tasks with open questions or a permission prompt
