@@ -2598,7 +2598,7 @@ func withoutJSONFlag(args []string) (rest []string, found bool) {
 }
 
 func taskUpdate(args []string) error {
-	usage := "usage: missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--recurring not|daily|weekdays|weekly|bi_weekly|monthly]"
+	usage := "usage: missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] [--start-on YYYY-MM-DD | --no-start-on] [--recurring not|daily|weekdays|weekly|bi_weekly|monthly]"
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(usage)
 		return nil
@@ -2610,6 +2610,8 @@ func taskUpdate(args []string) error {
 	payload := map[string]any{}
 	deadlineSet := false
 	deadlineCleared := false
+	startOnSet := false
+	startOnCleared := false
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -2648,6 +2650,20 @@ func taskUpdate(args []string) error {
 		case "--no-deadline":
 			payload["deadline"] = nil
 			deadlineCleared = true
+		case "--start-on":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--start-on requires a value in YYYY-MM-DD format")
+			}
+			startOn, err := validateStartOn(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["start_on"] = startOn
+			startOnSet = true
+			i++
+		case "--no-start-on":
+			payload["start_on"] = nil
+			startOnCleared = true
 		case "--recurring":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--recurring requires a value: %s", strings.Join(recurringValues, ", "))
@@ -2669,8 +2685,11 @@ func taskUpdate(args []string) error {
 	if deadlineSet && deadlineCleared {
 		return fmt.Errorf("use only one of --deadline or --no-deadline")
 	}
+	if startOnSet && startOnCleared {
+		return fmt.Errorf("use only one of --start-on or --no-start-on")
+	}
 	if len(payload) == 0 {
-		return fmt.Errorf("one of --title, --body-file, --deadline, --no-deadline or --recurring is required")
+		return fmt.Errorf("one of --title, --body-file, --deadline, --no-deadline, --start-on, --no-start-on or --recurring is required")
 	}
 
 	body, err := json.Marshal(payload)
@@ -2691,6 +2710,18 @@ func validateRecurring(value string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("--recurring must be one of: %s; got %q", strings.Join(recurringValues, ", "), value)
+}
+
+// validateStartOn checks a Backlog task's start date (YYYY-MM-DD): the day it moves to To Do.
+func validateStartOn(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("--start-on requires a value in YYYY-MM-DD format")
+	}
+	if _, err := time.Parse("2006-01-02", value); err != nil {
+		return "", fmt.Errorf("start_on must be a valid date in YYYY-MM-DD format")
+	}
+	return value, nil
 }
 
 func validateDeadline(value string) (string, error) {
@@ -2934,7 +2965,7 @@ func taskReview(args []string) error {
 	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/review", body)
 }
 
-const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
+const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--start-on YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
        missionbase-agent task create --title TITLE ... --start [--terminal [machine/]tN] [--force] [--json]`
 
 func taskCreate(args []string) error {
@@ -2991,6 +3022,16 @@ func taskCreate(args []string) error {
 				return err
 			}
 			payload["deadline"] = deadline
+			i++
+		case "--start-on":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--start-on requires a value in YYYY-MM-DD format")
+			}
+			startOn, err := validateStartOn(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["start_on"] = startOn
 			i++
 		case "--recurring":
 			if i+1 >= len(args) {
@@ -3069,6 +3110,15 @@ func taskCreate(args []string) error {
 	}
 	if !start && (terminalSet || force) {
 		return fmt.Errorf("--terminal and --force only apply with --start")
+	}
+	if payload["start_on"] != "" {
+		// A start date keeps the task in Backlog until that day (the server defaults the status to backlog).
+		if start {
+			return fmt.Errorf("--start-on keeps the task in Backlog until that day; it can't be used with --start")
+		}
+		if status := payload["status"]; status != "" && status != "backlog" {
+			return fmt.Errorf("--start-on is for Backlog tasks; leave --status off or use backlog")
+		}
 	}
 	if err := pf.validate(); err != nil {
 		return err
@@ -3944,7 +3994,7 @@ Commands:
                                       Convenience due-date task listings
   task show <task-id>                  Show full task working context as JSON (questions.items lists its questions)
   task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD]
-      [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention]
+      [--start-on YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention]
       [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
       [--start [--terminal [machine/]tN] [--force]] [--json]
                                       Create a task and print the created task JSON. The project resolves
@@ -3958,11 +4008,15 @@ Commands:
                                       exit 3 if it's running elsewhere, 4 if hc can't resolve the terminal
                                       (nothing is created). --recurring makes completing the task create
                                       the next one; a deadline is optional (the next one's moves by the
-                                      interval)
+                                      interval). --start-on creates it in Backlog until that day: at
+                                      05:00 the owner's time it moves to To Do (not with --start)
   task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
-      [--recurring not|daily|weekdays|weekly|bi_weekly|monthly]
-                                      Update task title, description, deadline or recurrence and print the
-                                      updated task JSON. --recurring not stops it recurring
+      [--start-on YYYY-MM-DD | --no-start-on] [--recurring not|daily|weekdays|weekly|bi_weekly|monthly]
+                                      Update task title, description, deadline, start date or recurrence
+                                      and print the updated task JSON. --recurring not stops it
+                                      recurring. --start-on is for Backlog tasks (task status <id>
+                                      backlog first): that day at 05:00 the owner's time it moves to
+                                      To Do; --no-start-on clears it
   task assign <task-id> --user ID|@mention
                                       Assign an existing task to a user
   task assign <task-id> --agent slug  Assign an existing task to an agent
