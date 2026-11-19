@@ -139,6 +139,8 @@ missionbase-agent task ask <task-id> "Short or long copy?" [--context TEXT] [--o
 missionbase-agent task ask <task-id> --file questions.json [--json]
 missionbase-agent task questions <task-id> [--status open|answered|dismissed[,...]] [--json]
 missionbase-agent task questions <task-id> --wait [--timeout DURATION] [--json]
+missionbase-agent task answer <task-id> <question-id> "the owner's answer" [--option N] [--source TEXT] [--json]
+missionbase-agent task dismiss <task-id> <question-id>... [--reason TEXT] [--json]
 missionbase-agent task next [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--needs-you] [--cwd DIR | --project ID] [--json]
 missionbase-agent tasks changes [--since CURSOR] [--project ID[,ID]] [--json]
@@ -152,7 +154,7 @@ missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project I
 - **`task start`** assigns the acting agent to the task, records where the work runs (hc core id, machine name, terminal) and moves Backlog/To Do to Planning (`POST /api/v1/tasks/:id/work`): picked-up work is planned with its owner before it's built. A Planning or In Progress task keeps its status; once the owner approves the plan, move it on with `task status <id> in_progress`. Without `--terminal` it uses `$HC_TERMINAL_ID` on this machine. `--terminal t7` is a terminal on this machine; `--terminal omarchy-intel/t7` is a terminal on a machine from `hc machine ls` (matched by name, host, target or core id). The core id comes from `hc server status --json` / `hc machine ls --json`; `hc` is only run by `task start`, with a 3 second timeout. If another agent is already running the task elsewhere, it exits 3 and says who is running it where; `--force` takes the work over.
 - **`task stop`** clears where your work runs and keeps you assigned (`DELETE /api/v1/tasks/:id/work`). "Nothing of yours was running" is not an error.
 - **`task attention`** asks the reason as one question (a shortcut for `task ask` with one question and no options). `clear` dismisses the task's open questions. Neither changes the task's status.
-- **`task ask`** and **`task questions`** ask the task's owner questions and read the answers. See [Agent questions](#agent-questions).
+- **`task ask`** and **`task questions`** ask the task's owner questions and read the answers; **`task answer`** and **`task dismiss`** record answers the owner gave elsewhere (in chat) and dismiss questions. See [Agent questions](#agent-questions).
 - **`tasks ls`** lists the current project's tasks, open by default, in status order and then project order (`GET /api/v1/tasks/accessible?project_ids=<id>`, all pages). `--status` takes a category (`open`, `done`, `canceled`), `all`, or status keys such as `planning` or `todo,in_progress`. `--needs-you` keeps only the tasks waiting on their owner (open questions or a live permission prompt; `needs_you=true`), and the text output marks every such task "needs you" (with the oldest open question when there is one). `--status needs_attention` is refused with a pointer to `--needs-you`. `--all` lists every project you can access, ordered by project name (the same endpoint without `project_ids`). JSON: `{"project": {...} | null, "tasks": [...], "cursor": "..."}`. `cursor` is a changes-feed cursor taken before the list was read: the first page's `meta.cursor`, which is the earliest. It is `null` only if the server sent none.
 - **`tasks changes`** returns tasks changed since a cursor (open and closed), following pages until done, deduped by id, with deleted tasks removed. Treat the cursor as opaque. Without `--since` it starts from the beginning. JSON: `{"tasks": [...], "deleted_task_ids": [...], "cursor": "..."}`.
 - **`task next`** asks Missionbase for the next task in the current project (`GET /api/v1/projects/:id/tasks/next`): the first To Do task (To Do is the queue of work to plan) in project order that nobody is running and that is unassigned or assigned to you; `task start` then moves it to Planning. In Progress, Planning and Backlog tasks, and tasks with open questions, are never picked. With no project it returns your next assigned task from `GET /api/v1/agent/work`, which never returns a Planning task or one with open questions. JSON: `{"has_work": bool, "task": {...} | null, "project": {...} | null}`.
@@ -185,7 +187,7 @@ Task payloads include `running` (agent, machine id/name, terminal, since, stale)
 
 #### Agent questions
 
-An agent can ask the task's owner 1 to 5 questions at a time. The task's status doesn't change: it reports `needs_you: true` while questions are open, and the owner answers (or dismisses) them on the task page. When the last open question is resolved the agent gets a `questions_answered` update (`listen`, or the `task.questions_answered` webhook). Agents can't answer or dismiss questions.
+An agent can ask the task's owner 1 to 5 questions at a time. The task's status doesn't change: it reports `needs_you: true` while questions are open, and the owner answers (or dismisses) them on the task page. When the last open question is resolved the agent gets a `questions_answered` update (`listen`, or the `task.questions_answered` webhook). When the owner answers somewhere else, such as in chat, the agent records the answer with `task answer`, or closes questions with `task dismiss` (see [Recording answers given elsewhere](#recording-answers-given-elsewhere)).
 
 ```bash
 # One question, with optional context (Markdown) and up to 4 suggested answers
@@ -263,6 +265,34 @@ Each question in the API carries `answer_attachments: [{"filename", "content_typ
 `task questions --wait` polls every 20 seconds until the task has no open questions, then prints the questions that were open when it started. If none were open (the owner answered before the first poll), it prints the latest ask. It exits 0 when they are resolved. `--timeout` takes a duration (`90s`, `10m`, `1h`) or a number of seconds; without it, it waits indefinitely. On timeout it exits 6 (with `--json`, after printing the last response). Network errors, HTTP 429 and 5xx responses are retried on the next poll; other API errors stop it with exit 1. A manual status change also dismisses open questions, so `--wait` finishes then too: check each question's status.
 
 `task show` prints the task detail JSON, which includes every question in `questions.items`.
+
+#### Recording answers given elsewhere
+
+When the owner answers an open question somewhere other than Missionbase (in chat with the agent, say), record it on the task instead of leaving it open. Use the question id from `task questions <task-id> --status open --json`.
+
+```bash
+# The owner's words, and where they gave them (--source defaults to "in chat")
+missionbase-agent task answer 42 7 "Yes, treat it as delivered and log it"
+
+# Pick the question's 2nd option; text, if given, follows it ("No, keep as failure — retry once")
+missionbase-agent task answer 42 7 --option 2 "retry once" --source "in a call"
+
+# Several at once
+missionbase-agent task answer 42 --file answers.json   # [{"id": 7, "answer": "Yes"}, {"id": 8, "option": 1}]
+
+# Close questions that no longer need an answer
+missionbase-agent task dismiss 42 8 9 --reason "Covered by the plan in #44"
+```
+
+Both send `PATCH /api/v1/tasks/:id/questions` as the acting agent (`{"answers": {"7": "text"}, "source": "in chat"}` or `{"dismiss": [8, 9], "reason": "..."}`), only for tasks in projects the agent can reach. The task page shows "Answered in chat · recorded by Claude" with the owner's words, and "Dismissed by Claude · Covered by the plan in #44". Either one leaves Needs you; the owner can undo it there while other questions on the task are still open. Agents record text only (no images) and can't reopen questions. `--option N` reads the task's questions first to turn the number into the option's text. Questions already answered or dismissed are skipped and listed. The text output prints the resolved questions and how many are still open; `--json` prints the server's response (`task`, `questions`, `answered`, `dismissed`, `skipped`, `open_remaining`). Each question in the API carries `answer_source` and `dismiss_reason`.
+
+```text
+Recorded 1 answer given in chat on #42 "Webhook retries"
+  1. Should a 409 from Optimus count as delivered?
+     Options: Yes, treat as delivered · No, keep as failure
+     Answer (given in chat, recorded by Claude): Yes, treat it as delivered and log it
+1 question still open
+```
 
 #### Exit codes
 
@@ -514,7 +544,7 @@ missionbase-agent task message 123 --body-file /tmp/missionbase-comment.md
 
 When file content accidentally contains escaped newline sequences (`\n`, `\r`, or `\r\n`), the CLI continues to normalize them to real line breaks outside quoted/backticked code contexts. Quoted JSON, shell snippets, and inline-code literals such as `printf 'a\\nb'` are preserved.
 
-**JSON output.** `task show`, `task create`, `task update`, `task message`, `task assign`, `task unassign`, `task status`, `task move`, `task complete`, `task messages`, `task participants`, `projects create` and `projects update` always print the server's JSON response, so a script can read `.task.id` from `task create` (`{"task": {...}}`, the same envelope as `task show`). They accept `--json` and print the same thing with or without it. The agent-work commands (`task start/stop/attention/ask/questions/next`, `tasks ls/changes`, `project`), `activity`, `members`, `pi` and `projects notes` print text unless `--json` is given. Other commands don't take `--json`; most of them print the server's JSON (`document show` prints the document body).
+**JSON output.** `task show`, `task create`, `task update`, `task message`, `task assign`, `task unassign`, `task status`, `task move`, `task complete`, `task messages`, `task participants`, `projects create` and `projects update` always print the server's JSON response, so a script can read `.task.id` from `task create` (`{"task": {...}}`, the same envelope as `task show`). They accept `--json` and print the same thing with or without it. The agent-work commands (`task start/stop/attention/ask/questions/answer/dismiss/next`, `tasks ls/changes`, `project`), `activity`, `members`, `pi` and `projects notes` print text unless `--json` is given. Other commands don't take `--json`; most of them print the server's JSON (`document show` prints the document body).
 
 `missionbase-agent task create` finds its project like `tasks ls` and `task next`: `--project ID`, then the nearest `.missionbase/project.json` from `--cwd DIR` or the current folder, then the machine's default project. When none resolves it exits 5 without sending anything. `--cwd` lets an orchestrator create a task in another repo's project.
 
