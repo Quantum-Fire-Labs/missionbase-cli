@@ -16,7 +16,7 @@ import (
 )
 
 // Keys are the task status keys, in display order.
-var Keys = []string{"backlog", "planning", "todo", "in_progress", "complete", "not_doing"}
+var Keys = []string{"backlog", "todo", "planning", "in_progress", "complete", "not_doing"}
 
 // NeedsAttention is the removed status key.
 const NeedsAttention = "needs_attention"

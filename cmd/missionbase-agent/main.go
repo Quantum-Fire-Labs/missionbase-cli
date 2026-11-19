@@ -3902,7 +3902,7 @@ Commands:
                                       Create a task and print the created task JSON. The project resolves
                                       like tasks ls (--project, then .missionbase/project.json from --cwd or
                                       here, then the machine default; exit 5 when none). --status sets the
-                                      starting status (backlog, planning, todo, in_progress, complete,
+                                      starting status (backlog, todo, planning, in_progress, complete,
                                       not_doing; default todo). --start then starts work on it like task
                                       start (default terminal $HC_TERMINAL_ID; --status is ignored) and
                                       prints the task start --json response; exit 3 if it's running
@@ -3924,7 +3924,7 @@ Commands:
   task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
-  task status <task-id> <status>      Set status by key: backlog, planning, todo, in_progress, complete, not_doing
+  task status <task-id> <status>      Set status by key: backlog, todo, planning, in_progress, complete, not_doing
   task move <task-id> --project PROJECT_ID
                                       Move a task to another accessible project
   task complete <task-id>             Mark a task complete

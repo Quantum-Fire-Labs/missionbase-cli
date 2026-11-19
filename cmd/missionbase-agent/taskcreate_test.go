@@ -132,7 +132,7 @@ func TestTaskCreateWithoutStatusSendsNone(t *testing.T) {
 
 func TestTaskCreateStatusLeavesUnknownKeysToTheServer(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"POST /api/v1/tasks": fixed(422, `{"error":{"code":"validation_failed","message":"status must be one of: backlog, planning, todo, in_progress, complete, not_doing"}}`),
+		"POST /api/v1/tasks": fixed(422, `{"error":{"code":"validation_failed","message":"status must be one of: backlog, todo, planning, in_progress, complete, not_doing"}}`),
 	})
 	setAgentEnv(t, server.URL)
 	_, err := runCapture(t, "task", "create", "--title", "New work", "--project", "5", "--status", "someday")
@@ -152,7 +152,7 @@ func TestTaskCreateStatusRefusesNeedsAttentionAndBlankKeys(t *testing.T) {
 	}
 	for _, args := range [][]string{{"--status"}, {"--status", " "}} {
 		_, err := runCapture(t, append([]string{"task", "create", "--title", "New work", "--project", "5"}, args...)...)
-		if err == nil || !strings.Contains(err.Error(), "--status requires a status key: backlog, planning, todo") {
+		if err == nil || !strings.Contains(err.Error(), "--status requires a status key: backlog, todo, planning") {
 			t.Fatalf("%v: err = %v", args, err)
 		}
 	}
