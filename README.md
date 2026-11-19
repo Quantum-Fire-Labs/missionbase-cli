@@ -358,7 +358,7 @@ missionbase tasks assigned [--page N] [--per-page N]
 missionbase tasks visible [--page N] [--per-page N]
 missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
 missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]
-missionbase task status <task-id> <status>
+missionbase task status <task-id> <status> [--session | --questions]
 missionbase task complete <task-id>
 missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
 missionbase task assign <task-id> --user <user-id-or-mention>
@@ -431,7 +431,7 @@ missionbase-agent task unassign <task-id> --user <user-id-or-mention>
 missionbase-agent task unassign <task-id> --agent <agent-slug>
 missionbase-agent task unassign <task-id> --self
 missionbase-agent task message <task-id> --body-file /tmp/body.md [--attach /path/to/image.png]
-missionbase-agent task status <task-id> <status>
+missionbase-agent task status <task-id> <status> [--session | --questions]
 missionbase-agent task move <task-id> --project <project-id>
 missionbase-agent task complete <task-id>
 missionbase-agent task messages <task-id> [--limit N]
@@ -537,7 +537,7 @@ Task scheduling is retired: Missionbase no longer hides tasks until a scheduled 
 
 `missionbase-agent task move <task-id> --project <project-id>` moves an existing task to another agent-accessible project through the task update API. Missionbase preserves the task record, discussion messages, attachments, participants, and assignments. The status is kept as it is, because every project has the same statuses.
 
-`missionbase-agent projects task-statuses <project-id>` (alias: `projects statuses`) prints the task statuses as JSON. They are fixed and the same in every project: `backlog`, `todo`, `planning`, `in_progress` (open), `complete` (done) and `not_doing` (canceled). `needs_attention` was removed: "needs you" is the `needs_you` flag, and `task status <id> needs_attention` is refused with a pointer to `task ask`. They follow the flow: `backlog` (not for now: not planned yet, or work that shouldn't go ahead at the moment; never move such work back to `todo`), `todo` (the queue of work to plan; `task next` hands these out and `task start` moves them to `planning`), `planning` (being planned with its owner, not built: ask with `task ask`, write the plan into the task) and `in_progress` (being built: `task status <id> in_progress` once the owner approves the plan). Each entry has `key`, `name`, `category`, `color`, `position`, `default_open`, `primary_done` and `primary_canceled`. There are no status ids; commands take status keys (`--status KEY`) or categories (`--status-category open|done|canceled`).
+`missionbase-agent projects task-statuses <project-id>` (alias: `projects statuses`) prints the task statuses as JSON. They are fixed and the same in every project: `backlog`, `todo`, `planning`, `in_progress` (open), `complete` (done) and `not_doing` (canceled). `needs_attention` was removed: "needs you" is the `needs_you` flag, and `task status <id> needs_attention` is refused with a pointer to `task ask`. They follow the flow: `backlog` (not for now: not planned yet, or work that shouldn't go ahead at the moment; never move such work back to `todo`), `todo` (the queue of work to plan; `task next` hands these out and `task start` moves them to `planning`), `planning` (being planned with its owner, not built: ask with `task ask`, write the plan into the task) and `in_progress` (being built: `task status <id> in_progress` once the owner approves the plan). A task also has a planning mode (#346): `questions` (the default) or `session`, set with `task status <id> todo --session` (or `planning --session`; `--questions` switches back). In session mode the owner plans it one-on-one with the agent in a Herdr tab: `task next` and `task start` label it "· session with me" and tell the agent to run in a tab, ask no Questions, post a short opening on the task and wait for the owner. Session mode is refused in other statuses, and task payloads carry `planning_mode` and `ready_to_plan`. Each entry has `key`, `name`, `category`, `color`, `position`, `default_open`, `primary_done` and `primary_canceled`. There are no status ids; commands take status keys (`--status KEY`) or categories (`--status-category open|done|canceled`).
 
 Task create/message and discussion/document/file message accept repeated `--attach PATH` flags for local image files and repeated `--attach-blob SIGNED_ID_OR_SGID` flags to reuse an existing Missionbase ActiveStorage blob from an attachment response. Supported local/blob attachment types are PNG, JPEG, GIF, WEBP, HEIC, and HEIF images up to 5 MB each. Attachments are appended inline to the task description or message rich text so they are visible in the Missionbase UI.
 

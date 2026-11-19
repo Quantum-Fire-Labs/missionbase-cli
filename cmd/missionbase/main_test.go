@@ -876,6 +876,24 @@ func TestTaskCreateAndStatusSendPlanningKey(t *testing.T) {
 	}
 }
 
+func TestTaskStatusSessionSendsPlanningMode(t *testing.T) {
+	var payloads []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		payloads = append(payloads, r.Method+" "+r.URL.Path+" "+string(body))
+		_, _ = w.Write([]byte(`{"task":{"id":123,"status":"planning","planning_mode":"session"}}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+
+	if err := run([]string{"task", "status", "123", "planning", "--session"}); err != nil {
+		t.Fatalf("run task status: %v", err)
+	}
+	if len(payloads) != 1 || payloads[0] != `PATCH /api/v1/tasks/123 {"planning_mode":"session","status":"planning"}` {
+		t.Fatalf("requests = %q", payloads)
+	}
+}
+
 func TestTaskCommandsRefuseNeedsAttentionBeforeSending(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)

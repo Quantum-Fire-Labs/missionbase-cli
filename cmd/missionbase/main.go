@@ -962,7 +962,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]\n       missionbase task status <task-id> <status>\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention\n       missionbase task unassign <task-id> --user ID|@mention\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention\n       missionbase task <show|messages> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]\n       missionbase task status <task-id> <status> [--session | --questions]\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention\n       missionbase task unassign <task-id> --user ID|@mention\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention\n       missionbase task <show|messages> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -1485,16 +1485,14 @@ func taskUpdate(args []string) error {
 }
 
 func taskStatus(args []string) error {
-	if len(args) != 2 {
-		return fmt.Errorf("usage: missionbase task status <task-id> <status>")
-	}
-	if err := statuses.RefuseSet(args[1]); err != nil {
+	taskID, payload, err := statuses.StatusArgs(args, "usage: missionbase task status <task-id> <status> [--session | --questions]")
+	if err != nil {
 		return err
 	}
-	if args[1] == "complete" {
-		return taskComplete([]string{args[0]})
+	if payload["status"] == "complete" && payload["planning_mode"] == "" {
+		return taskComplete([]string{taskID})
 	}
-	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(args[0]), map[string]string{"status": args[1]})
+	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(taskID), payload)
 }
 
 func taskComplete(args []string) error {
@@ -1898,7 +1896,9 @@ Commands:
                                       Create a task
   task update <task-id> [--title TITLE] [--project ID]
                                       Update a task
-  task status <task-id> <status>      Set a task status
+  task status <task-id> <status> [--session | --questions]
+                                      Set a task status; todo --session has it planned one-on-one
+                                      with you in a Herdr tab instead of through Questions
   task complete <task-id>             Mark a task complete as the current user
   task message <task-id> --body TEXT  Add a task discussion message
   task assign <task-id> --user ID|@mention

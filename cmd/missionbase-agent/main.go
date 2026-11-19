@@ -2491,7 +2491,7 @@ func members(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> [--session | --questions] OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	if alwaysJSONTaskCommands[args[0]] {
@@ -2837,23 +2837,15 @@ func taskMessage(args []string) error {
 }
 
 func taskStatus(args []string) error {
-	if len(args) != 2 {
-		return fmt.Errorf("usage: missionbase-agent task status <task-id> <status>")
-	}
-
-	taskID := args[0]
-	status := args[1]
-	if strings.TrimSpace(status) == "" {
-		return fmt.Errorf("status is required")
-	}
-	if err := statuses.RefuseSet(status); err != nil {
+	taskID, payload, err := statuses.StatusArgs(args, "usage: missionbase-agent task status <task-id> <status> [--session | --questions]")
+	if err != nil {
 		return err
 	}
-	if status == "complete" {
+	if payload["status"] == "complete" && payload["planning_mode"] == "" {
 		return taskComplete([]string{taskID})
 	}
 
-	body, err := json.Marshal(map[string]string{"status": status})
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -3926,6 +3918,8 @@ Commands:
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
   task status <task-id> <status>      Set status by key: backlog, todo, planning, in_progress, complete, not_doing
+                                      todo --session: to be planned one-on-one with the owner in a Herdr tab
+                                      (no Questions); --questions: through Questions (the default). Also planning
   task move <task-id> --project PROJECT_ID
                                       Move a task to another accessible project
   task complete <task-id>             Mark a task complete
