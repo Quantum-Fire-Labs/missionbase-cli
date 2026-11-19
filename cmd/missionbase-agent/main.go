@@ -2491,7 +2491,7 @@ func members(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> [--session | --questions] OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task complete <task-id> OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> [--session | --questions] OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task review <task-id> --check LINE --body-file PATH OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	if alwaysJSONTaskCommands[args[0]] {
@@ -2518,8 +2518,10 @@ func task(args []string) error {
 		return taskStatus(args[1:])
 	case "move", "project":
 		return taskMove(args[1:])
+	case "review":
+		return taskReview(args[1:])
 	case "complete":
-		return taskComplete(args[1:])
+		return statuses.RefuseAgentSet(statuses.Complete)
 	case "start":
 		return taskStart(args[1:])
 	case "stop":
@@ -2577,7 +2579,7 @@ var alwaysJSONTaskCommands = map[string]bool{
 	"show": true, "get": true, "create": true,
 	"message": true, "create-message": true, "comment": true, "create-comment": true, "reply": true,
 	"update": true, "edit": true, "assign": true, "unassign": true, "status": true,
-	"move": true, "project": true, "complete": true,
+	"move": true, "project": true, "review": true,
 	"messages": true, "comments": true, "participants": true,
 }
 
@@ -2845,8 +2847,8 @@ func taskStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	if payload["status"] == "complete" && payload["planning_mode"] == "" {
-		return taskComplete([]string{taskID})
+	if err := statuses.RefuseAgentSet(payload["status"]); err != nil {
+		return err
 	}
 
 	body, err := json.Marshal(payload)
@@ -2878,11 +2880,58 @@ func taskMove(args []string) error {
 	return apiPatch("/api/v1/tasks/"+url.PathEscape(taskID), body)
 }
 
-func taskComplete(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: missionbase-agent task complete <task-id>")
+const taskReviewUsage = "usage: missionbase-agent task review <task-id> --check LINE --body-file PATH"
+
+// taskReview finishes a task into Review (#349): it posts the completion
+// message (the body file, Markdown; its first line is the result) ending with
+// the one "what to check" line, moves the task to Review and stops this
+// agent's running work. The owner marks it complete from Home.
+func taskReview(args []string) error {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return fmt.Errorf("%s", taskReviewUsage)
 	}
-	return apiPatch("/api/v1/tasks/"+url.PathEscape(args[0])+"/complete", nil)
+	taskID := args[0]
+	payload := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--check":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--check requires one line on what the owner should check")
+			}
+			payload["check"] = strings.TrimSpace(args[i+1])
+			i++
+		case "--body-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--body-file requires a file path")
+			}
+			body, err := readBodyFile(args[i+1])
+			if err != nil {
+				return err
+			}
+			payload["body"] = body
+			i++
+		case "--help", "-h":
+			fmt.Println(taskReviewUsage)
+			return nil
+		default:
+			return fmt.Errorf("unknown task review option %q\n%s", args[i], taskReviewUsage)
+		}
+	}
+	if strings.TrimSpace(payload["body"]) == "" {
+		return fmt.Errorf("--body-file is required: the completion message, its first line the result\n%s", taskReviewUsage)
+	}
+	if payload["check"] == "" {
+		return fmt.Errorf("--check is required: one line on what the owner should check\n%s", taskReviewUsage)
+	}
+	if strings.ContainsAny(payload["check"], "\r\n") {
+		return fmt.Errorf("--check is one line")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/review", body)
 }
 
 const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
@@ -2959,6 +3008,9 @@ func taskCreate(args []string) error {
 			}
 			status := strings.TrimSpace(args[i+1])
 			if err := statuses.RefuseSet(status); err != nil {
+				return err
+			}
+			if err := statuses.RefuseAgentSet(status); err != nil {
 				return err
 			}
 			payload["status"] = status // the server validates the key
@@ -3898,14 +3950,15 @@ Commands:
                                       Create a task and print the created task JSON. The project resolves
                                       like tasks ls (--project, then .missionbase/project.json from --cwd or
                                       here, then the machine default; exit 5 when none). --status sets the
-                                      starting status (backlog, todo, planning, in_progress, complete,
-                                      not_doing; default todo). --start then starts work on it like task
-                                      start (default terminal $HC_TERMINAL_ID), which moves Backlog or To
-                                      Do to Planning (--status in_progress builds already-agreed work), and
-                                      prints the task start --json response; exit 3 if it's running
-                                      elsewhere, 4 if hc can't resolve the terminal (nothing is created).
-                                      --recurring makes completing the task create the next one; a deadline
-                                      is optional (the next one's moves by the interval)
+                                      starting status (backlog, todo, planning, in_progress, not_doing;
+                                      default todo; never review or complete). --start then starts work on
+                                      it like task start (default terminal $HC_TERMINAL_ID), which moves
+                                      Backlog or To Do to Planning (--status in_progress builds
+                                      already-agreed work), and prints the task start --json response;
+                                      exit 3 if it's running elsewhere, 4 if hc can't resolve the terminal
+                                      (nothing is created). --recurring makes completing the task create
+                                      the next one; a deadline is optional (the next one's moves by the
+                                      interval)
   task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline]
       [--recurring not|daily|weekdays|weekly|bi_weekly|monthly]
                                       Update task title, description, deadline or recurrence and print the
@@ -3921,12 +3974,17 @@ Commands:
   task message <task-id> --body-file PATH
       [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
                                       Post a Markdown-capable message to a task discussion
-  task status <task-id> <status>      Set status by key: backlog, todo, planning, in_progress, complete, not_doing
+  task status <task-id> <status>      Set status by key: backlog, todo, planning, in_progress, not_doing
+                                      (review and complete are refused: use task review)
                                       todo --session: to be planned one-on-one with the owner in a Herdr tab
                                       (no Questions); --questions: through Questions (the default). Also planning
   task move <task-id> --project PROJECT_ID
                                       Move a task to another accessible project
-  task complete <task-id>             Mark a task complete
+  task review <task-id> --check LINE --body-file PATH
+                                      Finish a verified, shipped task into Review: posts the completion
+                                      message (first line: the result) ending with "What to check: LINE",
+                                      moves it to Review and stops your running work. The owner reads it on
+                                      Home and marks it complete; agents can't (task complete is refused)
   task messages <task-id> [--limit N] Show task discussion messages
   task comments <task-id> [--limit N] Legacy alias for task messages
   task participants list <task-id>    List task participants

@@ -54,8 +54,6 @@ func TestOlderTaskCommandsAcceptJSON(t *testing.T) {
 		{[]string{"task", "show", "42", "--json"}, "GET /api/v1/tasks/42"},
 		{[]string{"task", "update", "42", "--title", "Renamed", "--json"}, "PATCH /api/v1/tasks/42"},
 		{[]string{"task", "status", "42", "todo", "--json"}, "PATCH /api/v1/tasks/42"},
-		{[]string{"task", "status", "--json", "42", "complete"}, "PATCH /api/v1/tasks/42/complete"},
-		{[]string{"task", "complete", "42", "--json"}, "PATCH /api/v1/tasks/42/complete"},
 		{[]string{"task", "assign", "42", "--agent", "claude", "--json"}, "POST /api/v1/tasks/42/assignments"},
 		{[]string{"task", "unassign", "42", "--user", "7", "--json"}, "DELETE /api/v1/tasks/42/assignments/7"},
 		{[]string{"task", "move", "42", "--project", "9", "--json"}, "PATCH /api/v1/tasks/42"},
@@ -287,7 +285,7 @@ func TestTaskCreateStartCreatesThenStartsOnTheHCTerminal(t *testing.T) {
 		t.Fatalf("out = %q, want the task start response", out)
 	}
 
-	if _, err := runCapture(t, "task", "create", "--title", "Done work", "--project", "5", "--status", "complete", "--start"); err == nil || !strings.Contains(err.Error(), "--start can't start a complete task") {
+	if _, err := runCapture(t, "task", "create", "--title", "Done work", "--project", "5", "--status", "not_doing", "--start"); err == nil || !strings.Contains(err.Error(), "--start can't start a not_doing task") {
 		t.Fatalf("err = %v, want a refusal to start a closed task", err)
 	}
 	if len(*requests) != 2 {

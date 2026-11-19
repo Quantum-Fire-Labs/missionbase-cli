@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestKeysPutPlanningBetweenBacklogAndTodo(t *testing.T) {
-	want := "backlog todo planning in_progress complete not_doing"
+func TestKeysFollowTheFlowWithReviewBeforeComplete(t *testing.T) {
+	want := "backlog todo planning in_progress review complete not_doing"
 	if got := strings.Join(Keys, " "); got != want {
 		t.Fatalf("Keys = %q, want %q", got, want)
 	}
@@ -21,7 +21,7 @@ func TestRemovedIDFlagPointsToStatusKeys(t *testing.T) {
 	if !strings.Contains(plural, "use --status KEY[,KEY] or --status-category open|done|canceled") {
 		t.Fatalf("plural = %q", plural)
 	}
-	if !strings.Contains(plural, "backlog, todo, planning, in_progress, complete, not_doing") {
+	if !strings.Contains(plural, "backlog, todo, planning, in_progress, review, complete, not_doing") {
 		t.Fatalf("plural = %q, want the fixed keys", plural)
 	}
 }
