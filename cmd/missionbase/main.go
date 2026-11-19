@@ -962,7 +962,7 @@ func task(args []string) error {
 		}
 		return apiGet(path)
 	case "--help", "-h":
-		fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]\n       missionbase task status <task-id> <status> [--session | --questions]\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention\n       missionbase task unassign <task-id> --user ID|@mention\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention\n       missionbase task <show|messages> <task-id> [--limit N]")
+		fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--start-on YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS] [--start-on YYYY-MM-DD | --no-start-on]\n       missionbase task status <task-id> <status> [--session | --questions]\n       missionbase task complete <task-id>\n       missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]\n       missionbase task assign <task-id> --user ID|@mention\n       missionbase task unassign <task-id> --user ID|@mention\n       missionbase task participants list <task-id>\n       missionbase task participants add <task-id> --user ID|@mention\n       missionbase task <show|messages> <task-id> [--limit N]")
 		return nil
 	default:
 		return fmt.Errorf("unknown task command %q", args[0])
@@ -1406,7 +1406,7 @@ func taskCreate(args []string) error {
 		switch args[i] {
 		case "--task-status-id":
 			return statuses.RemovedIDFlag(args[i])
-		case "--title", "--body", "--project", "--deadline", "--status", "--assign-user":
+		case "--title", "--body", "--project", "--deadline", "--start-on", "--status", "--assign-user":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
 			}
@@ -1415,7 +1415,7 @@ func taskCreate(args []string) error {
 					return err
 				}
 			}
-			key := map[string]string{"--title": "title", "--body": "body", "--project": "project_id", "--deadline": "deadline", "--status": "status", "--assign-user": "assign_to_user_id"}[args[i]]
+			key := map[string]string{"--title": "title", "--body": "body", "--project": "project_id", "--deadline": "deadline", "--start-on": "start_on", "--status": "status", "--assign-user": "assign_to_user_id"}[args[i]]
 			payload[key] = args[i+1]
 			i++
 		case "--attach":
@@ -1431,7 +1431,7 @@ func taskCreate(args []string) error {
 			blobs = append(blobs, args[i+1])
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
+			fmt.Println("usage: missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--start-on YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task create option %q", args[i])
@@ -1445,20 +1445,43 @@ func taskCreate(args []string) error {
 			return fmt.Errorf("deadline must be a valid date in YYYY-MM-DD format")
 		}
 	}
+	if payload["start_on"] != "" {
+		if err := validateStartOn(payload["start_on"]); err != nil {
+			return err
+		}
+		// A start date keeps the task in Backlog until that day (the server defaults the status to backlog).
+		if status := payload["status"]; status != "" && status != "backlog" {
+			return fmt.Errorf("--start-on is for Backlog tasks; leave --status off or use backlog")
+		}
+	}
 	payload["body"] = textbody.Normalize(payload["body"])
 	return apiWrite("POST", "/api/v1/tasks", payload, attaches, blobs)
 }
 
 func taskUpdate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]")
+		return fmt.Errorf("usage: missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS] [--start-on YYYY-MM-DD | --no-start-on]")
 	}
 	taskID := args[0]
-	payload := map[string]string{}
+	payload := map[string]any{}
+	startOnSet, startOnCleared := false, false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--task-status-id":
 			return statuses.RemovedIDFlag(args[i])
+		case "--start-on":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--start-on requires a value in YYYY-MM-DD format")
+			}
+			if err := validateStartOn(args[i+1]); err != nil {
+				return err
+			}
+			payload["start_on"] = args[i+1]
+			startOnSet = true
+			i++
+		case "--no-start-on":
+			payload["start_on"] = nil
+			startOnCleared = true
 		case "--title", "--project", "--status":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s requires a value", args[i])
@@ -1472,16 +1495,27 @@ func taskUpdate(args []string) error {
 			payload[key] = args[i+1]
 			i++
 		case "--help", "-h":
-			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]")
+			fmt.Println("usage: missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS] [--start-on YYYY-MM-DD | --no-start-on]")
 			return nil
 		default:
 			return fmt.Errorf("unknown task update option %q", args[i])
 		}
 	}
+	if startOnSet && startOnCleared {
+		return fmt.Errorf("use only one of --start-on or --no-start-on")
+	}
 	if len(payload) == 0 {
 		return fmt.Errorf("at least one update field is required")
 	}
 	return apiPatchJSON("/api/v1/tasks/"+url.PathEscape(taskID), payload)
+}
+
+// validateStartOn checks a Backlog task's start date (YYYY-MM-DD): the day it moves to To Do.
+func validateStartOn(value string) error {
+	if _, err := time.Parse("2006-01-02", strings.TrimSpace(value)); err != nil {
+		return fmt.Errorf("start_on must be a valid date in YYYY-MM-DD format")
+	}
+	return nil
 }
 
 func taskStatus(args []string) error {

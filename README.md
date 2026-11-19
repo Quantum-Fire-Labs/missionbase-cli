@@ -386,8 +386,8 @@ missionbase document message <document-id> --body TEXT [--attach PATH]
 missionbase document update <document-id> [--title TITLE] --body TEXT
 missionbase tasks assigned [--page N] [--per-page N]
 missionbase tasks visible [--page N] [--per-page N]
-missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
-missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS]
+missionbase task create --title TITLE [--project ID] [--body TEXT] [--deadline YYYY-MM-DD] [--start-on YYYY-MM-DD] [--status STATUS] [--assign-user ID] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
+missionbase task update <task-id> [--title TITLE] [--project ID] [--status STATUS] [--start-on YYYY-MM-DD | --no-start-on]
 missionbase task status <task-id> <status> [--session | --questions]
 missionbase task complete <task-id>
 missionbase task message <task-id> --body TEXT [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID]
@@ -449,11 +449,13 @@ missionbase-agent document edit <document-id> [--title "New title"] --body-file 
 missionbase-agent tasks
 missionbase-agent tasks --user <user-id-or-mention>
 missionbase-agent task show <task-id> [--json] # task show/create/update/message/assign/unassign/status/move/complete/messages/participants always print JSON; --json is accepted
-missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
+missionbase-agent task create --title "Task title" [--project <project-id> | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--start-on YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent <agent-slug> | --assign-user <user-id-or-mention>] [--body-file /tmp/body.md] [--participant-user <user-id-or-mention>] [--attach /path/to/image.png] [--attach-blob <signed-id-or-sgid>] [--start [--terminal [machine/]tN] [--force]] [--json]
 missionbase-agent task update <task-id> --title "New task title"
 missionbase-agent task update <task-id> --body-file /tmp/description.md # replaces the task description
 missionbase-agent task update <task-id> --deadline YYYY-MM-DD
 missionbase-agent task update <task-id> --no-deadline
+missionbase-agent task update <task-id> --start-on YYYY-MM-DD # Backlog tasks only: that day at 05:00 (owner's time) it moves to To Do
+missionbase-agent task update <task-id> --no-start-on
 missionbase-agent task update <task-id> --recurring weekly # not|daily|weekdays|weekly|bi_weekly|monthly; not stops it
 missionbase-agent task assign <task-id> --user <user-id-or-mention>
 missionbase-agent task assign <task-id> --agent <agent-slug>

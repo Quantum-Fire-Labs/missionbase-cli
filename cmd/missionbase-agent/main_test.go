@@ -1679,7 +1679,7 @@ func TestTaskHelpDocumentsDeadlineOptions(t *testing.T) {
 	stdout := captureStdout(t, func() {
 		printHelp()
 	})
-	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline or recurrence", "--title TITLE", "--deadline YYYY-MM-DD", "--no-deadline"} {
+	for _, want := range []string{"--body-file PATH", "Update task title, description, deadline, start date or recurrence", "--title TITLE", "--deadline YYYY-MM-DD", "--no-deadline", "--start-on YYYY-MM-DD | --no-start-on"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("help missing %q in:\n%s", want, stdout)
 		}
@@ -2423,5 +2423,75 @@ func TestRemovedTaskStatusIDFlagsFailBeforeSending(t *testing.T) {
 	stdout := captureStdout(t, func() { printHelp() })
 	if strings.Contains(stdout, "task-status-id") || strings.Contains(stdout, "box-specific statuses") {
 		t.Fatalf("help still mentions task status ids or per-box statuses:\n%s", stdout)
+	}
+}
+
+// Start dates (Missionbase #352): a Backlog task's start_on, the day it moves to To Do.
+func TestTaskStartOnFlagsSendStartOn(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, r.Method+" "+r.URL.Path+" "+string(body))
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusCreated)
+		}
+		_, _ = w.Write([]byte(`{"task":{"id":123,"status":"backlog","start_on":"2026-11-26"}}`))
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+
+	if err := run([]string{"task", "create", "--title", "Later", "--project", "2", "--start-on", "2026-11-26"}); err != nil {
+		t.Fatalf("task create --start-on: %v", err)
+	}
+	if err := run([]string{"task", "update", "123", "--start-on", "2026-11-26"}); err != nil {
+		t.Fatalf("task update --start-on: %v", err)
+	}
+	if err := run([]string{"task", "update", "123", "--no-start-on"}); err != nil {
+		t.Fatalf("task update --no-start-on: %v", err)
+	}
+
+	want := []string{
+		`POST /api/v1/tasks {"project_id":"2","start_on":"2026-11-26","title":"Later"}`,
+		`PATCH /api/v1/tasks/123 {"start_on":"2026-11-26"}`,
+		`PATCH /api/v1/tasks/123 {"start_on":null}`,
+	}
+	if strings.Join(requests, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("requests =\n%s\nwant\n%s", strings.Join(requests, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestTaskStartOnFlagsRefuseBadInputBeforeSending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+	setAgentEnv(t, server.URL)
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--start-on", "2026-11-31"}, "start_on must be a valid date in YYYY-MM-DD format"},
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--start-on"}, "--start-on requires a value"},
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--start-on", "2026-11-26", "--status", "todo"}, "--start-on is for Backlog tasks"},
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--start-on", "2026-11-26", "--start"}, "can't be used with --start"},
+		{[]string{"task", "update", "123", "--start-on", "26/11/2026"}, "start_on must be a valid date in YYYY-MM-DD format"},
+		{[]string{"task", "update", "123", "--start-on", "2026-11-26", "--no-start-on"}, "use only one of --start-on or --no-start-on"},
+	} {
+		err := run(tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: err = %v, want %q", tc.args, err, tc.want)
+		}
+	}
+}
+
+func TestTaskStartOnInHelp(t *testing.T) {
+	out := captureStdout(t, func() {
+		if err := run([]string{"task", "update", "--help"}); err != nil {
+			t.Fatalf("task update --help: %v", err)
+		}
+	})
+	if !strings.Contains(out, "[--start-on YYYY-MM-DD | --no-start-on]") {
+		t.Fatalf("task update --help = %q", out)
 	}
 }

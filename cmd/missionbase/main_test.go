@@ -951,3 +951,64 @@ func TestBoxCommandsAreGone(t *testing.T) {
 		}
 	}
 }
+
+// Start dates (Missionbase #352): a Backlog task's start_on, the day it moves to To Do.
+func TestTaskStartOnFlagsSendStartOn(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, r.Method+" "+r.URL.Path+" "+string(body))
+		_, _ = w.Write([]byte(`{"task":{"id":5,"status":"backlog","start_on":"2026-11-26"}}`))
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+
+	if err := run([]string{"task", "create", "--title", "Later", "--project", "2", "--start-on", "2026-11-26", "--status", "backlog"}); err != nil {
+		t.Fatalf("task create --start-on: %v", err)
+	}
+	if err := run([]string{"task", "update", "5", "--status", "backlog", "--start-on", "2026-11-26"}); err != nil {
+		t.Fatalf("task update --start-on: %v", err)
+	}
+	if err := run([]string{"task", "update", "5", "--no-start-on"}); err != nil {
+		t.Fatalf("task update --no-start-on: %v", err)
+	}
+
+	if len(requests) != 3 {
+		t.Fatalf("requests = %q", requests)
+	}
+	for _, want := range []string{`"start_on":"2026-11-26"`, `"status":"backlog"`, `"title":"Later"`} {
+		if !strings.Contains(requests[0], want) {
+			t.Fatalf("create request missing %s: %s", want, requests[0])
+		}
+	}
+	if requests[1] != `PATCH /api/v1/tasks/5 {"start_on":"2026-11-26","status":"backlog"}` {
+		t.Fatalf("update request = %s", requests[1])
+	}
+	if requests[2] != `PATCH /api/v1/tasks/5 {"start_on":null}` {
+		t.Fatalf("clear request = %s", requests[2])
+	}
+}
+
+func TestTaskStartOnFlagsRefuseBadInputBeforeSending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+	setUserEnv(t, server.URL)
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--start-on", "tomorrow"}, "start_on must be a valid date in YYYY-MM-DD format"},
+		{[]string{"task", "create", "--title", "T", "--project", "2", "--start-on", "2026-11-26", "--status", "in_progress"}, "--start-on is for Backlog tasks"},
+		{[]string{"task", "update", "5", "--start-on", "2026-02-30"}, "start_on must be a valid date in YYYY-MM-DD format"},
+		{[]string{"task", "update", "5", "--start-on"}, "--start-on requires a value"},
+		{[]string{"task", "update", "5", "--start-on", "2026-11-26", "--no-start-on"}, "use only one of --start-on or --no-start-on"},
+	} {
+		err := run(tc.args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: err = %v, want %q", tc.args, err, tc.want)
+		}
+	}
+}
