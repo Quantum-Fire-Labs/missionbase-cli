@@ -1,7 +1,8 @@
 // Package statuses holds Missionbase's fixed task status keys. Every project
 // has the same six statuses; there are no per-project status ids.
 //
-// The order is the flow: backlog (not planned yet), todo (the queue of work to
+// The order is the flow: backlog (not for now: not planned yet, or work that
+// shouldn't go ahead at the moment), todo (the queue of work to
 // plan: task next hands these out and task start moves them to planning),
 // planning (being planned with its owner, not built: the agent asks questions
 // and writes the plan into the task) and in_progress (being built, once the
