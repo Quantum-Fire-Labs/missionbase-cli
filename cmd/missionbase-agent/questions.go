@@ -1,7 +1,9 @@
 package main
 
-// Agent questions: ask the task's owner 1–5 questions (task ask) and read or
-// wait for the answers (task questions). See README "Agent questions".
+// Agent questions: ask the task's owner 1–5 questions (task ask), read or
+// wait for the answers (task questions), record answers the owner gave
+// elsewhere, such as in chat (task answer), and dismiss questions (task
+// dismiss). See README "Agent questions".
 
 import (
 	"bytes"
@@ -50,18 +52,21 @@ func (p *questionPerson) display() string {
 }
 
 type taskQuestion struct {
-	ID          int64           `json:"id"`
-	Batch       string          `json:"batch"`
-	Position    int             `json:"position"`
-	Body        string          `json:"body"`
-	Context     *string         `json:"context"`
-	Options     []string        `json:"options"`
-	Status      string          `json:"status"`
-	AskedBy     *questionPerson `json:"asked_by"`
-	AskedAt     string          `json:"asked_at"`
-	AnswerBody  *string         `json:"answer_body"`
-	AnsweredBy  *questionPerson `json:"answered_by"`
-	DismissedBy *questionPerson `json:"dismissed_by"`
+	ID         int64           `json:"id"`
+	Batch      string          `json:"batch"`
+	Position   int             `json:"position"`
+	Body       string          `json:"body"`
+	Context    *string         `json:"context"`
+	Options    []string        `json:"options"`
+	Status     string          `json:"status"`
+	AskedBy    *questionPerson `json:"asked_by"`
+	AskedAt    string          `json:"asked_at"`
+	AnswerBody *string         `json:"answer_body"`
+	// Where the owner gave an answer an agent recorded ("in chat").
+	AnswerSource  *string         `json:"answer_source"`
+	AnsweredBy    *questionPerson `json:"answered_by"`
+	DismissedBy   *questionPerson `json:"dismissed_by"`
+	DismissReason *string         `json:"dismiss_reason"`
 	// Images in the answer; downloadAnswerImages saves them locally.
 	AnswerAttachments []answerAttachment `json:"answer_attachments"`
 }
@@ -118,7 +123,13 @@ func printQuestion(q taskQuestion, indent string, showStatus bool) {
 	switch q.Status {
 	case "answered":
 		label := "Answer"
-		if who := q.AnsweredBy.display(); who != "" {
+		if source := stringValue(q.AnswerSource); source != "" {
+			label += " (given " + source
+			if who := q.AnsweredBy.display(); who != "" {
+				label += ", recorded by " + who
+			}
+			label += ")"
+		} else if who := q.AnsweredBy.display(); who != "" {
 			label += " (" + who + ")"
 		}
 		answer := ""
@@ -135,8 +146,18 @@ func printQuestion(q taskQuestion, indent string, showStatus bool) {
 		if who := q.DismissedBy.display(); who != "" {
 			line += " by " + who
 		}
+		if reason := stringValue(q.DismissReason); reason != "" {
+			line += ": " + indentBlock(reason, inner+"  ")
+		}
 		fmt.Println(line)
 	}
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 // printQuestionList prints questions grouped by batch, each batch headed by

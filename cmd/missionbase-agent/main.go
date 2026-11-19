@@ -2530,6 +2530,10 @@ func task(args []string) error {
 		return taskAsk(args[1:])
 	case "questions":
 		return taskQuestions(args[1:])
+	case "answer":
+		return taskAnswer(args[1:])
+	case "dismiss":
+		return taskDismiss(args[1:])
 	case "next":
 		return taskNext(args[1:])
 	case "messages", "comments":
@@ -3960,6 +3964,13 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   task questions <task-id> --wait [--timeout DURATION] [--json]
                                       Poll every 20s until no question is open, then print the answers
                                       (exit 6 on timeout; DURATION like 90s, 10m, 1h or seconds)
+  task answer <task-id> <question-id> "answer" [--option N] [--source TEXT] [--json]
+  task answer <task-id> --file PATH [--source TEXT] [--json]
+                                      Record answers the owner gave elsewhere, in their words
+                                      (--source default "in chat"; shown as "recorded by" you).
+                                      --file is a JSON array: [{"id": 12, "answer": "...", "option": 1}]
+  task dismiss <task-id> <question-id>... [--reason TEXT] [--json]
+                                      Dismiss questions that no longer need an answer
   task next [--cwd DIR | --project ID] [--json]
                                       Next To Do task here that is free or yours and not running
   tasks ls [--all] [--status open|done|canceled|all|STATUS[,STATUS]] [--needs-you] [--cwd DIR | --project ID] [--json]

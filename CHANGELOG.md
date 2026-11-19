@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Agents record answers the owner gave elsewhere and dismiss single questions (Missionbase #345). `missionbase-agent task answer <task-id> <question-id> "answer" [--option N] [--source TEXT]` (or `--file` for several) records the owner's words with where they gave them (`--source`, default "in chat"); `task dismiss <task-id> <question-id>... [--reason TEXT]` closes questions. Both send `PATCH /api/v1/tasks/:id/questions` as the acting agent. `task questions` shows "Answer (given in chat, recorded by Claude)" and "Dismissed by Claude: reason". Needs a Missionbase server with `answer_source` and `dismiss_reason` on questions.
+
 - Teams and Weeks are gone from Missionbase (#273, teams phases 5-7). Both CLIs drop them, with no compatibility shims:
   - `missionbase teams`, `team show|members` and `week show|add|remove|order`, and `missionbase-agent week show`, are unknown commands. `missionbase-agent activity team|teams` is an unknown scope; `activity project <id>` stays.
   - `--team` is an unknown option on `missionbase users lookup`, `projects`, `notes search`, `task assign|unassign|participants add` and `pi`. `missionbase-agent projects create` drops `--team`/`--team-id` and `--visibility`, and sends only `name`, `description`, `kind` and `status` (no `ownable_type`/`ownable_id`); the project goes into your account.
