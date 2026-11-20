@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,8 +21,14 @@ import (
 // A watch signs up one hc terminal on this machine for a project's activity.
 // The missionbase-herdr bridge reads the file and, when that terminal is idle,
 // types a short digest of the owner's new tasks, replies, answers and status
-// changes, and of mentions of the watching agent. Nothing is stored in
-// Missionbase. Each project has at most one watch: signing up again replaces it.
+// changes, and of mentions of the watching agent, and the owner's project chat
+// messages (#368). Each project has at most one watch: signing up again
+// replaces it.
+//
+// The watch is also recorded in Missionbase (PUT /api/v1/projects/:id/watch:
+// the agent, this machine's hc core id and the terminal), so the project's
+// chat shows who's listening and the bridge knows the chat is this terminal's
+// to deliver. --off clears it there too, if it's still this terminal's.
 
 const projectWatchUsage = `usage: missionbase-agent project watch --terminal tN [--cwd DIR | --project ID] [--json]
        missionbase-agent project watch --off [--cwd DIR | --project ID] [--json]
@@ -172,6 +180,7 @@ func projectWatchCommand(args []string) error {
 			if err := writeWatchFile(path, file); err != nil {
 				return err
 			}
+			clearServerWatch(project.ID, previous)
 		}
 		if jsonOut {
 			return printJSON(map[string]any{"watch": nil, "stopped": watchOrNil(previous, had), "path": path})
@@ -204,14 +213,29 @@ func watchProject(file *watchFile, path string, project resolvedProject, project
 	if cfg.AgentSlug == "" {
 		return fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
 	}
-	info, err := fetchProject(project.ID) // the agent must be able to see the project
+	machine, err := hcLocalCore()
+	if err != nil {
+		return withExitCode(exitHCUnavailable, fmt.Errorf("hc is needed to find this machine: %w", err))
+	}
+	// Recorded in Missionbase first: the agent must be able to see the project.
+	body, err := agentDo(http.MethodPut, watchPath(project.ID), map[string]string{
+		"machine_id": machine.ID, "machine_name": machine.Name, "terminal": terminal,
+	})
 	if err != nil {
 		return err
+	}
+	var recorded struct {
+		Project struct {
+			Name string `json:"name"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(body, &recorded); err != nil {
+		return fmt.Errorf("unexpected watch response: %w", err)
 	}
 	previous, had := file.find(projectID)
 	w := projectWatch{
 		ProjectID:   projectID,
-		ProjectName: info.Name,
+		ProjectName: recorded.Project.Name,
 		Terminal:    terminal,
 		AgentSlug:   cfg.AgentSlug,
 		Since:       time.Now().UTC().Format(time.RFC3339),
@@ -230,6 +254,24 @@ func watchProject(file *watchFile, path string, project resolvedProject, project
 	}
 	fmt.Println("The Herdr bridge types a digest into that terminal when it's idle. Stop with: project watch --off")
 	return nil
+}
+
+func watchPath(projectID string) string {
+	return "/api/v1/projects/" + url.PathEscape(projectID) + "/watch"
+}
+
+// clearServerWatch clears the watch in Missionbase, as the agent that signed up, if it's still
+// this terminal's on this machine. The local watch is gone either way, so a failure only warns:
+// the chat shows the watch until the machine's bridge goes quiet.
+func clearServerWatch(projectID string, w projectWatch) {
+	machine, err := hcLocalCore()
+	if err == nil {
+		query := url.Values{"machine_id": {machine.ID}, "terminal": {w.Terminal}}
+		_, err = agentDoAs(w.AgentSlug, http.MethodDelete, watchPath(projectID)+"?"+query.Encode(), nil)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: couldn't clear the watch in Missionbase: %v\n", err)
+	}
 }
 
 func showAllWatches(file watchFile, path string, jsonOut bool) error {

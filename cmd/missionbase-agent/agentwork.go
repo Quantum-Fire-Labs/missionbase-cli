@@ -614,6 +614,31 @@ func agentDo(method, path string, payload any) ([]byte, error) {
 	return response, nil
 }
 
+// agentDoAs sends an agent-acting request as the agent with that slug (the configured one when empty).
+func agentDoAs(slug, method, path string, payload any) ([]byte, error) {
+	cfg, err := config.LoadAgent()
+	if err != nil {
+		return nil, err
+	}
+	if slug != "" {
+		cfg.AgentSlug = slug
+	}
+	if cfg.AgentSlug == "" {
+		return nil, fmt.Errorf("agent slug is not set; run `missionbase-agent use <slug>` in this directory or set MISSIONBASE_AGENT_SLUG")
+	}
+	var body []byte
+	if payload != nil {
+		if body, err = json.Marshal(payload); err != nil {
+			return nil, err
+		}
+	}
+	response, err := httpclient.New(cfg).Do(method, path, body)
+	if err != nil {
+		return nil, readableAPIError(err)
+	}
+	return response, nil
+}
+
 // apiError shows an API error envelope as "message (HTTP 422 task_closed)"
 // instead of the raw response body. It wraps the HTTPError, so exit codes
 // and errors.As keep working.
@@ -1333,7 +1358,9 @@ const projectUsage = `usage: missionbase-agent project [show] [--cwd DIR | --pro
        missionbase-agent project link ID [--cwd DIR] [--force] [--json]
        missionbase-agent project unlink [--cwd DIR] [--json]
        missionbase-agent project default [ID | --clear]
-       missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project ID] [--json]`
+       missionbase-agent project watch [--terminal tN | --off] [--cwd DIR | --project ID] [--json]
+       missionbase-agent project chat show [ID] [--limit N] [--json]
+       missionbase-agent project chat reply [ID] --body-file PATH [--json]`
 
 func projectCommand(args []string) error {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
@@ -1351,6 +1378,9 @@ func projectCommand(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "watch" {
 		return projectWatchCommand(args[1:])
+	}
+	if len(args) > 0 && args[0] == "chat" {
+		return projectChatCommand(args[1:])
 	}
 	if len(args) > 0 && args[0] == "show" {
 		args = args[1:]

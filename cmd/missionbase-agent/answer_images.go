@@ -39,15 +39,21 @@ type answerAttachment struct {
 
 // answerImagesDir is where a task's answer images are saved.
 func answerImagesDir(taskID string) (string, error) {
+	return imageCacheDir("answers", taskID)
+}
+
+// imageCacheDir is ~/.cache/missionbase/<kind>/<id> (or under $XDG_CACHE_HOME): where
+// answer images (by task) and project chat images (by project) are saved.
+func imageCacheDir(kind, id string) (string, error) {
 	base := os.Getenv("XDG_CACHE_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("find home folder for the answer image cache: %w", err)
+			return "", fmt.Errorf("find home folder for the image cache: %w", err)
 		}
 		base = filepath.Join(home, ".cache")
 	}
-	return filepath.Join(base, "missionbase", "answers", strings.TrimSpace(taskID)), nil
+	return filepath.Join(base, "missionbase", kind, strings.TrimSpace(id)), nil
 }
 
 // downloadAnswerImages saves the images of every answered question in
@@ -88,6 +94,11 @@ var unsafeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // answerImageFilename is "q<question>-<n>-<name>", so images from different
 // answers never collide and a name can't leave the folder.
 func answerImageFilename(questionID int64, n int, filename string) string {
+	return imageFilename("q", questionID, n, filename)
+}
+
+// imageFilename is "<prefix><id>-<n>-<name>", with the name made safe.
+func imageFilename(prefix string, id int64, n int, filename string) string {
 	name := strings.Trim(unsafeFilenameChars.ReplaceAllString(filepath.Base(filename), "-"), ".-")
 	if name == "" {
 		name = "image"
@@ -95,7 +106,7 @@ func answerImageFilename(questionID int64, n int, filename string) string {
 	if len(name) > 80 {
 		name = name[len(name)-80:]
 	}
-	return "q" + strconv.FormatInt(questionID, 10) + "-" + strconv.Itoa(n) + "-" + name
+	return prefix + strconv.FormatInt(id, 10) + "-" + strconv.Itoa(n) + "-" + name
 }
 
 func downloadAnswerImage(attachment *answerAttachment, path string) error {
