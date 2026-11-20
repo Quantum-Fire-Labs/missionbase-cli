@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 )
 
 const testProjectFiveJSON = `{"project":{"id":5,"name":"Missionbase","description":null,"kind":"project","status":"in_progress","task_statuses":[],"created_at":"2026-01-01T00:00:00Z"}}`
+
+const testWatchFiveJSON = `{"project":{"id":5,"name":"Missionbase"},"watch":{"agent":{"id":12,"name":"Claude","slug":"claude"},"terminal":"t9d","machine":{"id":"core-local","name":"omarchy-m3"},"label":"Claude · t9d","listening":true,"since":"2026-11-19T00:00:00Z"}}`
 
 func setWatchEnv(t *testing.T) string {
 	t.Helper()
@@ -32,8 +35,9 @@ func readTestWatchFile(t *testing.T, path string) watchFile {
 }
 
 func TestProjectWatchWritesTheProjectFromTheProjectFile(t *testing.T) {
+	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/projects/5": fixed(200, testProjectFiveJSON),
+		"PUT /api/v1/projects/5/watch": fixed(200, testWatchFiveJSON),
 	})
 	setAgentEnv(t, server.URL)
 	t.Setenv("MISSIONBASE_AGENT_SLUG", "claude")
@@ -51,6 +55,13 @@ func TestProjectWatchWritesTheProjectFromTheProjectFile(t *testing.T) {
 	if len(*requests) != 1 || (*requests)[0].slug != "claude" {
 		t.Fatalf("requests = %#v", *requests)
 	}
+	// Recorded in Missionbase, so the project's chat shows who's listening.
+	want := map[string]any{"machine_id": "core-local", "machine_name": "omarchy-m3", "terminal": "t9d"}
+	for key, value := range want {
+		if (*requests)[0].payload[key] != value {
+			t.Fatalf("payload = %#v, want %#v", (*requests)[0].payload, want)
+		}
+	}
 	file := readTestWatchFile(t, path)
 	if file.Version != 1 || len(file.Watches) != 1 {
 		t.Fatalf("file = %+v", file)
@@ -62,9 +73,10 @@ func TestProjectWatchWritesTheProjectFromTheProjectFile(t *testing.T) {
 }
 
 func TestProjectWatchReplacesTheProjectsTerminalAndKeepsOtherProjects(t *testing.T) {
+	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
 	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
-		"GET /api/v1/projects/5": fixed(200, testProjectFiveJSON),
-		"GET /api/v1/projects/9": fixed(200, `{"project":{"id":9,"name":"Engage Spot"}}`),
+		"PUT /api/v1/projects/5/watch": fixed(200, testWatchFiveJSON),
+		"PUT /api/v1/projects/9/watch": fixed(200, `{"project":{"id":9,"name":"Engage Spot"},"watch":{}}`),
 	})
 	setAgentEnv(t, server.URL)
 	path := setWatchEnv(t)
@@ -97,7 +109,11 @@ func TestProjectWatchReplacesTheProjectsTerminalAndKeepsOtherProjects(t *testing
 }
 
 func TestProjectWatchOffRemovesOnlyThatProject(t *testing.T) {
-	setAgentEnv(t, "http://127.0.0.1:1")
+	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
+	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
+		"DELETE /api/v1/projects/5/watch": fixed(200, `{"project":{"id":5},"watch":null,"cleared":true}`),
+	})
+	setAgentEnv(t, server.URL)
 	path := setWatchEnv(t)
 	if err := writeWatchFile(path, watchFile{Watches: []projectWatch{
 		{ProjectID: 5, Terminal: "t1", AgentSlug: "claude", Since: "2026-11-13T00:00:00Z"},
@@ -117,10 +133,59 @@ func TestProjectWatchOffRemovesOnlyThatProject(t *testing.T) {
 	if len(file.Watches) != 1 || file.Watches[0].ProjectID != 9 {
 		t.Fatalf("watches = %+v", file.Watches)
 	}
+	// Cleared in Missionbase as the agent that signed up, only if it's still this terminal's.
+	if len(*requests) != 1 || (*requests)[0].slug != "claude" || (*requests)[0].query != "machine_id=core-local&terminal=t1" {
+		t.Fatalf("requests = %#v", *requests)
+	}
 
 	out, err = runCapture(t, "project", "watch", "--off", "--project", "5")
 	if err != nil || !strings.Contains(out, "Project 5 isn't watched on this machine") {
 		t.Fatalf("second --off: out = %q, err = %v", out, err)
+	}
+	if len(*requests) != 1 {
+		t.Fatalf("nothing to clear, but requests = %#v", *requests)
+	}
+}
+
+func TestProjectWatchOffStillStopsWhenMissionbaseIsUnreachable(t *testing.T) {
+	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
+	setAgentEnv(t, "http://127.0.0.1:1")
+	path := setWatchEnv(t)
+	if err := writeWatchFile(path, watchFile{Watches: []projectWatch{{ProjectID: 5, Terminal: "t1", AgentSlug: "claude"}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCapture(t, "project", "watch", "--off", "--project", "5")
+	if err != nil || !strings.Contains(out, "Stopped watching project 5") {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	if file := readTestWatchFile(t, path); len(file.Watches) != 0 {
+		t.Fatalf("watches = %+v", file.Watches)
+	}
+}
+
+func TestProjectWatchNeedsHCAndKeepsTheFileWhenMissionbaseRefuses(t *testing.T) {
+	path := setWatchEnv(t)
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"PUT /api/v1/projects/5/watch": fixed(404, `{"error":{"code":"not_found","message":"Project not found"}}`),
+	})
+	setAgentEnv(t, server.URL)
+
+	original := runHC
+	runHC = func(args ...string) ([]byte, error) { return nil, fmt.Errorf("hc is not installed or not on PATH") }
+	_, err := runCapture(t, "project", "watch", "--terminal", "t1", "--project", "5")
+	runHC = original
+	if code := exitCodeFor(err); code != exitHCUnavailable {
+		t.Fatalf("without hc: err = %v, exit code %d", err, code)
+	}
+
+	stubHC(t, map[string]string{"server status --json": testLocalCoreJSON})
+	_, err = runCapture(t, "project", "watch", "--terminal", "t1", "--project", "5")
+	if err == nil || !strings.Contains(err.Error(), "Project not found") {
+		t.Fatalf("refused: err = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("a refused watch was written: %v", err)
 	}
 }
 

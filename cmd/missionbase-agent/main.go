@@ -4098,12 +4098,20 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   project watch --terminal tN [--cwd DIR | --project ID] [--json]
                                       Sign this machine's terminal tN up for the project's activity: the Herdr
                                       bridge types a digest of the owner's new tasks, replies, answers and status
-                                      changes, and mentions of this agent, when it's idle. Replaces any previous
-                                      terminal for the project. Kept in ~/.config/missionbase-herdr/watches.json
+                                      changes, and mentions of this agent, when it's idle, and the owner's
+                                      project chat messages. Replaces any previous terminal for the project.
+                                      Kept in ~/.config/missionbase-herdr/watches.json and recorded in
+                                      Missionbase (the chat shows who's listening)
   project watch --off [--cwd DIR | --project ID] [--json]
                                       Stop watching the project
   project watch [--cwd DIR | --project ID] [--json]
                                       Show the project's watch (every watch here when no project resolves)
+  project chat show [ID] [--limit N] [--json]
+                                      The project chat's latest messages, oldest first, and who's listening.
+                                      The owner's messages there are their requests to the project's
+                                      orchestrator. Images are saved locally and their paths printed
+  project chat reply [ID] --body-file PATH [--json]
+                                      Reply in the project chat as this agent (Markdown); the owner gets a push
   Project resolution: --project, then the nearest .missionbase/project.json (project_id)
   from --cwd or the current folder, then the machine default. Exit codes: 3 = HTTP 409
   conflict, 4 = hc missing or could not resolve the terminal, 5 = no project resolved, 6 = task
