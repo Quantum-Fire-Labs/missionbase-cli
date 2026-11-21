@@ -69,6 +69,9 @@ type taskQuestion struct {
 	DismissReason *string         `json:"dismiss_reason"`
 	// Images in the answer; downloadAnswerImages saves them locally.
 	AnswerAttachments []answerAttachment `json:"answer_attachments"`
+	// Additional notes the owner sent with a set of answers, on the last
+	// question that send resolved.
+	Note *string `json:"note"`
 }
 
 // questionInput is one question as sent to POST /api/v1/tasks/:id/questions
@@ -102,7 +105,7 @@ func indentBlock(text, indent string) string {
 }
 
 // printQuestion prints one question as "N. [status] body" plus its context,
-// options and the answer or dismissal.
+// options, the answer or dismissal, and any additional notes sent with it.
 func printQuestion(q taskQuestion, indent string, showStatus bool) {
 	number := strconv.Itoa(q.Position) + ". "
 	if q.Position == 0 {
@@ -150,6 +153,17 @@ func printQuestion(q taskQuestion, indent string, showStatus bool) {
 			line += ": " + indentBlock(reason, inner+"  ")
 		}
 		fmt.Println(line)
+	}
+	if note := stringValue(q.Note); note != "" {
+		label := "Additional notes"
+		who := q.AnsweredBy.display()
+		if q.Status == "dismissed" {
+			who = q.DismissedBy.display()
+		}
+		if who != "" {
+			label += " (" + who + ")"
+		}
+		fmt.Println(inner + label + ": " + indentBlock(note, inner+"  "))
 	}
 }
 

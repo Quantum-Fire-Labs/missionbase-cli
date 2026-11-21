@@ -215,6 +215,35 @@ Asked by Publisher at 2026-11-13T05:12:40Z
 	}
 }
 
+func TestTaskQuestionsPrintsAdditionalNotesAfterTheirQuestion(t *testing.T) {
+	answered := strings.Replace(testQuestionQ1Done, `"dismissed_at":null}`, `"dismissed_at":null,"note":"Ship it behind a flag.\nTell me before merging."}`, 1)
+	dismissed := strings.Replace(testQuestionQ2Done, `"dismissed_at":"2026-11-13T06:00:00Z"}`, `"dismissed_at":"2026-11-13T06:00:00Z","note":"Not needed now."}`, 1)
+	server, _ := recordServer(t, map[string]func(*http.Request) (int, string){
+		"GET /api/v1/tasks/42/questions": fixed(200, questionsList(0, answered, dismissed)),
+	})
+	setAgentEnv(t, server.URL)
+
+	out, err := runCapture(t, "task", "questions", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `#42: 2 questions, 0 open
+Asked by Publisher at 2026-11-13T05:12:40Z
+  1. [answered] Should a 409 count as delivered?
+     Options: Yes · No
+     Answer (John Doe): Yes, treat as delivered
+       and log it.
+     Additional notes (John Doe): Ship it behind a flag.
+       Tell me before merging.
+  2. [dismissed] Cap retries at 1h or 24h?
+     Dismissed by John Doe
+     Additional notes (John Doe): Not needed now.
+`
+	if out != want {
+		t.Fatalf("output:\n%s\nwant:\n%s", out, want)
+	}
+}
+
 func TestTaskQuestionsStatusFilterAndJSON(t *testing.T) {
 	server, requests := recordServer(t, map[string]func(*http.Request) (int, string){
 		"GET /api/v1/tasks/42/questions": fixed(200, questionsList(0, testQuestionQ2Done)),

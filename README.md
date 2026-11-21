@@ -271,6 +271,14 @@ Asked by Publisher at 2026-11-13T05:12:40Z
      This answer includes 1 image. Look at it before acting: /home/me/.cache/missionbase/answers/42/q8-1-bug.png
 ```
 
+**Additional notes.** The owner can add notes for the whole set of answers they send (the Additional notes box at the end of the Questions panel). They're stored on the last question that send resolved, as `note` in the API, and `task questions` (and `--wait`) prints them under that question's answer. Read them with the answers: they apply to the whole set.
+
+```text
+  2. [answered] Cap total retry time at 1 hour or 24 hours?
+     Answer (John Doe): 24 hours
+     Additional notes (John Doe): Ship it behind a flag and tell me before merging.
+```
+
 Each question in the API carries `answer_attachments: [{"filename", "content_type", "byte_size", "url"}]`. With `--json`, `task questions` adds `local_path` to each saved image (or `download_error` when it couldn't be saved).
 
 `task questions --wait` polls every 20 seconds until the task has no open questions, then prints the questions that were open when it started. If none were open (the owner answered before the first poll), it prints the latest ask. It exits 0 when they are resolved. `--timeout` takes a duration (`90s`, `10m`, `1h`) or a number of seconds; without it, it waits indefinitely. On timeout it exits 6 (with `--json`, after printing the last response). Network errors, HTTP 429 and 5xx responses are retried on the next poll; other API errors stop it with exit 1. A manual status change also dismisses open questions, so `--wait` finishes then too: check each question's status.
