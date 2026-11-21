@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,8 +20,9 @@ const projectChatUsage = `usage: missionbase-agent project chat show [ID] [--lim
        missionbase-agent project chat reply [ID] --body-file PATH [--json]
 
   show    The chat's latest messages (default 20, at most 100), oldest first,
-          and who's listening. Images are saved under ~/.cache/missionbase/chats/<project>/
-          and their paths printed under the message.
+          and who's listening. Every file sent with a message (any type) is saved under
+          ~/.cache/missionbase/chats/<project>/ and listed under the message with its
+          name, type and path.
   reply   Post a Markdown reply as this agent. The owner gets a push notification.
 
 The project is ID, else --project ID, --cwd DIR or the linked project here.`
@@ -39,7 +38,7 @@ type chatMessage struct {
 	ID               int64              `json:"id"`
 	Body             string             `json:"body"`
 	Sender           chatSender         `json:"sender"`
-	Images           []answerAttachment `json:"images"`
+	Files            []answerAttachment `json:"files"`
 	CreatedAt        string             `json:"created_at"`
 	DeliveredAt      *string            `json:"delivered_at"`
 	AwaitingDelivery bool               `json:"awaiting_delivery"`
@@ -182,7 +181,7 @@ func projectChatShow(args []string) error {
 	if err := json.Unmarshal(body, &response); err != nil {
 		return fmt.Errorf("unexpected project chat response: %w", err)
 	}
-	downloadChatImages(id, response.Messages)
+	downloadChatFiles(id, response.Messages)
 	printChat(id, response)
 	return nil
 }
@@ -228,7 +227,7 @@ func printChat(id string, response chatResponse) {
 				fmt.Println("  " + line)
 			}
 		}
-		printChatImages(m)
+		printChatFiles(m.Files)
 	}
 	fmt.Printf("\nReply with: missionbase-agent project chat reply %s --body-file PATH\n", id)
 }
@@ -239,56 +238,6 @@ func chatTime(value string) string {
 		return value
 	}
 	return t.Local().Format("2006-01-02 15:04")
-}
-
-// downloadChatImages saves each message's images to ~/.cache/missionbase/chats/<project>/,
-// like answer images, so the agent can look at local files. Failures leave the URL to print.
-func downloadChatImages(projectID string, messages []chatMessage) {
-	var dir string
-	var dirErr error
-	for mi := range messages {
-		m := &messages[mi]
-		for ii := range m.Images {
-			image := &m.Images[ii]
-			if dir == "" && dirErr == nil {
-				if dir, dirErr = imageCacheDir("chats", projectID); dirErr == nil {
-					dirErr = os.MkdirAll(dir, 0o700)
-				}
-			}
-			if dirErr != nil {
-				image.DownloadError = dirErr.Error()
-				continue
-			}
-			path := filepath.Join(dir, imageFilename("m", m.ID, ii+1, image.Filename))
-			if err := downloadAnswerImage(image, path); err != nil {
-				image.DownloadError = err.Error()
-				continue
-			}
-			image.LocalPath = path
-		}
-	}
-}
-
-func printChatImages(m chatMessage) {
-	var paths []string
-	for _, image := range m.Images {
-		if image.LocalPath != "" {
-			paths = append(paths, image.LocalPath)
-		} else {
-			reason := image.DownloadError
-			if reason == "" {
-				reason = "not downloaded"
-			}
-			fmt.Printf("  Couldn't save image %s (%s); open it at %s\n", image.Filename, reason, image.URL)
-		}
-	}
-	if len(paths) > 0 {
-		them := "them"
-		if len(paths) == 1 {
-			them = "it"
-		}
-		fmt.Printf("  This message includes %s. Look at %s before acting: %s\n", plural(len(paths), "image"), them, strings.Join(paths, ", "))
-	}
 }
 
 func projectChatReply(args []string) error {

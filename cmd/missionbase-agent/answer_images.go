@@ -27,10 +27,13 @@ const maxAnswerImageBytes int64 = 10 * 1024 * 1024
 // answerImageClient downloads answer images. Tests swap it.
 var answerImageClient = &http.Client{Timeout: 60 * time.Second}
 
+// answerAttachment is a downloadable file: an answer's image, or a chat
+// message's file (any type; Image says whether it's an image).
 type answerAttachment struct {
 	Filename    string `json:"filename"`
 	ContentType string `json:"content_type"`
 	ByteSize    int64  `json:"byte_size"`
+	Image       bool   `json:"image"`
 	URL         string `json:"url"`
 	// Set after download: the local file, or why it couldn't be saved.
 	LocalPath     string `json:"-"`
@@ -43,7 +46,7 @@ func answerImagesDir(taskID string) (string, error) {
 }
 
 // imageCacheDir is ~/.cache/missionbase/<kind>/<id> (or under $XDG_CACHE_HOME): where
-// answer images (by task) and project chat images (by project) are saved.
+// answer images (by task), project chat files (by project) and DM files (by chat) are saved.
 func imageCacheDir(kind, id string) (string, error) {
 	base := os.Getenv("XDG_CACHE_HOME")
 	if base == "" {
@@ -80,7 +83,7 @@ func downloadAnswerImages(taskID string, questions []taskQuestion) {
 				continue
 			}
 			path := filepath.Join(dir, answerImageFilename(q.ID, ai+1, attachment.Filename))
-			if err := downloadAnswerImage(attachment, path); err != nil {
+			if err := downloadAttachment(attachment, path, maxAnswerImageBytes); err != nil {
 				attachment.DownloadError = err.Error()
 				continue
 			}
@@ -99,9 +102,15 @@ func answerImageFilename(questionID int64, n int, filename string) string {
 
 // imageFilename is "<prefix><id>-<n>-<name>", with the name made safe.
 func imageFilename(prefix string, id int64, n int, filename string) string {
+	return safeFilename(prefix, id, n, filename, "image")
+}
+
+// safeFilename is "<prefix><id>-<n>-<name>", with the name made safe, or
+// fallback when nothing of it is left.
+func safeFilename(prefix string, id int64, n int, filename, fallback string) string {
 	name := strings.Trim(unsafeFilenameChars.ReplaceAllString(filepath.Base(filename), "-"), ".-")
 	if name == "" {
-		name = "image"
+		name = fallback
 	}
 	if len(name) > 80 {
 		name = name[len(name)-80:]
@@ -109,7 +118,9 @@ func imageFilename(prefix string, id int64, n int, filename string) string {
 	return prefix + strconv.FormatInt(id, 10) + "-" + strconv.Itoa(n) + "-" + name
 }
 
-func downloadAnswerImage(attachment *answerAttachment, path string) error {
+// downloadAttachment saves the file at attachment.URL to path, refusing one
+// over maxBytes. A file already saved with the expected size is reused.
+func downloadAttachment(attachment *answerAttachment, path string, maxBytes int64) error {
 	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && (attachment.ByteSize == 0 || info.Size() == attachment.ByteSize) {
 		return nil
 	}
@@ -132,15 +143,15 @@ func downloadAnswerImage(attachment *answerAttachment, path string) error {
 		return err
 	}
 	defer os.Remove(temp.Name())
-	written, err := io.Copy(temp, io.LimitReader(response.Body, maxAnswerImageBytes+1))
+	written, err := io.Copy(temp, io.LimitReader(response.Body, maxBytes+1))
 	if closeErr := temp.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
-	if written > maxAnswerImageBytes {
-		return fmt.Errorf("download failed: larger than %d MB", maxAnswerImageBytes/1024/1024)
+	if written > maxBytes {
+		return fmt.Errorf("download failed: larger than %d MB", maxBytes/1024/1024)
 	}
 	return os.Rename(temp.Name(), path)
 }
@@ -149,14 +160,14 @@ func downloadAnswerImage(attachment *answerAttachment, path string) error {
 func answerImageURL(link string) (string, error) {
 	parsed, err := url.Parse(link)
 	if err != nil || link == "" {
-		return "", fmt.Errorf("invalid image URL %q", link)
+		return "", fmt.Errorf("invalid download URL %q", link)
 	}
 	if parsed.IsAbs() {
 		return link, nil
 	}
 	cfg, err := config.LoadAgent()
 	if err != nil || cfg.BaseURL == "" {
-		return "", fmt.Errorf("can't resolve image URL %q without a server URL", link)
+		return "", fmt.Errorf("can't resolve download URL %q without a server URL", link)
 	}
 	base, err := url.Parse(strings.TrimRight(cfg.BaseURL, "/") + "/")
 	if err != nil {
