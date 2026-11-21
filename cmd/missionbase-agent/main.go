@@ -452,7 +452,7 @@ func directMessage(args []string) error {
 		if len(args) != 2 {
 			return fmt.Errorf("usage: missionbase-agent dm show <chat-id>")
 		}
-		return apiGet("/api/v1/agent/direct_messages/" + url.PathEscape(args[1]))
+		return directMessageShow(args[1])
 	case "send":
 		return directMessageSend(args[1:])
 	default:
@@ -3945,7 +3945,8 @@ Commands:
   listen [--timeout N] [--offset ID] [--once]
                                       Long-poll for agent updates
   dm list [--limit N]                 List agent direct messages
-  dm show <chat-id>                   Show an agent DM chat
+  dm show <chat-id>                   Show an agent DM chat; saves its messages' files and adds
+                                      each one's local_path
   dm send --to <handle> --body-file PATH
                                       Start/send a DM to a user or agent
   dm send --chat <chat-id> --body-file PATH
