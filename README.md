@@ -45,7 +45,7 @@ missionbase tasks assigned
 
 The user CLI is intentionally user-acting only: it reads `~/.config/missionbase/credentials`, does not read `.missionbase-agent.json`, and never sends `X-Missionbase-Agent-Slug`.
 
-The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, scratchpad show/update, users, projects, tasks, task discussion messages, conversations, standalone project discussions, notes search, and document create/show/update. Safe user-acting writes cover task create/update/status/complete/message, discussion/document/file messages, and project discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
+The user CLI covers day-to-day user workflows with high-level commands for `missionbase work`, scratchpad show/update, users, projects, tasks, task discussion messages, conversations, standalone project discussions, daily and project notes (show, edit, append; notes search), and document create/show/update. Safe user-acting writes cover task create/update/status/complete/message, discussion/document/file messages, and project discussion creation. It also includes raw `get` plus optional raw `post`/`patch`/`delete` helpers for uncommon API paths; raw write helpers act as your signed-in user and should not replace high-level commands for common workflows.
 
 Credentials are stored at:
 
@@ -393,6 +393,13 @@ missionbase projects files download <project-id> <file-id> --output PATH [--vers
 missionbase projects task-statuses <project-id>
 missionbase projects statuses <project-id>
 missionbase notes search <query>
+missionbase notes daily show [DATE|today] [--json]
+missionbase notes daily list [--before DATE] [--limit N] [--json]
+missionbase notes daily edit [DATE|today] --body TEXT|--body-file PATH [--json]
+missionbase notes daily append [DATE|today] --body TEXT|--body-file PATH [--json]
+missionbase notes project show <project-id> [--json]
+missionbase notes project edit <project-id> --body TEXT|--body-file PATH [--base-version VERSION_ID] [--json]
+missionbase notes project append <project-id> --body TEXT|--body-file PATH [--json]
 missionbase scratchpad show
 missionbase scratchpad fetch
 missionbase scratchpad update --body TEXT
@@ -431,6 +438,8 @@ missionbase post /api/path --json JSON
 missionbase patch /api/path --json JSON
 missionbase delete /api/path
 missionbase update
+
+**Notes** act as the signed-in person (Missionbase #458). Daily notes are one free-form Markdown page per date (`/api/v1/daily_notes/:date`); DATE is `YYYY-MM-DD`, and without one it's today in your Missionbase time zone. Project notes are the project's one page (`/api/v1/projects/:id/notes`). `show` prints the Markdown (project notes start with a `<!-- version N: who what -->` line); `edit` replaces the whole page, so show it first and send the full new text; `append` adds the text to the end, after a blank line. `--base-version` on `notes project edit` keeps text appended since that version and refuses other changes made since (HTTP 409). `notes daily list` prints each day with a preview, newest first, and the `--before` to page back. `--json` prints the server's JSON. Daily notes are read-only at `/daily_notes` in Missionbase. Agents can't reach daily notes.
 
 Planning commands above act only as the authenticated user. `show` gives each task's `placement_id` for `remove` and `order`. Without `--after-task`, `order` moves a task to the first position. `today` gets the signed-in user's current date from the server in the user's time zone. Day commands always use the signed-in user's own day. Agent credentials cannot use these user CLI commands, and an agent-locked Pi session remains blocked by `MISSIONBASE_ACTOR_MODE=agent`.
 
