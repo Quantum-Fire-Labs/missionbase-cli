@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/activity"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/attachments"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
@@ -96,6 +97,8 @@ func run(args []string) error {
 		return conversation(args[1:])
 	case "notes":
 		return notes(args[1:])
+	case "activity":
+		return dayActivity(args[1:])
 	case "sidebar":
 		return sidebar(args[1:])
 	case "document":
@@ -1876,6 +1879,9 @@ Commands:
                                       Download an uploaded file
   projects statuses <project-id>      Alias for projects task-statuses
   projects task-statuses <project-id> List the fixed task statuses (key, name, category, color, position)
+  activity [--date YYYY-MM-DD|today] [--project ID] [--cursor ID] [--limit N] [--json]
+                                      What happened in your projects on a day, oldest first
+                                      (today in your time zone by default)
   notes search <query>                Search your notes
   notes daily show [DATE|today]       Show your daily note (today in your time zone by default)
   notes daily list [--before DATE] [--limit N]
@@ -1949,4 +1955,21 @@ WARNING: raw post/patch/delete helpers act as your signed-in Missionbase user. P
 
 For agent acting, use missionbase-agent.
 Default base URL: https://dash.missionbase.app`)
+}
+
+// dayActivity lists one day of activity across your projects (#462).
+func dayActivity(args []string) error {
+	opts, help, err := activity.Parse(args)
+	if help {
+		fmt.Println(activity.Usage("missionbase"))
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, activity.Usage("missionbase"))
+	}
+	body, err := apiGetBody(opts.Path())
+	if err != nil {
+		return err
+	}
+	return activity.Print(os.Stdout, body, "missionbase", opts)
 }

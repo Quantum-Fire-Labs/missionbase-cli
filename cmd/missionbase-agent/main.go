@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	activitypkg "github.com/Quantum-Fire-Labs/missionbase-cli/internal/activity"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/config"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/httpclient"
 	"github.com/Quantum-Fire-Labs/missionbase-cli/internal/statuses"
@@ -1637,25 +1638,39 @@ type activityRef struct {
 }
 
 func activity(args []string) error {
-	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+	if len(args) > 0 && (args[0] == "project" || args[0] == "projects") {
+		return projectActivity(args[1:])
+	}
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") && args[0] != "help" {
+		return fmt.Errorf("unknown activity scope %q", args[0])
+	}
+	return dayActivity(args)
+}
+
+// dayActivity lists one day of activity across the projects the agent can
+// open (its owner's), in its owner's time zone (#462).
+func dayActivity(args []string) error {
+	opts, help, err := activitypkg.Parse(args)
+	if help {
 		fmt.Println(activityUsage())
 		return nil
 	}
-
-	switch args[0] {
-	case "project", "projects":
-		return projectActivity(args[1:])
-	default:
-		return fmt.Errorf("unknown activity scope %q", args[0])
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, activityUsage())
 	}
+	body, err := apiGetBody(opts.Path())
+	if err != nil {
+		return err
+	}
+	return activitypkg.Print(os.Stdout, body, "missionbase-agent", opts)
 }
 
 func projectActivity(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("%s", activityUsage())
+		return fmt.Errorf("%s", projectActivityUsage())
 	}
 	if args[0] == "--help" || args[0] == "-h" {
-		fmt.Println(activityUsage())
+		fmt.Println(projectActivityUsage())
 		return nil
 	}
 
@@ -1741,7 +1756,7 @@ func projectActivity(args []string) error {
 		case "--json":
 			jsonOutput = true
 		case "--help", "-h":
-			fmt.Println(activityUsage())
+			fmt.Println(projectActivityUsage())
 			return nil
 		default:
 			return fmt.Errorf("unknown activity option %q", args[i])
@@ -1761,6 +1776,10 @@ func projectActivity(args []string) error {
 }
 
 func activityUsage() string {
+	return activitypkg.Usage("missionbase-agent") + "\n\n" + projectActivityUsage()
+}
+
+func projectActivityUsage() string {
 	return "usage: missionbase-agent activity project <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID|--actor-type TYPE --actor-id ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]\n       missionbase-agent projects activity <project-id> [same filters]"
 }
 
@@ -4130,6 +4149,9 @@ Agent work (text output by default; --json for scripts and the Herdr panel):
   workspace update --chat-id CHAT_ID [--title TITLE]
       [--file PATH|--markdown TEXT]   Replace workspace content from Markdown or stdin
   members [--project ID] [--json]     List group members and mention handles
+  activity [--date YYYY-MM-DD|today] [--project ID] [--cursor ID] [--limit N] [--json]
+                                      What happened in your projects on a day, oldest first
+                                      (today in your owner's time zone by default)
   activity project <id>               Query recent activity events with filters; concise text by default, --json for raw output
   projects activity <project-id>      Query recent activity events for an accessible project
   projects create --name NAME [--description-file PATH] [--kind KIND] [--status STATUS]
