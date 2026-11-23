@@ -11,6 +11,15 @@ There are two binaries with separate auth/config scopes:
 - `missionbase` — user-acting CLI for personal/user API keys.
 - `missionbase-agent` — agent-acting CLI: your API key plus an agent slug.
 
+### Manuals for agents: `--skill`
+
+Each binary prints a manual for agents with `--skill`, the way `hc --skill` does. It ships inside the binary (`cmd/<binary>/skill.md`, embedded at build time), needs no API key or network, and matches that release's commands: a test checks that every command and flag the manual names is in the binary's `--help`, so a renamed or removed command fails the build until the manual follows.
+
+- `missionbase-agent --skill`: the agent workflow. Linked folders, the statuses and what each means, `task start --terminal`, planning through Questions (and session mode), approval then build, `task review` (never complete), task chat and project chat, linking tasks, project notes and activity.
+- `missionbase --skill`: the user CLI for an agent acting as the person: their work and day, tasks, projects, daily and project notes, activity and the raw helpers.
+
+The wrappers (`missionbase-claude`, `missionbase-codex`, `missionbase-prime`) pass `--skill` through unchanged. They set `MISSIONBASE_AGENT_SLUG`, and when `missionbase-<slug>` is on `PATH` the manual's commands name that wrapper (`missionbase-claude task start …`); otherwise they name `missionbase-agent`.
+
 ## Install
 
 Install both binaries:

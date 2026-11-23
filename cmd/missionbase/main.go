@@ -50,6 +50,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "help", "--help", "-h":
 		printHelp()
+	case "--skill":
+		printSkill()
 	case "version", "--version", "-v":
 		fmt.Printf("Missionbase CLI %s\nCommit: %s\n", Version, Commit)
 	case "update":
@@ -1833,7 +1835,7 @@ func isHelp(value string) bool {
 }
 
 func isLocalInformationCommand(command string) bool {
-	return command == "help" || command == "--help" || command == "-h" || command == "version" || command == "--version" || command == "-v"
+	return command == "help" || command == "--help" || command == "-h" || command == "--skill" || command == "version" || command == "--version" || command == "-v"
 }
 
 func printHelp() {
@@ -1845,6 +1847,7 @@ Usage:
   missionbase <command> [args]
 
 Commands:
+  --skill                             Print the manual for agents acting as you with this CLI. Read it first
   auth status                         Show auth status
   auth set-token <token> [--base-url URL]
                                       Save a personal/user API token
@@ -1911,7 +1914,8 @@ Commands:
       [--page N] [--per-page N]
   tasks visible                       List tasks visible to the current user
       [--page N] [--per-page N]
-  task create --title TITLE [--project ID] [--body TEXT]
+  task create --title TITLE [--project ID] [--body TEXT] [--status STATUS] [--deadline YYYY-MM-DD]
+      [--start-on YYYY-MM-DD] [--assign-user ID|@mention] [--attach PATH]
                                       Create a task
   task update <task-id> [--title TITLE] [--project ID]
                                       Update a task
