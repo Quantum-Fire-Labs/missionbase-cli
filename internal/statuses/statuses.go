@@ -51,9 +51,9 @@ const (
 func RefuseAgentSet(status string) error {
 	switch strings.TrimSpace(status) {
 	case Complete:
-		return fmt.Errorf("agents don't mark tasks complete: finish into review with `missionbase-agent task review <task-id> --check LINE --body-file PATH`, and the owner marks it complete")
+		return fmt.Errorf("agents don't mark tasks complete: finish into review with `missionbase-agent task review <task-id> --item LINE --body-file PATH`, and the owner marks it complete")
 	case Review:
-		return fmt.Errorf("send a task for review with `missionbase-agent task review <task-id> --check LINE --body-file PATH`: it posts the completion message and what to check")
+		return fmt.Errorf("send a task for review with `missionbase-agent task review <task-id> --item LINE --body-file PATH`: it posts the completion message and what to check")
 	}
 	return nil
 }

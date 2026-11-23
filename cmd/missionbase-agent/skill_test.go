@@ -19,7 +19,7 @@ func TestSkillPrintsTheManual(t *testing.T) {
 	if !strings.HasPrefix(stdout, "# missionbase-agent: track your work in Missionbase") {
 		t.Fatalf("--skill printed:\n%s", stdout)
 	}
-	for _, want := range []string{"## Statuses", "## Questions", "## Task chat", "missionbase-agent task review <id> --check"} {
+	for _, want := range []string{"## Statuses", "## Questions", "## Task chat", "missionbase-agent task review <id> --item"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("--skill output lacks %q", want)
 		}
