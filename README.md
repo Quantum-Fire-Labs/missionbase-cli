@@ -392,6 +392,7 @@ missionbase projects files upload-version <project-id> <file-id> --file PATH
 missionbase projects files download <project-id> <file-id> --output PATH [--version VERSION_ID]
 missionbase projects task-statuses <project-id>
 missionbase projects statuses <project-id>
+missionbase activity [--date YYYY-MM-DD|today] [--project ID] [--cursor ID] [--limit N] [--json]
 missionbase notes search <query>
 missionbase notes daily show [DATE|today] [--json]
 missionbase notes daily list [--before DATE] [--limit N] [--json]
@@ -438,6 +439,8 @@ missionbase post /api/path --json JSON
 missionbase patch /api/path --json JSON
 missionbase delete /api/path
 missionbase update
+
+**Activity** (Missionbase #462): `missionbase activity` lists what happened in your projects on one day, oldest first (`GET /api/v1/activity`): today by default, from 00:00 to 24:00 in your Missionbase time zone, or `--date YYYY-MM-DD`. `--project ID` keeps one project. Each line is the time, project, who and the summary. A long day comes in pages of 100 (`--limit` 1-200), and the last line is the command for the next page (`--cursor`). `--json` prints the server's JSON: `{"date", "time_zone", "project", "activity_events": [...], "next_cursor"}`, the events shaped as in `missionbase-agent activity project`, with timestamps in your zone. `missionbase-agent activity` takes the same flags and reads the agent's owner's projects in the owner's time zone.
 
 **Notes** act as the signed-in person (Missionbase #458). Daily notes are one free-form Markdown page per date (`/api/v1/daily_notes/:date`); DATE is `YYYY-MM-DD`, and without one it's today in your Missionbase time zone. Project notes are the project's one page (`/api/v1/projects/:id/notes`). `show` prints the Markdown (project notes start with a `<!-- version N: who what -->` line); `edit` replaces the whole page, so show it first and send the full new text; `append` adds the text to the end, after a blank line. `--base-version` on `notes project edit` keeps text appended since that version and refuses other changes made since (HTTP 409). `notes daily list` prints each day with a preview, newest first, and the `--before` to page back. `--json` prints the server's JSON. Daily notes are read-only at `/daily_notes` in Missionbase. Agents can't reach daily notes.
 
@@ -503,6 +506,7 @@ missionbase-agent discussion show <discussion-id> [--limit N]
 missionbase-agent discussion message <discussion-id> --body-file /tmp/body.md [--attach /path/to/image.png]
 missionbase-agent conversation show/message ... # deprecated aliases for discussion show/message
 missionbase-agent members [--project ID]
+missionbase-agent activity [--date YYYY-MM-DD|today] [--project ID] [--cursor ID] [--limit N] [--json]
 missionbase-agent activity project <id> [--since TIME|--duration DURATION] [--until TIME] [--actor TYPE:ID] [--subject-type TYPE] [--subject-id ID] [--action ACTION] [--cursor ID] [--limit N] [--json]
 missionbase-agent projects activity <project-id> [same filters]
 missionbase-agent projects create --name "Project Delivery" [--description-file /tmp/description.md] [--kind project] [--status in_progress]
@@ -541,7 +545,7 @@ Sidebar pin commands manage pinned sidebar pages as JSON. `missionbase sidebar p
 
 `missionbase users lookup` with no argument lists the people you can mention. With an email it sends `?email=`; with an `@mention`, username or numeric id it sends `?handle=`, and prints `{"user": {...}}`. Task assignment and participant commands accept numeric user ids directly and resolve an `@mention` through `/api/v1/users/lookup?handle=@mention`.
 
-`missionbase-agent activity project <project-id>` and `missionbase-agent projects activity <project-id>` query agent-visible project activity from `/api/v1/projects/:project_id/activity_events`; Activity output is concise text by default, including timestamp, scope, actor, action, subject, summary, source, route, useful metadata, and `Next cursor` when more results may be available. Add `--json` to print the raw API response for tooling. Filters include `--since`, `--until`, `--duration`/`--last`, `--actor TYPE:ID`, `--actor-type`, `--actor-id`, `--subject-type`, `--subject-id`, `--action`, `--cursor`, and `--limit`; the API enforces normal project permissions and only returns accessible activity.
+`missionbase-agent activity` lists one day of activity across the projects the agent can open (its owner's), oldest first, the same as `missionbase activity` (see Activity above): today in the owner's time zone by default, `--date`, `--project`, `--cursor`, `--limit` and `--json`. `missionbase-agent activity project <project-id>` and `missionbase-agent projects activity <project-id>` query agent-visible project activity from `/api/v1/projects/:project_id/activity_events`; Activity output is concise text by default, including timestamp, scope, actor, action, subject, summary, source, route, useful metadata, and `Next cursor` when more results may be available. Add `--json` to print the raw API response for tooling. Filters include `--since`, `--until`, `--duration`/`--last`, `--actor TYPE:ID`, `--actor-type`, `--actor-id`, `--subject-type`, `--subject-id`, `--action`, `--cursor`, and `--limit`; the API enforces normal project permissions and only returns accessible activity.
 
 `missionbase-agent projects notes ...` reads and writes a project's notes: one Markdown page per project, with version history (`/api/v1/projects/:id/notes`). Without a project id it uses `--project`, then the nearest `.missionbase/project.json` (from `--cwd` or the current folder), then the machine's default project (exit code 5 when none resolves). `show` prints the Markdown, preceded by a `<!-- version N: who what -->` line. `edit` replaces the whole page; pass `--base-version` with the version you read to keep entries appended since then, and a different change since then is refused (HTTP 409, exit code 3). `append` adds a dated entry under `## Log` (newest first, under the day's `### Nov 13, 2026` heading, today on this machine unless `--date`) as its own version attributed to the agent, without rewriting the rest of the page. `history` lists versions newest first: id, time, who and what, and +/- line counts.
 
@@ -613,6 +617,7 @@ missionbase-agent task assign 123 --user @DanielLemky
 missionbase-agent task unassign 123 --self
 missionbase-agent task move 123 --project 45
 missionbase-agent task message 123 --body-file /tmp/comment.md --attach /tmp/repro.webp
+missionbase-agent activity --date 2026-11-20 --project 2
 missionbase-agent activity project 2 --duration 24h --limit 25
 missionbase-agent projects activity 2 --since 2026-07-01T00:00:00Z --action task.status_changed
 missionbase-agent activity project 5 --actor Agent:2 --subject-type Task --subject-id 2902 --json
