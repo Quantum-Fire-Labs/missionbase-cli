@@ -63,11 +63,16 @@ Change a status with `{{cli}} task status <id> <key>` (`backlog`, `todo`,
 4. **Build it** once approved: `{{cli}} task status <id> in_progress`, then
    build it yourself right away. The agent that plans a task builds it.
 5. **Hand it back** after verifying (and shipping, if it needs shipping):
-   `{{cli}} task review <id> --check "LINE" --body-file PATH`. The body is your
-   completion message, and its first line is the result (e.g. "Live (337e9902):
-   Review status shipped"). `--check` is one line on what the owner should look
-   at (e.g. "Reload Home; Review sits under Needs you"). This moves the task to
-   Review and ends your run.
+   `{{cli}} task review <id> --item "LINE" [--item "LINE" ...] --body-file PATH`.
+   The body is your completion message, and its first line is the result (e.g.
+   "Live (337e9902): Review status shipped"). Each `--item` is one line on
+   something the owner should check (1–10, e.g. "Home's Review row shows
+   1 of 3"). For items that need detail (a link, steps), use
+   `--items-file PATH` instead: a JSON array of `{"line", "detail"}`, the
+   detail in Markdown. This moves the task to Review and ends your run. The
+   owner checks each item: anything that needs work comes back as their message
+   on the task (to the project's orchestrator), and the last one looking good
+   marks the task complete.
 
 If a task shouldn't go ahead now, move it to Backlog and say why. Once a task's
 work has shipped, a follow-up is a new task that links to it, not more work on

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -2512,7 +2513,7 @@ func members(args []string) error {
 
 func task(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> [--session | --questions] OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task review <task-id> --check LINE --body-file PATH OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
+		return fmt.Errorf("usage: missionbase-agent task show <task-id> OR missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--start [--terminal [machine/]tN] [--force]] [--deadline YYYY-MM-DD] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task update <task-id> [--title TITLE] [--body-file PATH] [--deadline YYYY-MM-DD | --no-deadline] OR missionbase-agent task assign <task-id> (--user ID|@mention | --agent slug) OR missionbase-agent task unassign <task-id> (--user ID|@mention | --agent slug | --self) OR missionbase-agent task message <task-id> --body-file PATH [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] OR missionbase-agent task status <task-id> <status> [--session | --questions] OR missionbase-agent task move <task-id> --project PROJECT_ID OR missionbase-agent task review <task-id> --body-file PATH (--item LINE ... | --items-file PATH) OR missionbase-agent task messages <task-id> [--limit N] OR missionbase-agent task participants <list|add> <task-id> [--user ID|@mention | --agent slug]")
 	}
 
 	if alwaysJSONTaskCommands[args[0]] {
@@ -2932,58 +2933,146 @@ func taskMove(args []string) error {
 	return apiPatch("/api/v1/tasks/"+url.PathEscape(taskID), body)
 }
 
-const taskReviewUsage = "usage: missionbase-agent task review <task-id> --check LINE --body-file PATH"
+const taskReviewUsage = `usage: missionbase-agent task review <task-id> --body-file PATH (--item LINE ... | --items-file PATH)
+  --item is repeatable (1 to 10): one line each on what the owner should check.
+  --items-file is a JSON array of 1 to 10 items, for items that need detail (Markdown: a link, steps):
+    [{"line": "Home's Review rows show progress", "detail": "Reload [Home](https://dash.missionbase.app)"}]`
+
+// reviewItem is one thing the owner should check (#544), as sent to the API
+// and as read from task review --items-file.
+type reviewItem struct {
+	Line   string `json:"line"`
+	Detail string `json:"detail,omitempty"`
+}
+
+const maxReviewItems = 10
+const maxReviewLine = 280
 
 // taskReview finishes a task into Review (#349): it posts the completion
-// message (the body file, Markdown; its first line is the result) ending with
-// the one "what to check" line, moves the task to Review and stops this
-// agent's running work. The owner marks it complete from Home.
+// message (the body file, Markdown; its first line is the result) with the
+// items the owner should check (#544), moves the task to Review and stops this
+// agent's running work. The owner checks each item; the last one looking good
+// marks the task complete.
 func taskReview(args []string) error {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return fmt.Errorf("%s", taskReviewUsage)
 	}
 	taskID := args[0]
-	payload := map[string]string{}
+	var body, itemsFile string
+	var lines []string
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--check":
+		case "--item":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--check requires one line on what the owner should check")
+				return fmt.Errorf("--item requires one line on what the owner should check")
 			}
-			payload["check"] = strings.TrimSpace(args[i+1])
+			lines = append(lines, args[i+1])
+			i++
+		case "--items-file":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--items-file requires a file path")
+			}
+			if itemsFile != "" {
+				return fmt.Errorf("--items-file can be given only once")
+			}
+			itemsFile = args[i+1]
 			i++
 		case "--body-file":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--body-file requires a file path")
 			}
-			body, err := readBodyFile(args[i+1])
+			text, err := readBodyFile(args[i+1])
 			if err != nil {
 				return err
 			}
-			payload["body"] = body
+			body = text
 			i++
 		case "--help", "-h":
 			fmt.Println(taskReviewUsage)
 			return nil
+		case "--check":
+			return fmt.Errorf("--check is gone: give what the owner should check as --item LINE (repeatable) or --items-file PATH\n%s", taskReviewUsage)
 		default:
 			return fmt.Errorf("unknown task review option %q\n%s", args[i], taskReviewUsage)
 		}
 	}
-	if strings.TrimSpace(payload["body"]) == "" {
+	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("--body-file is required: the completion message, its first line the result\n%s", taskReviewUsage)
 	}
-	if payload["check"] == "" {
-		return fmt.Errorf("--check is required: one line on what the owner should check\n%s", taskReviewUsage)
+	if len(lines) > 0 && itemsFile != "" {
+		return fmt.Errorf("use either --item or --items-file, not both")
 	}
-	if strings.ContainsAny(payload["check"], "\r\n") {
-		return fmt.Errorf("--check is one line")
+	var items []reviewItem
+	if itemsFile != "" {
+		read, err := readReviewItemsFile(itemsFile)
+		if err != nil {
+			return err
+		}
+		items = read
+	} else {
+		for _, line := range lines {
+			items = append(items, reviewItem{Line: line})
+		}
+	}
+	if len(items) == 0 {
+		return fmt.Errorf("what the owner should check is required: --item LINE (repeatable) or --items-file PATH\n%s", taskReviewUsage)
+	}
+	if err := normalizeReviewItems(items); err != nil {
+		return err
 	}
 
-	body, err := json.Marshal(payload)
+	payload, err := json.Marshal(map[string]any{"body": body, "items": items})
 	if err != nil {
 		return err
 	}
-	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/review", body)
+	return apiPost("/api/v1/tasks/"+url.PathEscape(taskID)+"/review", payload)
+}
+
+// readReviewItemsFile reads task review --items-file: a JSON array of
+// {"line", "detail"}. Unknown keys are rejected so a typo doesn't send an
+// empty line.
+func readReviewItemsFile(path string) ([]reviewItem, error) {
+	if path == "-" {
+		return nil, fmt.Errorf("stdin is not supported for --items-file; write the items to a file")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read items file %q: %w", path, err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 || bytes.TrimSpace(data)[0] != '[' {
+		return nil, fmt.Errorf(`%s must be a JSON array of items: [{"line": "...", "detail": "..."}]`, path)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var items []reviewItem
+	if err := decoder.Decode(&items); err != nil {
+		return nil, fmt.Errorf(`%s is not a valid items file (a JSON array of {"line", "detail"}): %w`, path, err)
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%s has extra content after the JSON array", path)
+	}
+	return items, nil
+}
+
+// normalizeReviewItems trims each item and checks the limits the server
+// enforces, so mistakes are caught before anything is sent.
+func normalizeReviewItems(items []reviewItem) error {
+	if len(items) > maxReviewItems {
+		return fmt.Errorf("at most %d review items (got %d)", maxReviewItems, len(items))
+	}
+	for i := range items {
+		items[i].Line = strings.TrimSpace(items[i].Line)
+		items[i].Detail = strings.TrimSpace(items[i].Detail)
+		switch {
+		case items[i].Line == "":
+			return fmt.Errorf("review item %d has no line: say what the owner should check", i+1)
+		case strings.ContainsAny(items[i].Line, "\r\n"):
+			return fmt.Errorf("review item %d's line is one line; put steps and links in its detail (--items-file)", i+1)
+		case len([]rune(items[i].Line)) > maxReviewLine:
+			return fmt.Errorf("review item %d's line is longer than %d characters; put the rest in its detail (--items-file)", i+1, maxReviewLine)
+		}
+	}
+	return nil
 }
 
 const taskCreateUsage = `usage: missionbase-agent task create --title TITLE [--project ID | --cwd DIR] [--status KEY] [--deadline YYYY-MM-DD] [--start-on YYYY-MM-DD] [--recurring daily|weekdays|weekly|bi_weekly|monthly] [--assign-agent slug | --assign-user ID|@mention] [--body-file PATH] [--participant-user ID|@mention] [--attach PATH] [--attach-blob SIGNED_ID_OR_SGID] [--json]
@@ -4058,11 +4147,14 @@ Commands:
                                       (no Questions); --questions: through Questions (the default). Also planning
   task move <task-id> --project PROJECT_ID
                                       Move a task to another accessible project
-  task review <task-id> --check LINE --body-file PATH
+  task review <task-id> --body-file PATH (--item LINE ... | --items-file PATH)
                                       Finish a verified, shipped task into Review: posts the completion
-                                      message (first line: the result) ending with "What to check: LINE",
-                                      moves it to Review and stops your running work. The owner reads it on
-                                      Home and marks it complete; agents can't (task complete is refused)
+                                      message (first line: the result) with the 1-10 items the owner should
+                                      check, moves it to Review and stops your running work. --item is one
+                                      line each; --items-file is JSON [{"line", "detail"}] for items with
+                                      detail. The owner checks each one: anything that needs work comes back
+                                      as a task message, and the last one looking good marks it complete.
+                                      Agents can't (task complete is refused)
   task messages <task-id> [--limit N] Show task discussion messages
   task comments <task-id> [--limit N] Legacy alias for task messages
   task participants list <task-id>    List task participants
