@@ -49,6 +49,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "help", "--help", "-h":
 		printHelp()
+	case "--skill":
+		printSkill()
 	case "version", "--version", "-v":
 		fmt.Printf("Missionbase Agent CLI %s\nCommit: %s\n", Version, Commit)
 	case "update":
@@ -3947,6 +3949,8 @@ Usage:
   missionbase-agent <command> [args]
 
 Commands:
+  --skill                             Print the manual for agents: how to track work in Missionbase
+                                      (statuses, planning through Questions, review, chat). Read it first
   auth status                         Show auth status
   auth set-token <token> [--base-url URL] [--agent slug]
                                       Save your API key
