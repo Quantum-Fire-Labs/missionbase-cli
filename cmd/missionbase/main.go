@@ -1160,39 +1160,6 @@ func conversation(args []string) error {
 	return discussion(args)
 }
 
-func notes(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: missionbase notes search <query>")
-	}
-	if args[0] != "search" {
-		if isHelp(args[0]) {
-			fmt.Println("usage: missionbase notes search <query>")
-			return nil
-		}
-		return fmt.Errorf("unknown notes command %q", args[0])
-	}
-	return notesSearch(args[1:])
-}
-
-func notesSearch(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: missionbase notes search <query>")
-	}
-	query := args[0]
-	values := url.Values{}
-	values.Set("query", query)
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "--help", "-h":
-			fmt.Println("usage: missionbase notes search <query>")
-			return nil
-		default:
-			return fmt.Errorf("unknown notes search option %q", args[i])
-		}
-	}
-	return apiGet(withQuery("/api/v1/notes/search", values))
-}
-
 func document(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: missionbase document <show|message|update> ...")
@@ -1910,6 +1877,18 @@ Commands:
   projects statuses <project-id>      Alias for projects task-statuses
   projects task-statuses <project-id> List the fixed task statuses (key, name, category, color, position)
   notes search <query>                Search your notes
+  notes daily show [DATE|today]       Show your daily note (today in your time zone by default)
+  notes daily list [--before DATE] [--limit N]
+                                      List the days you have notes for, newest first
+  notes daily edit [DATE] --body TEXT|--body-file PATH
+                                      Replace a daily note
+  notes daily append [DATE] --body TEXT|--body-file PATH
+                                      Add text to the end of a daily note
+  notes project show <project-id>     Show a project's notes
+  notes project edit <project-id> --body TEXT|--body-file PATH [--base-version ID]
+                                      Replace a project's notes
+  notes project append <project-id> --body TEXT|--body-file PATH
+                                      Add text to the end of a project's notes
   scratchpad show|fetch               Show current user's scratchpad
   scratchpad update|edit --body TEXT  Update current user's scratchpad
   sidebar pins                         List pinned sidebar pages for the current user
