@@ -27,6 +27,8 @@ const notesUsage = `usage: missionbase notes search <query>
        missionbase notes project edit <project-id> --body TEXT|--body-file PATH [--base-version VERSION_ID] [--json]
        missionbase notes project append <project-id> --body TEXT|--body-file PATH [--json]
 
+Project notes hold priorities, decisions and context that tasks can't carry
+well, not documentation (that lives on your machine or in Google Drive).
 DATE is YYYY-MM-DD; without one it's today in your Missionbase time zone.
 edit replaces the whole note: show it first and send the full new text.
 append adds the text to the end, after a blank line.

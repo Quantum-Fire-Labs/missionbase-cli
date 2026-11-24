@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// Project notes: one Markdown page per project with version history.
+// Project notes: one Markdown page per project with version history, for
+// priorities, decisions and context (not documentation).
 //
 //	missionbase-agent projects notes show [project-id] [--json]
 //	missionbase-agent projects notes edit [project-id] --body-file PATH [--base-version ID] [--json]
@@ -25,6 +26,7 @@ func notesUsage() string {
 		"       missionbase-agent projects notes edit [project-id] --body-file PATH [--base-version VERSION_ID] [--json]\n" +
 		"       missionbase-agent projects notes append [project-id] --body-file PATH [--date YYYY-MM-DD] [--json]\n" +
 		"       missionbase-agent projects notes history [project-id] [--limit N] [--before VERSION_ID] [--json]\n\n" +
+		"Project notes hold priorities, decisions and context that tasks can't carry well, not documentation (that lives in the repo or Google Drive).\n" +
 		"The project is the id given, else --project, else the nearest .missionbase/project.json (from --cwd or here), else the default project.\n" +
 		"edit replaces the whole page; pass --base-version (the version you read) to keep entries appended since and refuse other changes.\n" +
 		"append adds a dated entry under ## Log (newest first, under the day's heading; --date defaults to today here) without rewriting the page."

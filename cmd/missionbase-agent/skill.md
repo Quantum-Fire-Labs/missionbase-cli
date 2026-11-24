@@ -191,7 +191,13 @@ run `task start <id> --terminal <its address>`.
 {{cli}} activity --date YYYY-MM-DD --project ID    # what happened on a day
 ```
 
-- Notes are one Markdown page per project. `append` adds a dated entry under
+- Notes are one Markdown page per project, for priorities, higher-level notes
+  and context that tasks can't carry well: what matters most right now,
+  decisions and their reasons, constraints, and where things stand overall.
+  They're not for documentation: specs, how-tos, setup and references live in
+  the repo or in Google Drive; link to them from the notes if useful.
+- Read a project's notes before planning work in it, and keep them current.
+- `append` adds a dated entry under
   `## Log` without rewriting the page; prefer it. `edit` replaces the whole
   page: read it first and pass the version you read as `--base-version`, which
   keeps entries appended since and refuses other changes.
