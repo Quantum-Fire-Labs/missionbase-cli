@@ -74,8 +74,13 @@ missionbase discussion message <discussion-id> --body TEXT
 
 ## Notes
 
-Daily notes are one Markdown page per day; project notes are one page per
-project. Both are free-form.
+Daily notes are one Markdown page per day. Project notes are one page per
+project, for its priorities, higher-level notes and context that tasks can't
+carry well: what matters most right now, decisions and their reasons,
+constraints, and where things stand overall. They're not for documentation:
+specs, how-tos, setup and references live on the person's machine or in Google
+Drive; link to them from the notes if useful. Read a project's notes before
+planning work in it, and keep them current.
 
 ```sh
 missionbase notes daily show             # today in their time zone; or a date
